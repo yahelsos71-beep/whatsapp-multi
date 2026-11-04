@@ -1,0 +1,20 @@
+{
+  "name": "whatsapp-multi",
+  "productName": "WhatsApp Multi",
+  "version": "1.0.0",
+  "description": "3 חשבונות וואטסאפ בתוכנה אחת עם צלצול להודעות",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable"
+  },
+  "build": {
+    "appId": "local.whatsapp.multi",
+    "win": { "target": "portable" },
+    "files": ["main.js", "app-main.js", "index.html", "renderer.js", "inject.js", "version.json"]
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  }
+}
