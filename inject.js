@@ -132,6 +132,32 @@
   }
   setInterval(scan, 1000);
 
+  // ---------- אבחון: מבנה שורות הצ'אטים בלי טקסט ושמות ----------
+  window.__waDebug = function () {
+    const KEEP = /^(\d{1,2}:\d{2}.*|אתמול|yesterday|\d+)$/i;
+    const clean = (node) => {
+      const c = node.cloneNode(true);
+      const walk = (n) => {
+        for (const ch of [...n.childNodes]) {
+          if (ch.nodeType === 3) { const t = ch.textContent.trim(); if (t && !KEEP.test(t)) ch.textContent = '[' + t.length + ']'; }
+          else if (ch.nodeType === 1) {
+            if (ch.hasAttribute('title')) ch.setAttribute('title', 'NAME');
+            if (ch.tagName === 'IMG') ch.removeAttribute('src');
+            ch.removeAttribute('style');
+            if (ch.tagName === 'path') ch.removeAttribute('d');
+            walk(ch);
+          }
+        }
+      };
+      walk(c);
+      return c.outerHTML.replace(/ class="[^"]*"/g, '');
+    };
+    return rows().slice(0, 8).map((r) => {
+      const d = readRow(r);
+      return `=== out=${d.out} group=${d.group} unread=${d.unread} busy=${d.busy} time=${d.time}\n${clean(r)}`;
+    }).join('\n\n') || ('NO ROWS. pane-side=' + !!document.querySelector('#pane-side'));
+  };
+
   // ---------- 3. העתקת השיחה הפתוחה (בשביל Claude) ----------
   window.__waCopyChat = function () {
     const main = document.querySelector('#main');

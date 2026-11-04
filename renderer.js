@@ -367,8 +367,9 @@ function settingsDialog() {
     </select></div>
     <h4>עוצמה</h4>
     <div class="row"><input id="vol" type="range" min="0" max="1" step="0.05" value="${settings.vol}" style="flex:1"></div>
-    <div class="row"><button class="primary" id="cancel">סגור</button></div>`;
+    <div class="row"><button class="primary" id="cancel">סגור</button><button id="dbg">🐞 שמור קובץ אבחון</button></div>`;
   modal.classList.add('on');
+  box.querySelector('#dbg').onclick = saveDebug;
   const bindTone = (id, fileKey) => {
     const sel = box.querySelector('#' + id);
     sel.onchange = async () => {
@@ -388,6 +389,21 @@ function settingsDialog() {
   box.querySelector('#remindSec').onchange = (e) => { settings.remindSec = Number(e.target.value); saveSettings(); };
   box.querySelector('#vol').oninput = (e) => { settings.vol = Number(e.target.value); saveSettings(); };
   box.querySelector('#cancel').onclick = close;
+}
+
+// קובץ אבחון לשולחן העבודה (בלי טקסט הודעות ובלי שמות)
+async function saveDebug() {
+  const os = require('os');
+  let out = `WhatsApp Multi v${ipcRenderer.sendSync('app-version')}\n`;
+  for (const it of waItems()) {
+    const d = await it.wv.executeJavaScript('window.__waDebug ? window.__waDebug() : "no inject"').catch((e) => 'ERR ' + e.message);
+    out += `\n\n######## ${it.acc.private ? 'private' : 'shared'} pending=${it.pending.size}\n${d}`;
+  }
+  let dir = path.join(os.homedir(), 'Desktop');
+  if (!fs.existsSync(dir)) dir = os.homedir();
+  const f = path.join(dir, 'whatsapp-debug.txt');
+  fs.writeFileSync(f, out);
+  toast('נשמר: ' + f, 6000);
 }
 
 // =====================================================================
