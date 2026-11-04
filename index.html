@@ -7,7 +7,9 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; font-family: Segoe UI, Arial, sans-serif; background: #111b21; color: #e9edef; }
   #bar { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: #202c33; height: 50px; }
-  #tabs { display: flex; gap: 6px; overflow-x: auto; }
+  #tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; flex-shrink: 1; min-width: 0; }
+  #tabs::-webkit-scrollbar { display: none; }
+  #user { white-space: nowrap; }
   .tab { padding: 8px 14px; border-radius: 8px; cursor: pointer; background: #2a3942; user-select: none; font-size: 15px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
   .tab.active { background: #00a884; color: #fff; }
   .tab.claude { background: #3d2f27; }
@@ -23,6 +25,21 @@
   button.warn { background: #25d366; color: #0b141a; font-weight: bold; }
   #user { font-size: 12px; opacity: .7; }
   #views { position: absolute; top: 50px; bottom: 0; left: 0; right: 0; }
+  body.has-pending #views { right: 250px; }
+  #waitPanel { display: none; position: absolute; top: 50px; bottom: 0; right: 0; width: 250px; background: #0b141a; border-left: 1px solid #2a3942; overflow-y: auto; }
+  body.has-pending #waitPanel { display: block; }
+  #waitPanel h4 { margin: 0; padding: 12px 14px; font-size: 14px; background: #25d366; color: #0b141a; position: sticky; top: 0; }
+  #waitPanel ul { list-style: none; margin: 0; padding: 6px; }
+  #waitPanel li { display: flex; align-items: center; gap: 8px; padding: 9px 8px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; background: #111b21; border-right: 4px solid #25d366; }
+  #waitPanel li:hover { background: #202c33; }
+  #waitPanel li.mid { border-right-color: #f9a825; }
+  #waitPanel li.late { border-right-color: #e53935; }
+  #waitPanel li .dot { width: 9px; height: 9px; border-radius: 50%; background: #25d366; flex: none; }
+  #waitPanel li .t { flex: 1; min-width: 0; }
+  #waitPanel li b { display: block; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #waitPanel li small { font-size: 11px; opacity: .6; }
+  #waitPanel li .w { font-size: 11px; opacity: .8; white-space: nowrap; }
+  #waitPanel li.late .w { color: #ff6b6b; opacity: 1; font-weight: bold; }
   webview { position: absolute; inset: 0; width: 100%; height: 100%; visibility: hidden; }
   webview.active { visibility: visible; }
   #empty { padding: 40px; text-align: center; font-size: 18px; opacity: .8; }
@@ -54,13 +71,14 @@
   <div class="spacer"></div>
   <button id="updateBtn" class="warn" style="display:none"></button>
   <button id="pendingBtn" title="צ'אטים שמחכים לתשובה שלך">⏳ ממתינים לתשובה (0)</button>
-  <button id="exclBtn" title="הצ'אט שפתוח עכשיו לא יסומן בירוק ולא יצלצל">🚫 החרג צ'אט פתוח</button>
-  <button id="toClaude" title="שולח את השיחה הפתוחה ל-Claude כדי לקבל הצעה לתשובה">🤖 שאל את Claude</button>
+  <button id="exclBtn" title="הצ'אט שפתוח עכשיו לא יסומן בירוק ולא יצלצל">🚫 החרג</button>
+  <button id="toClaude" title="שולח את השיחה הפתוחה ל-Claude כדי לקבל הצעה לתשובה">🤖 שאל</button>
   <button id="mute">🔔</button>
-  <button id="settings">⚙️ צלצולים</button>
+  <button id="settings" title="הגדרות צלצול">⚙️</button>
   <button id="reload" title="רענון הלשונית">⟳</button>
   <span id="user"></span>
 </div>
+<div id="waitPanel"><h4>⏳ מחכים לתשובה (<span class="cnt">0</span>)</h4><ul></ul></div>
 <div id="views"><div id="empty">אין עדיין חשבונות. לחץ "+ הוסף" כדי לחבר וואטסאפ.</div></div>
 <div id="modal"><div class="box" id="box"></div></div>
 <div id="toast"></div>

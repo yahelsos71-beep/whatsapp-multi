@@ -167,6 +167,46 @@
     }).join('\n\n') || ('NO ROWS. pane-side=' + !!document.querySelector('#pane-side'));
   };
 
+  // ---------- פתיחת צ'אט לפי שם (מהפאנל) ----------
+  function clickEl(el) {
+    for (const t of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+      el.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }));
+    }
+  }
+  const findRow = (name) => rows().find((r) => {
+    const el = r.querySelector('[data-testid="cell-frame-title"] span[title]') || r.querySelector('span[title]');
+    return el && el.getAttribute('title') === name;
+  });
+  const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+  window.__waOpen = async function (name) {
+    let row = findRow(name);
+    let searched = false;
+    if (!row) {
+      // לא מופיע ברשימה – מחפשים בתיבת החיפוש של וואטסאפ
+      const box = document.querySelector('#side [contenteditable="true"], #side input[type="text"], #side [role="textbox"]');
+      if (!box) return false;
+      box.focus();
+      if (box.isContentEditable) {
+        document.execCommand('selectAll', false);
+        document.execCommand('insertText', false, name);
+      } else {
+        const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+        set.call(box, name);
+        box.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      searched = true;
+      for (let i = 0; i < 15 && !row; i++) { await sleep(200); row = findRow(name); }
+      if (!row) return false;
+    }
+    clickEl(row.querySelector('[role="gridcell"][tabindex], [tabindex="-1"], [data-testid="cell-frame-container"]') || row);
+    if (searched) {
+      await sleep(300);
+      const box = document.querySelector('#side [contenteditable="true"], #side input[type="text"], #side [role="textbox"]');
+      if (box) box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
+    }
+    return true;
+  };
+
   // שם הצ'אט הפתוח כרגע
   window.__waOpenChat = function () {
     const main = document.querySelector('#main');
