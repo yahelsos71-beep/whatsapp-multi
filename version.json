@@ -1,10 +1,10 @@
 {
-  "version": 4,
+  "version": 5,
   "files": {
-    "app-main.js": "c184a328333c13711ac3c1a8774bb9f3e13e046b45e5f4c9ab68283018a6cfae",
+    "app-main.js": "763fe0aaf4d8cbfd11bb48815fb850ed3c71014e54e202e67f1f795a018e711d",
     "index.html": "560dbe53759d4056ba4208f9f7b154a8112573882009156ba8c3054022b89baa",
-    "renderer.js": "4888ee357f66ac2c058ce1750359be1025ebcba79a9b5f0f642cbd832773e731",
+    "renderer.js": "0b301c86575dfd160f23eb963945a56f5fa23eb29bf9453a7e276063134b9c56",
     "inject.js": "407b9e94dd99bb64463bb3e5de9a7ee2e096e060c71988b82bd92f68522121eb"
   },
-  "notes": "החרגת צ'אטים ידנית + כפתור החרג צ'אט פתוח"
+  "notes": "הצגת התיקייה + אזהרה כשפותחים מתיקייה לא נכונה"
 }
