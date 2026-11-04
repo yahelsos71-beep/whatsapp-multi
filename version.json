@@ -1,10 +1,10 @@
 {
-  "version": 3,
+  "version": 4,
   "files": {
     "app-main.js": "c184a328333c13711ac3c1a8774bb9f3e13e046b45e5f4c9ab68283018a6cfae",
-    "index.html": "c452db1dfa5a75b54fde43ed892991dfda9d7bdc1d78b0601b1ee0fe5761ebb2",
-    "renderer.js": "c91ffd3e2aae305da5206b9959450107b94dd820aeb8582263bb4a0506dfbc1f",
-    "inject.js": "b3b8edf5effc49414e0d17ba83121b8dd890046b1a66b0ca358e0187f7816de4"
+    "index.html": "560dbe53759d4056ba4208f9f7b154a8112573882009156ba8c3054022b89baa",
+    "renderer.js": "4888ee357f66ac2c058ce1750359be1025ebcba79a9b5f0f642cbd832773e731",
+    "inject.js": "407b9e94dd99bb64463bb3e5de9a7ee2e096e060c71988b82bd92f68522121eb"
   },
-  "notes": "זיהוי תשובה וקבוצות לפי וואטסאפ החדש"
+  "notes": "החרגת צ'אטים ידנית + כפתור החרג צ'אט פתוח"
 }

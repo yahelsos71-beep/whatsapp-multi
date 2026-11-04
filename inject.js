@@ -104,7 +104,8 @@
     const text = r.innerText || '';
     const lines = text.split('\n').map((s) => s.trim()).filter(Boolean);
     const busy = lines.some((l) => TYPING.test(l) && l.length < 40) || lines.some((l) => DRAFT.test(l));
-    return { name, time: readTime(r), out: isOutgoing(r), unread: isUnread(r), busy, group: isGroup(r), el: r };
+    const muted = !!r.querySelector('[data-testid*="mute"], [aria-label*="מושתק"], [aria-label*="muted" i], [data-icon*="muted"]');
+    return { name, time: readTime(r), out: isOutgoing(r), unread: isUnread(r), busy, group: isGroup(r), muted, el: r };
   }
 
   let pending = new Set();
@@ -162,8 +163,17 @@
     };
     return rows().slice(0, 30).map((r) => {
       const d = readRow(r);
-      return `=== out=${d.out} group=${d.group} unread=${d.unread} busy=${d.busy} time=${d.time}\n${clean(r)}`;
+      return `=== out=${d.out} group=${d.group} muted=${d.muted} unread=${d.unread} busy=${d.busy} time=${d.time}\n${clean(r)}`;
     }).join('\n\n') || ('NO ROWS. pane-side=' + !!document.querySelector('#pane-side'));
+  };
+
+  // שם הצ'אט הפתוח כרגע
+  window.__waOpenChat = function () {
+    const main = document.querySelector('#main');
+    if (!main) return null;
+    const el = main.querySelector('[data-testid="conversation-info-header-chat-title"]') ||
+      main.querySelector('header span[title]') || main.querySelector('header span[dir="auto"]');
+    return el ? (el.getAttribute('title') || el.textContent).trim() : null;
   };
 
   // ---------- 3. העתקת השיחה הפתוחה (בשביל Claude) ----------

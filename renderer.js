@@ -119,6 +119,32 @@ function savePending(it) {
 // האם לעקוב אחרי "ממתין לתשובה" בחשבון הזה (ברירת מחדל: כן במשותף, לא בפרטי)
 const tracks = (acc) => (acc.track === undefined ? !acc.private : !!acc.track);
 
+// החרגה ידנית: שם או מספר (מספר נבדק לפי 9 הספרות האחרונות)
+const digits = (x) => String(x).replace(/\D/g, '');
+function isExcluded(acc, name) {
+  for (const e of acc.exclude || []) {
+    const ed = digits(e);
+    if (ed.length >= 7) { if (digits(name).slice(-9) === ed.slice(-9)) return true; }
+    else if (e.trim() && name.trim() === e.trim()) return true;
+  }
+  return false;
+}
+function setExclude(acc, list) {
+  const file = acc.private ? PRIVATE_FILE : SHARED_FILE;
+  const all = load(file, []);
+  const a = all.find((x) => x.id === acc.id);
+  if (!a) return;
+  a.exclude = list;
+  save(file, all); if (acc.private) priv = all; else shared = all;
+  const it = items.get(partitionOf(acc));
+  if (it) {
+    it.acc = { ...it.acc, exclude: list };
+    let ch = false;
+    for (const n of [...it.pending]) if (isExcluded(it.acc, n)) { it.pending.delete(n); ch = true; }
+    if (ch) { savePending(it); pushPending(it); refreshBadges(); }
+  }
+}
+
 function onRows(it, rows) {
   let added = false, changed = false;
   if (!tracks(it.acc)) {
@@ -126,7 +152,7 @@ function onRows(it, rows) {
     rows = [];
   }
   for (const r of rows) {
-    if (r.group) { // קבוצות – לא צריך לענות
+    if (r.group || isExcluded(it.acc, r.name)) { // קבוצות / מוחרג ידנית – לא צריך לענות
       if (it.pending.delete(r.name)) changed = true;
       continue;
     }
@@ -237,6 +263,7 @@ function select(p) {
     it.wv.classList.toggle('active', k === p);
   }
   document.getElementById('toClaude').style.display = items.get(p) && items.get(p).claude ? 'none' : '';
+  document.getElementById('exclBtn').style.display = items.get(p) && items.get(p).claude ? 'none' : '';
   localStorage.setItem('active-' + USER_KEY, p);
 }
 
@@ -298,6 +325,8 @@ function editDialog(acc) {
     <input type="text" id="nm">
     <label class="choice"><input type="checkbox" id="track" ${tracks(acc) ? 'checked' : ''}> 🟢 סמן צ'אטים שממתינים לתשובה
       <small>נקודה ירוקה + צלצול תזכורת עד שעונים (לא כולל קבוצות)</small></label>
+    <h4>🚫 לא לסמן את הצ'אטים האלה (שם או מספר, אחד בכל שורה)</h4>
+    <textarea id="excl" rows="4" style="width:100%;padding:9px;border-radius:8px;border:1px solid #3b4a54;background:#111b21;color:#e9edef;font-size:14px" placeholder="למשל:&#10;0521234567&#10;יוסי ספק"></textarea>
     <div class="row">
       <button class="primary" id="ok">שמור</button>
       <button class="danger" id="del">הסר והתנתק</button>
@@ -305,6 +334,7 @@ function editDialog(acc) {
     </div>`;
   modal.classList.add('on');
   const nm = box.querySelector('#nm'); nm.value = acc.name; nm.focus();
+  box.querySelector('#excl').value = (acc.exclude || []).join('\n');
   box.querySelector('#cancel').onclick = close;
   const file = acc.private ? PRIVATE_FILE : SHARED_FILE;
   box.querySelector('#ok').onclick = () => {
@@ -313,6 +343,7 @@ function editDialog(acc) {
     if (a) { a.name = nm.value.trim() || a.name; a.track = box.querySelector('#track').checked; }
     save(file, list); if (acc.private) priv = list; else shared = list;
     close(); build();
+    setExclude(acc, box.querySelector('#excl').value.split('\n').map((x) => x.trim()).filter(Boolean));
     const it = items.get(partitionOf(acc));
     if (it && !tracks(it.acc) && it.pending.size) { it.pending.clear(); savePending(it); pushPending(it); refreshBadges(); }
   };
@@ -332,12 +363,13 @@ function pendingDialog() {
   box.innerHTML = `
     <h3>⏳ ממתינים לתשובה שלך</h3>
     ${list.length ? '<ul class="plist"></ul>' : '<p>אין צ\'אטים שממתינים לתשובה 👍</p>'}
-    <p class="hint">צ'אט נשאר ברשימה (ועם נקודה ירוקה בוואטסאפ) עד שאתה שולח לו תשובה – גם אם קראת את ההודעה.<br>קבוצות לא נספרות. אפשר לכבות את הסימון לחשבון מסוים בלחיצה ימנית על הלשונית שלו.</p>
+    <p class="hint">צ'אט נשאר ברשימה (ועם נקודה ירוקה בוואטסאפ) עד שאתה שולח לו תשובה – גם אם קראת את ההודעה.<br>קבוצות לא נספרות. "🚫 החרג" – הצ'אט לא יסומן יותר לעולם (אפשר לבטל בלחיצה ימנית על הלשונית).</p>
     <div class="row"><button id="cancel">סגור</button></div>`;
   const ul = box.querySelector('.plist');
   for (const { it, name } of list) {
     const li = document.createElement('li');
-    li.innerHTML = `<span class="dot"></span><span class="n"></span><span class="acc"></span>`;
+    li.innerHTML = `<span class="dot"></span><span class="n"></span><span class="acc"></span><button title="לא לסמן את הצ'אט הזה לעולם">🚫 החרג</button>`;
+    li.querySelector('button').onclick = () => { setExclude(it.acc, [...(it.acc.exclude || []), name]); pendingDialog(); };
     li.querySelector('.n').textContent = name;
     li.querySelector('.acc').textContent = it.acc.name;
     li.querySelector('.n').onclick = () => { close(); select(it.partition); };
@@ -436,6 +468,20 @@ document.getElementById('add').onclick = addDialog;
 document.getElementById('pendingBtn').onclick = pendingDialog;
 document.getElementById('settings').onclick = settingsDialog;
 document.getElementById('toClaude').onclick = sendToClaude;
+document.getElementById('exclBtn').onclick = async () => {
+  const it = items.get(active);
+  if (!it || it.claude) return;
+  const name = await it.wv.executeJavaScript('window.__waOpenChat && window.__waOpenChat()').catch(() => null);
+  if (!name) return toast('קודם פתח בוואטסאפ את הצ\'אט או הקבוצה שרוצים להחריג');
+  const list = it.acc.exclude || [];
+  if (list.includes(name)) {
+    setExclude(it.acc, list.filter((x) => x !== name));
+    toast(`✅ "${name}" יסומן שוב כשיחכה לתשובה`);
+  } else {
+    setExclude(it.acc, [...list, name]);
+    toast(`🚫 "${name}" הוחרג – לא יסומן ולא יצלצל. לחיצה נוספת מבטלת`, 5000);
+  }
+};
 const muteBtn = document.getElementById('mute');
 const paintMute = () => { muteBtn.textContent = settings.muted ? '🔕 מושתק' : '🔔'; muteBtn.title = settings.muted ? 'הצלצולים כבויים' : 'הצלצולים פעילים'; };
 muteBtn.onclick = () => { settings.muted = !settings.muted; saveSettings(); paintMute(); };
