@@ -116,9 +116,20 @@ function savePending(it) {
   save(it.acc.private ? PENDING_PRIVATE : PENDING_SHARED, store);
 }
 
+// האם לעקוב אחרי "ממתין לתשובה" בחשבון הזה (ברירת מחדל: כן במשותף, לא בפרטי)
+const tracks = (acc) => (acc.track === undefined ? !acc.private : !!acc.track);
+
 function onRows(it, rows) {
   let added = false, changed = false;
+  if (!tracks(it.acc)) {
+    if (it.pending.size) { it.pending.clear(); changed = true; }
+    rows = [];
+  }
   for (const r of rows) {
+    if (r.group) { // קבוצות – לא צריך לענות
+      if (it.pending.delete(r.name)) changed = true;
+      continue;
+    }
     if (r.busy) continue; // מקליד / טיוטה – לא משנים כלום
     const prev = it.rows[r.name];
     if (r.out) {
@@ -246,7 +257,7 @@ function refreshBadges() {
 // תזכורת: כל עוד יש צ'אט שממתין לתשובה (או הודעה שלא נקראה)
 let lastRemind = Date.now();
 setInterval(() => {
-  const waiting = waItems().some((it) => it.pending.size > 0 || it.unread > 0);
+  const waiting = waItems().some((it) => it.pending.size > 0);
   if (!waiting) { lastRemind = Date.now(); return; }
   if (Date.now() - lastRemind >= settings.remindSec * 1000) { lastRemind = Date.now(); reminderRing(); }
 }, 1000);
@@ -285,8 +296,10 @@ function editDialog(acc) {
   box.innerHTML = `
     <h3>${acc.private ? '🔒 חשבון פרטי' : '👥 חשבון משותף'}</h3>
     <input type="text" id="nm">
+    <label class="choice"><input type="checkbox" id="track" ${tracks(acc) ? 'checked' : ''}> 🟢 סמן צ'אטים שממתינים לתשובה
+      <small>נקודה ירוקה + צלצול תזכורת עד שעונים (לא כולל קבוצות)</small></label>
     <div class="row">
-      <button class="primary" id="ok">שמור שם</button>
+      <button class="primary" id="ok">שמור</button>
       <button class="danger" id="del">הסר והתנתק</button>
       <button id="cancel">ביטול</button>
     </div>`;
@@ -296,9 +309,12 @@ function editDialog(acc) {
   const file = acc.private ? PRIVATE_FILE : SHARED_FILE;
   box.querySelector('#ok').onclick = () => {
     const list = load(file, []);
-    const a = list.find((x) => x.id === acc.id); if (a) a.name = nm.value.trim() || a.name;
+    const a = list.find((x) => x.id === acc.id);
+    if (a) { a.name = nm.value.trim() || a.name; a.track = box.querySelector('#track').checked; }
     save(file, list); if (acc.private) priv = list; else shared = list;
     close(); build();
+    const it = items.get(partitionOf(acc));
+    if (it && !tracks(it.acc) && it.pending.size) { it.pending.clear(); savePending(it); pushPending(it); refreshBadges(); }
   };
   const del = box.querySelector('#del');
   del.onclick = async () => {
@@ -316,7 +332,7 @@ function pendingDialog() {
   box.innerHTML = `
     <h3>⏳ ממתינים לתשובה שלך</h3>
     ${list.length ? '<ul class="plist"></ul>' : '<p>אין צ\'אטים שממתינים לתשובה 👍</p>'}
-    <p class="hint">צ'אט נשאר ברשימה (ועם נקודה ירוקה בוואטסאפ) עד שאתה שולח לו תשובה – גם אם קראת את ההודעה.</p>
+    <p class="hint">צ'אט נשאר ברשימה (ועם נקודה ירוקה בוואטסאפ) עד שאתה שולח לו תשובה – גם אם קראת את ההודעה.<br>קבוצות לא נספרות. אפשר לכבות את הסימון לחשבון מסוים בלחיצה ימנית על הלשונית שלו.</p>
     <div class="row"><button id="cancel">סגור</button></div>`;
   const ul = box.querySelector('.plist');
   for (const { it, name } of list) {
