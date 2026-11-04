@@ -1,10 +1,10 @@
 {
-  "version": 6,
+  "version": 7,
   "files": {
-    "app-main.js": "763fe0aaf4d8cbfd11bb48815fb850ed3c71014e54e202e67f1f795a018e711d",
+    "app-main.js": "87b7206be13f15eab3b67bba7da9cff4531030dc16200c8e0a279dea3dfc77a2",
     "index.html": "4736af1ecc96e38c81ed5da15a8e27f5da403089a37c009da02aa0a278ea9879",
     "renderer.js": "dcad625c99de2720034cbfcc1cc49968abf4a7768a2681e296f34691bc3ec7ea",
     "inject.js": "8f0e9471519ce20774b06d00707fa30d2b78e27950ca68b55b164e1b05ad824a"
   },
-  "notes": "פאנל צד: מחכים לתשובה, הוותיק ביותר למעלה"
+  "notes": "תיקון מנגנון העדכון"
 }

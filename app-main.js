@@ -108,9 +108,20 @@ async function checkUpdate() {
         if (crypto.createHash('sha256').update(buf).digest('hex') !== hash) throw new Error('hash mismatch ' + file);
         fs.writeFileSync(path.join(tmp, file), buf);
       }
-      fs.writeFileSync(path.join(tmp, 'version.json'), JSON.stringify(remote));
-      fs.rmSync(global.UPDATE_DIR, { recursive: true, force: true });
-      fs.renameSync(tmp, global.UPDATE_DIR);
+      // מעתיקים לתוך תיקיית העדכון במקום (בלי למחוק אותה – ייתכן שהתוכנה רצה ממנה).
+      // version.json נכתב אחרון; אם משהו נכשל באמצע – מוחקים אותו, והגרסה המובנית תעדכן מחדש.
+      fs.mkdirSync(global.UPDATE_DIR, { recursive: true });
+      const vfile = path.join(global.UPDATE_DIR, 'version.json');
+      try {
+        for (const file of Object.keys(remote.files || {})) {
+          fs.copyFileSync(path.join(tmp, file), path.join(global.UPDATE_DIR, file));
+        }
+        fs.writeFileSync(vfile, JSON.stringify(remote));
+      } catch (e) {
+        try { fs.unlinkSync(vfile); } catch {}
+        throw e;
+      }
+      try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
       updateReady = remote.version;
       if (mainWin) mainWin.webContents.send('update-ready', remote);
       return;
