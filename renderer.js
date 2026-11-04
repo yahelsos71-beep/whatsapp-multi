@@ -32,7 +32,7 @@ const settings = Object.assign(
 );
 const saveSettings = () => save(SETTINGS_FILE, settings);
 
-document.getElementById('user').textContent = P.user + ' · v' + ipcRenderer.sendSync('app-version') + ' · 📁 ' + path.basename(P.exeDir);
+document.getElementById('user').textContent = P.user + ' · v' + ipcRenderer.sendSync('app-version') + ' · 📁 ' + path.basename(P.exeDir).slice(0, 18);
 document.getElementById('user').title = 'התוכנה רצה מהתיקייה:\n' + P.exeDir;
 
 // עדכון אוטומטי הורד – מציעים להפעיל מחדש
@@ -114,6 +114,8 @@ const pendingStore = { shared: load(PENDING_SHARED, {}), priv: load(PENDING_PRIV
 function savePending(it) {
   const store = it.acc.private ? pendingStore.priv : pendingStore.shared;
   store[it.partition] = [...it.pending];
+  for (const n of Object.keys(it.since)) if (!it.pending.has(n)) delete it.since[n];
+  store[it.partition + '#since'] = it.since;
   save(it.acc.private ? PENDING_PRIVATE : PENDING_SHARED, store);
 }
 
@@ -167,7 +169,7 @@ function onRows(it, rows) {
         r.unread || // יש הודעות שלא נקראו
         (prev && prev.out) || // היה שלך ועכשיו של הלקוח
         (prev && prev.time !== r.time && CLOCK.test(r.time)); // שעה חדשה (צ'אט פתוח)
-      if (newIncoming) { it.pending.add(r.name); added = changed = true; }
+      if (newIncoming) { it.pending.add(r.name); it.since[r.name] = Date.now(); added = changed = true; }
     }
     it.rows[r.name] = { time: r.time, out: r.out };
   }
@@ -208,7 +210,7 @@ function build() {
       const tab = document.createElement('div');
       tab.className = 'tab';
       const store = acc.private ? pendingStore.priv : pendingStore.shared;
-      it = { tab, wv, acc, partition: p, unread: 0, rows: {}, pending: new Set(store[p] || []) };
+      it = { tab, wv, acc, partition: p, unread: 0, rows: {}, pending: new Set(store[p] || []), since: { ...(store[p + '#since'] || {}) } };
       items.set(p, it);
       const item = it;
       wv.addEventListener('dom-ready', () => {
@@ -278,9 +280,48 @@ function refreshBadges() {
     if (b) { b.textContent = n; b.classList.toggle('on', n > 0); }
   }
   const btn = document.getElementById('pendingBtn');
-  btn.textContent = `⏳ ממתינים לתשובה (${total})`;
+  btn.textContent = `⏳ ${total}`;
   btn.className = total ? 'warn' : '';
+  renderPanel();
 }
+
+// ---------- פאנל צד: כל מי שמחכה לתשובה, הכי ותיק למעלה ----------
+function waitText(ms) {
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return 'עכשיו';
+  if (m < 60) return `${m} דק׳`;
+  const h = Math.floor(m / 60);
+  return h < 24 ? `${h} שע׳ ${m % 60} דק׳` : `${Math.floor(h / 24)} ימים`;
+}
+function renderPanel() {
+  const panel = document.getElementById('waitPanel');
+  if (!panel) return;
+  const now = Date.now();
+  const list = waItems()
+    .flatMap((it) => [...it.pending].map((name) => ({ it, name, since: it.since[name] || now })))
+    .sort((a, b) => a.since - b.since);
+  document.body.classList.toggle('has-pending', list.length > 0);
+  const ul = panel.querySelector('ul');
+  ul.innerHTML = '';
+  for (const { it, name, since } of list) {
+    const wait = now - since;
+    const li = document.createElement('li');
+    li.className = wait > 15 * 60000 ? 'late' : wait > 5 * 60000 ? 'mid' : '';
+    li.innerHTML = '<span class="dot"></span><div class="t"><b></b><small></small></div><span class="w"></span>';
+    li.querySelector('b').textContent = name;
+    li.querySelector('small').textContent = it.acc.name;
+    li.querySelector('.w').textContent = waitText(wait);
+    li.title = 'לחץ לפתיחת הצ\'אט';
+    li.onclick = async () => {
+      select(it.partition);
+      const ok = await it.wv.executeJavaScript(`window.__waOpen ? window.__waOpen(${JSON.stringify(name)}) : false`).catch(() => false);
+      if (!ok) toast(`לא מצאתי את "${name}" ברשימה – חפש אותו בוואטסאפ`);
+    };
+    ul.appendChild(li);
+  }
+  panel.querySelector('.cnt').textContent = list.length;
+}
+setInterval(renderPanel, 30000);
 
 // תזכורת: כל עוד יש צ'אט שממתין לתשובה (או הודעה שלא נקראה)
 let lastRemind = Date.now();
