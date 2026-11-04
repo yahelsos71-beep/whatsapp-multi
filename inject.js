@@ -40,6 +40,48 @@
     return [...cand].filter((r) => r.querySelector('span[title]') && !r.querySelector('[role="listitem"], [role="row"]'));
   }
 
+  // ההודעה האחרונה שלי? (וי / וי כפול / שעון)
+  const TICK_LABEL = /^\s*(read|delivered|sent|pending|נקראה|נקרא|נמסרה|נמסר|נשלחה|נשלח|ממתינה|ממתין)\s*$/i;
+  function isOutgoing(r) {
+    if (r.querySelector('[data-icon*="check"], [data-icon*="tick"], [data-icon*="msg-time"], [data-icon*="status-time"]')) return true;
+    for (const el of r.querySelectorAll('[aria-label]')) if (TICK_LABEL.test(el.getAttribute('aria-label'))) return true;
+    for (const t of r.querySelectorAll('svg title')) if (/(check|tick)/i.test(t.textContent)) return true;
+    return false;
+  }
+
+  // קבוצה? 1) לפי נתוני וואטסאפ הפנימיים  2) אייקון קבוצה  3) "שם השולח: הודעה"
+  function fiberIsGroup(r) {
+    const key = Object.keys(r).find((k) => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$'));
+    let f = key && r[key];
+    for (let i = 0; f && i < 25; i++, f = f.return) {
+      const p = f.memoizedProps;
+      if (p) {
+        for (const v of [p.chat, p.data, p.contact, p.model]) {
+          const id = v && v.id;
+          const ser = id && (id._serialized || (id.server ? id.user + '@' + id.server : '') || String(id));
+          if (ser && /@(g\.us|c\.us|s\.whatsapp\.net|lid|newsletter|broadcast)/.test(ser)) return /@(g\.us|newsletter|broadcast)/.test(ser);
+        }
+      }
+    }
+    return null;
+  }
+  function isGroup(r, text) {
+    try { const g = fiberIsGroup(r); if (g !== null) return g; } catch {}
+    if (r.querySelector('[data-icon*="group"], [data-icon*="community"]')) return true;
+    // בקבוצה, התצוגה המקדימה היא "שם השולח: טקסט" – כשהשם הוא אלמנט נפרד
+    const lines = text.split('\n').map((x) => x.trim()).filter(Boolean);
+    for (const l of lines) {
+      const m = /^(~?\s?[^:]{1,50}?)\s*:\s*$|^(~?\s?[^:]{1,50}?)\s*:\s/.exec(l);
+      if (!m) continue;
+      const who = (m[1] || m[2]).trim();
+      if (/^~/.test(who)) return true;
+      for (const el of r.querySelectorAll('span')) {
+        if (el.children.length === 0 && el.textContent.trim() === who && el.textContent.trim() !== l) return true;
+      }
+    }
+    return false;
+  }
+
   function readRow(r) {
     const name = r.querySelector('span[title]').getAttribute('title');
     let time = '';
@@ -51,14 +93,15 @@
     }
     // שורת התצוגה המקדימה = הטקסט אחרי השם
     const text = r.innerText || '';
-    const out = !!r.querySelector('[data-icon*="check"], [data-icon*="msg-time"], [data-icon*="status-time"]');
+    const out = isOutgoing(r);
+    const group = isGroup(r, text);
     let unread = false;
     for (const el of r.querySelectorAll('[aria-label]')) {
       if (UNREAD.test(el.getAttribute('aria-label'))) { unread = true; break; }
     }
     const lines = text.split('\n').map((s) => s.trim()).filter(Boolean);
     const busy = lines.some((l) => TYPING.test(l) && l.length < 40) || lines.some((l) => DRAFT.test(l));
-    return { name, time, out, unread, busy, el: r };
+    return { name, time, out, unread, busy, group, el: r };
   }
 
   let pending = new Set();
@@ -74,13 +117,10 @@
 
   const css = document.createElement('style');
   css.textContent = `
-    [data-wa-pending="1"] { position: relative; box-shadow: inset -4px 0 0 #25d366 !important; }
-    [data-wa-pending="1"]::after {
-      content: ''; position: absolute; top: 50%; left: 10px; width: 14px; height: 14px; margin-top: -7px;
-      border-radius: 50%; background: #25d366; box-shadow: 0 0 0 3px rgba(37,211,102,.3);
-      animation: waPulse 1.4s infinite; pointer-events: none; z-index: 5;
-    }
-    @keyframes waPulse { 50% { box-shadow: 0 0 0 7px rgba(37,211,102,0); } }`;
+    [data-wa-pending="1"] {
+      box-shadow: inset -4px 0 0 #25d366 !important;
+      background-image: radial-gradient(circle at 16px 50%, #25d366 0 7px, rgba(37,211,102,.25) 8px 11px, transparent 12px) !important;
+    }`;
   (document.head || document.documentElement).appendChild(css);
 
   let last = '';
