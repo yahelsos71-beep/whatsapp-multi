@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "files": {
+    "server.js": "69f5acffcbdfc298f73f7b86907142a19ab2b67650daa10eb79d81b25dba5b78",
+    "lib/ai.js": "20a1226d49e5d5d2236a83553be39333900cca9dd2438a18d4769b8f613979bd",
+    "lib/greenapi.js": "1b64d4d76dca289fe55bde7133e616449d31245ea803ab562bab423357504c84",
+    "lib/store.js": "bba9483b6d02a7837b1451850a3fe103fe5e7973c66ec7136aa28aee4e39cce1",
+    "public/app.js": "3a074d0ec39a192cf821bf9f153c7af23a7b18088f834d0a98360db89a2013db",
+    "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
+    "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
+    "public/style.css": "7f8e1eb743f84ba7db6eee20187be27792c8a45ffc7539874a93e7ad16011c3f"
+  }
+}
