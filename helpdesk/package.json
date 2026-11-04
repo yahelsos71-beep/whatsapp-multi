@@ -1,0 +1,9 @@
+{
+  "name": "whatsapp-helpdesk",
+  "version": "1.0.0",
+  "private": true,
+  "description": "מוקד וואטסאפ: קריאות, ניתוב AI, העברת שיחות – על בסיס Green API",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "@anthropic-ai/sdk": "1.4.0" }
+}
