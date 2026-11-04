@@ -1,10 +1,10 @@
 {
-  "version": 2,
+  "version": 3,
   "files": {
     "app-main.js": "c184a328333c13711ac3c1a8774bb9f3e13e046b45e5f4c9ab68283018a6cfae",
     "index.html": "c452db1dfa5a75b54fde43ed892991dfda9d7bdc1d78b0601b1ee0fe5761ebb2",
     "renderer.js": "c91ffd3e2aae305da5206b9959450107b94dd820aeb8582263bb4a0506dfbc1f",
-    "inject.js": "1383abdc96ecc27f30790ad8cfabb3b6525cdcc5836c3a809982e8564e7ebda5"
+    "inject.js": "b3b8edf5effc49414e0d17ba83121b8dd890046b1a66b0ca358e0187f7816de4"
   },
-  "notes": "פרטי בלי סימון, בלי קבוצות, תיקון רווחים"
+  "notes": "זיהוי תשובה וקבוצות לפי וואטסאפ החדש"
 }

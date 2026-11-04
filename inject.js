@@ -40,68 +40,71 @@
     return [...cand].filter((r) => r.querySelector('span[title]') && !r.querySelector('[role="listitem"], [role="row"]'));
   }
 
-  // ההודעה האחרונה שלי? (וי / וי כפול / שעון)
+  // ---- זיהוי לפי המבנה של וואטסאפ ווב (data-testid) ----
   const TICK_LABEL = /^\s*(read|delivered|sent|pending|נקראה|נקרא|נמסרה|נמסר|נשלחה|נשלח|ממתינה|ממתין)\s*$/i;
+  const preview = (r) => r.querySelector('[data-testid="last-msg-status"]');
+
+  // ההודעה האחרונה שלי? בתצוגה המקדימה יש אייקון וי/וי כפול/שעון,
+  // שהוא ה-svg היחיד שלא נמצא בתוך "סמל סוג הודעה" (תמונה/הקלטה וכו')
   function isOutgoing(r) {
     if (r.querySelector('[data-icon*="check"], [data-icon*="tick"], [data-icon*="msg-time"], [data-icon*="status-time"]')) return true;
     for (const el of r.querySelectorAll('[aria-label]')) if (TICK_LABEL.test(el.getAttribute('aria-label'))) return true;
-    for (const t of r.querySelectorAll('svg title')) if (/(check|tick)/i.test(t.textContent)) return true;
+    const pv = preview(r);
+    if (pv) {
+      for (const svg of pv.querySelectorAll('svg')) {
+        if (!svg.closest('[data-testid="chat-msg-symbol"]')) return true;
+      }
+    }
     return false;
   }
 
-  // קבוצה? 1) לפי נתוני וואטסאפ הפנימיים  2) אייקון קבוצה  3) "שם השולח: הודעה"
-  function fiberIsGroup(r) {
-    const key = Object.keys(r).find((k) => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$'));
-    let f = key && r[key];
-    for (let i = 0; f && i < 25; i++, f = f.return) {
-      const p = f.memoizedProps;
-      if (p) {
-        for (const v of [p.chat, p.data, p.contact, p.model]) {
-          const id = v && v.id;
-          const ser = id && (id._serialized || (id.server ? id.user + '@' + id.server : '') || String(id));
-          if (ser && /@(g\.us|c\.us|s\.whatsapp\.net|lid|newsletter|broadcast)/.test(ser)) return /@(g\.us|newsletter|broadcast)/.test(ser);
-        }
+  // קבוצה? בתצוגה המקדימה יש "שם השולח" + ":" כאלמנטים נפרדים, או הודעת מערכת
+  function isGroup(r) {
+    const pv = preview(r);
+    if (pv) {
+      if (pv.querySelector('[data-testid^="subtype-"]')) return true;
+      for (const ch of pv.children) {
+        if (ch.tagName === 'SPAN' && /^\s*:\s*$/.test(ch.textContent)) return true;
+      }
+      for (const n of pv.childNodes) {
+        if (n.nodeType === 3 && /^\s*:\s*$/.test(n.textContent) && n.previousSibling && n.previousSibling.nodeType === 1) return true;
       }
     }
-    return null;
+    if (r.querySelector('[data-icon*="group"], [data-icon*="community"], [data-testid="message-yourself-row"]')) return true;
+    return false;
   }
-  function isGroup(r, text) {
-    try { const g = fiberIsGroup(r); if (g !== null) return g; } catch {}
-    if (r.querySelector('[data-icon*="group"], [data-icon*="community"]')) return true;
-    // בקבוצה, התצוגה המקדימה היא "שם השולח: טקסט" – כשהשם הוא אלמנט נפרד
-    const lines = text.split('\n').map((x) => x.trim()).filter(Boolean);
-    for (const l of lines) {
-      const m = /^(~?\s?[^:]{1,50}?)\s*:\s*$|^(~?\s?[^:]{1,50}?)\s*:\s/.exec(l);
-      if (!m) continue;
-      const who = (m[1] || m[2]).trim();
-      if (/^~/.test(who)) return true;
-      for (const el of r.querySelectorAll('span')) {
-        if (el.children.length === 0 && el.textContent.trim() === who && el.textContent.trim() !== l) return true;
+
+  function readTime(r) {
+    const ts = r.querySelector('[data-testid="chat-list-timestamp"]');
+    if (ts) return ts.textContent.trim();
+    for (const el of r.querySelectorAll('div, span')) {
+      if (el.children.length === 0) {
+        const t = el.textContent.trim();
+        if (TIME.test(t)) return t;
       }
+    }
+    return '';
+  }
+
+  function isUnread(r) {
+    for (const el of r.querySelectorAll('[aria-label]')) {
+      if (UNREAD.test(el.getAttribute('aria-label'))) return true;
+    }
+    // תג מספר ירוק בעמודה הימנית-תחתונה
+    const col = r.querySelector('[aria-colindex="1"]');
+    if (col) for (const el of col.querySelectorAll('span, div')) {
+      if (el.children.length === 0 && /^\d{1,4}$/.test(el.textContent.trim())) return true;
     }
     return false;
   }
 
   function readRow(r) {
-    const name = r.querySelector('span[title]').getAttribute('title');
-    let time = '';
-    for (const el of r.querySelectorAll('div, span')) {
-      if (el.children.length === 0) {
-        const t = el.textContent.trim();
-        if (TIME.test(t)) { time = t; break; }
-      }
-    }
-    // שורת התצוגה המקדימה = הטקסט אחרי השם
+    const nameEl = r.querySelector('[data-testid="cell-frame-title"] span[title]') || r.querySelector('span[title]');
+    const name = nameEl.getAttribute('title');
     const text = r.innerText || '';
-    const out = isOutgoing(r);
-    const group = isGroup(r, text);
-    let unread = false;
-    for (const el of r.querySelectorAll('[aria-label]')) {
-      if (UNREAD.test(el.getAttribute('aria-label'))) { unread = true; break; }
-    }
     const lines = text.split('\n').map((s) => s.trim()).filter(Boolean);
     const busy = lines.some((l) => TYPING.test(l) && l.length < 40) || lines.some((l) => DRAFT.test(l));
-    return { name, time, out, unread, busy, group, el: r };
+    return { name, time: readTime(r), out: isOutgoing(r), unread: isUnread(r), busy, group: isGroup(r), el: r };
   }
 
   let pending = new Set();
@@ -109,7 +112,8 @@
 
   function mark() {
     for (const r of rows()) {
-      const name = r.querySelector('span[title]').getAttribute('title');
+      const el = r.querySelector('[data-testid="cell-frame-title"] span[title]') || r.querySelector('span[title]');
+      const name = el.getAttribute('title');
       if (pending.has(name)) r.setAttribute('data-wa-pending', '1');
       else r.removeAttribute('data-wa-pending');
     }
@@ -139,7 +143,11 @@
       const c = node.cloneNode(true);
       const walk = (n) => {
         for (const ch of [...n.childNodes]) {
-          if (ch.nodeType === 3) { const t = ch.textContent.trim(); if (t && !KEEP.test(t)) ch.textContent = '[' + t.length + ']'; }
+          if (ch.nodeType === 3) {
+            const t = ch.textContent.trim();
+            const inTitle = n.tagName && n.tagName.toLowerCase() === 'title';
+            if (t && !KEEP.test(t) && !(inTitle && /^[\w-]+$/.test(t))) ch.textContent = '[' + t.length + ']';
+          }
           else if (ch.nodeType === 1) {
             if (ch.hasAttribute('title')) ch.setAttribute('title', 'NAME');
             if (ch.tagName === 'IMG') ch.removeAttribute('src');
@@ -152,7 +160,7 @@
       walk(c);
       return c.outerHTML.replace(/ class="[^"]*"/g, '');
     };
-    return rows().slice(0, 8).map((r) => {
+    return rows().slice(0, 30).map((r) => {
       const d = readRow(r);
       return `=== out=${d.out} group=${d.group} unread=${d.unread} busy=${d.busy} time=${d.time}\n${clean(r)}`;
     }).join('\n\n') || ('NO ROWS. pane-side=' + !!document.querySelector('#pane-side'));
