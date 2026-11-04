@@ -46,7 +46,7 @@ app.on('session-created', (ses) => {
 });
 
 ipcMain.on('paths', (e) => {
-  e.returnValue = { dataDir: DATA_DIR, userDir: USER_DIR, user: os.userInfo().username };
+  e.returnValue = { dataDir: DATA_DIR, userDir: USER_DIR, user: os.userInfo().username, exeDir };
 });
 ipcMain.handle('clear-partition', (_e, partition) => session.fromPartition(partition).clearStorageData());
 ipcMain.handle('pick-sound', async () => {
@@ -139,6 +139,29 @@ app.on('web-contents-created', (_e, contents) => {
 });
 
 app.whenReady().then(async () => {
+  // נפתח מתיקייה בלי סריקות, אבל בפעם שעברה עבדנו מתיקייה אחרת עם סריקות? מציעים לעבור אליה
+  const LAST = path.join(USER_DIR, 'last-folder.txt');
+  let last = null;
+  try { last = fs.readFileSync(LAST, 'utf8').trim(); } catch {}
+  const hasScans = fs.existsSync(path.join(DATA_DIR, 'Partitions'));
+  const exeName = path.basename(app.getPath('exe'));
+  if (app.isPackaged && !hasScans && last && path.resolve(last) !== path.resolve(exeDir) && fs.existsSync(path.join(last, exeName))) {
+    const r = await dialog.showMessageBox({
+      type: 'warning',
+      buttons: ['פתח מהתיקייה הנכונה', 'המשך כאן (יבקש סריקה)'],
+      defaultId: 0,
+      cancelId: 0,
+      title: 'WhatsApp Multi',
+      message: 'פתחת את התוכנה מתיקייה אחרת – בלי הוואטסאפים שסרקת.',
+      detail: `התיקייה שאתה עובד איתה בדרך כלל:\n${last}\n\nהתיקייה הנוכחית:\n${exeDir}`,
+    });
+    if (r.response === 0) {
+      require('child_process').spawn(path.join(last, exeName), [], { detached: true, stdio: 'ignore', cwd: last }).unref();
+      return app.exit(0);
+    }
+  }
+  if (hasScans || !last) { try { fs.writeFileSync(LAST, exeDir); } catch {} }
+
   const l = readLock();
   if (lockIsFresh(l)) {
     const r = await dialog.showMessageBox({

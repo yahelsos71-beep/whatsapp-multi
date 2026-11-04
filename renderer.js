@@ -32,7 +32,8 @@ const settings = Object.assign(
 );
 const saveSettings = () => save(SETTINGS_FILE, settings);
 
-document.getElementById('user').textContent = P.user + ' · v' + ipcRenderer.sendSync('app-version');
+document.getElementById('user').textContent = P.user + ' · v' + ipcRenderer.sendSync('app-version') + ' · 📁 ' + path.basename(P.exeDir);
+document.getElementById('user').title = 'התוכנה רצה מהתיקייה:\n' + P.exeDir;
 
 // עדכון אוטומטי הורד – מציעים להפעיל מחדש
 ipcRenderer.on('update-ready', (_e, info) => {
