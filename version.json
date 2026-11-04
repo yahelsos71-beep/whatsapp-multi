@@ -1,9 +1,10 @@
 {
-  "version": 1,
+  "version": 2,
   "files": {
     "app-main.js": "c184a328333c13711ac3c1a8774bb9f3e13e046b45e5f4c9ab68283018a6cfae",
     "index.html": "c452db1dfa5a75b54fde43ed892991dfda9d7bdc1d78b0601b1ee0fe5761ebb2",
-    "renderer.js": "a9fd93b4aa308dbfc0dc22d8067a745078b3d882553c76f4fa1ce3e0638162ca",
-    "inject.js": "d357967f51c3840a42d42ccb100b33a7195bf8f666faa77acf19ecaaf175eb5e"
-  }
+    "renderer.js": "5b6b3d5ab46b90c22dbe3147d4467d990f1e907b4b55f456d9344900786dd422",
+    "inject.js": "80d6676c76c21622613ccd21e86ceba90368fdad3fa820a15ae0626afc2946ff"
+  },
+  "notes": "פרטי בלי סימון, בלי קבוצות, תיקון רווחים"
 }
