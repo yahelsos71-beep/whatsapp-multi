@@ -1,13 +1,14 @@
 {
-  "version": 1,
+  "version": 2,
   "files": {
-    "server.js": "69f5acffcbdfc298f73f7b86907142a19ab2b67650daa10eb79d81b25dba5b78",
+    "server.js": "a5767a53047b6871c634511f395cbd65b1d1891b37b3f6a2e88d9bcf96903654",
     "lib/ai.js": "20a1226d49e5d5d2236a83553be39333900cca9dd2438a18d4769b8f613979bd",
     "lib/greenapi.js": "1b64d4d76dca289fe55bde7133e616449d31245ea803ab562bab423357504c84",
-    "lib/store.js": "bba9483b6d02a7837b1451850a3fe103fe5e7973c66ec7136aa28aee4e39cce1",
-    "public/app.js": "3a074d0ec39a192cf821bf9f153c7af23a7b18088f834d0a98360db89a2013db",
+    "lib/store.js": "4b013dc6c0bec9566570cc00a4dd2744929a5344c493ee72bd10226a47d6c53a",
+    "public/app.js": "ffbf04fdc424bafeb6f5502900d96d9c23756159b567a9c85a305fa3b1d8f5bf",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
-    "public/style.css": "7f8e1eb743f84ba7db6eee20187be27792c8a45ffc7539874a93e7ad16011c3f"
-  }
+    "public/style.css": "7de67381b74a1fc0d4674c8919c39052de9e5f67fd0415b9020f0293983f9f76"
+  },
+  "notes": "קבוצות + התעלמות מצ'אט"
 }

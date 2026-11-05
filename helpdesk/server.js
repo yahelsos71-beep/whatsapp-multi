@@ -47,6 +47,7 @@ const depById = (id) => db.config.departments.find((d) => d.id === id);
 const ticketById = (id) => db.tickets.find((t) => t.id === String(id));
 const openTicketFor = (instanceId, chatId) =>
   db.tickets.find((t) => t.instanceId === instanceId && t.chatId === chatId && t.status !== 'closed');
+const isIgnored = (instanceId, chatId) => (db.config.ignoredChats || []).some((x) => x.instanceId === instanceId && x.chatId === chatId);
 const canSee = (user, t) => user.role === 'admin' || t.assigneeId === user.id;
 
 function summary(t) {
@@ -89,6 +90,7 @@ function createTicket(inst, chatId, name, { status = 'routing', assigneeId = nul
     chatId,
     phone: chatId.split('@')[0],
     customerName: name || chatId.split('@')[0],
+    isGroup: chatId.endsWith('@g.us'),
     status,
     departmentId: null,
     assigneeId,
@@ -135,8 +137,8 @@ function scheduleRouting(t) {
 
 async function doRouting(t) {
   if (t.status !== 'routing') return;
-  const texts = store.messages(t.id).filter((m) => m.dir === 'in').map((m) => m.text || `[${m.type}]`).slice(0, 10);
-  const r = await routeTicket(db.config, { customerName: t.customerName, texts });
+  const texts = store.messages(t.id).filter((m) => m.dir === 'in').map((m) => (m.senderName ? m.senderName + ': ' : '') + (m.text || `[${m.type}]`)).slice(0, 10);
+  const r = await routeTicket(db.config, { customerName: (t.isGroup ? 'WhatsApp group: ' : '') + t.customerName, texts });
   const dep = r.departmentId ? depById(r.departmentId) : null;
   let assignee = dep && userById(dep.userId);
   if (!assignee || assignee.active === false) assignee = admins()[0] || null;
@@ -149,7 +151,7 @@ async function doRouting(t) {
   log(`ticket #${t.id} routed -> ${assignee && assignee.name} (${dep ? dep.name : 'unknown'})`);
 
   const ar = db.config.autoReply;
-  if (ar.enabled) {
+  if (ar.enabled && (!t.isGroup || db.config.groups.autoReply)) {
     const tpl = dep ? ar.routed : ar.unknown;
     const name = t.customerName && !/^\d+$/.test(t.customerName) ? ' ' + t.customerName.split(' ')[0] : '';
     const text = tpl
@@ -199,7 +201,10 @@ async function handleNotification(inst, body) {
   if (!['incomingMessageReceived', 'outgoingMessageReceived', 'outgoingAPIMessageReceived'].includes(type)) return;
   const sd = body.senderData || {};
   const chatId = sd.chatId || '';
-  if (!chatId || /@g\.us$|broadcast|newsletter/.test(chatId)) return; // קבוצות, סטטוסים וערוצים – לא קריאות
+  if (!chatId || /broadcast|newsletter/.test(chatId)) return; // סטטוסים וערוצים – לא קריאות
+  const isGroup = chatId.endsWith('@g.us');
+  if (isGroup && !db.config.groups.enabled) return;
+  if (isIgnored(inst.id, chatId)) return;
   const m = ga.parseMessage(body.messageData);
   if (m.type === 'reaction' || m.type === 'deleted') return;
   if (m.type === 'edited') { m.type = 'text'; m.text = '✏️ (נערכה) ' + m.text; }
@@ -219,10 +224,11 @@ async function handleNotification(inst, body) {
   let t = openTicketFor(inst.id, chatId);
   const isNew = !t;
   if (!t) {
-    t = createTicket(inst, chatId, sd.senderContactName || sd.senderName || sd.chatName);
+    t = createTicket(inst, chatId, isGroup ? (sd.chatName || 'קבוצה') : (sd.senderContactName || sd.senderName || sd.chatName));
     log(`new ticket #${t.id} from ${t.phone} (${inst.name})`);
   }
-  addMessage(t, { ...m, dir: 'in', ts, idMessage: body.idMessage });
+  if (isGroup && sd.chatName && t.customerName !== sd.chatName) t.customerName = sd.chatName;
+  addMessage(t, { ...m, dir: 'in', ts, idMessage: body.idMessage, ...(isGroup ? { senderName: sd.senderContactName || sd.senderName || String(sd.sender || '').split('@')[0] } : {}) });
   t.awaiting = true;
   t.lastInAt = ts;
   emitTicket(t, { sound: isNew ? null : 'msg' });
@@ -308,6 +314,8 @@ function adminConfigView() {
     departments: c.departments,
     ai: { enabled: c.ai.enabled, model: c.ai.model, apiKey: mask(c.ai.apiKey) },
     autoReply: c.autoReply,
+    groups: c.groups,
+    ignoredChats: c.ignoredChats,
     instances: c.instances.map((i) => ({ ...i, token: mask(i.token) })),
   };
 }
@@ -466,6 +474,18 @@ route('POST', /^\/api\/tickets\/(\d+)\/reopen$/, (req, res, { user, params }) =>
   send(res, 200, summary(t));
 });
 
+// התעלמות מצ'אט/קבוצה: לא ייפתחו ממנו קריאות (מנהל בלבד)
+route('POST', /^\/api\/tickets\/(\d+)\/ignore$/, (req, res, { user, params }) => {
+  const t = ticketById(params[0]);
+  if (!t) return send(res, 404, { error: 'לא נמצא' });
+  if (!isIgnored(t.instanceId, t.chatId)) db.config.ignoredChats.push({ instanceId: t.instanceId, chatId: t.chatId, name: t.customerName, isGroup: !!t.isGroup });
+  store.saveConfig();
+  if (t.status !== 'closed') { t.status = 'closed'; t.closedAt = now(); t.closedBy = user.id; t.awaiting = false; }
+  note(t, `🔕 ${user.name} סימן/ה להתעלם מ${t.isGroup ? 'הקבוצה' : 'הצ\'אט'} – לא ייפתחו ממנו קריאות`);
+  emitTicket(t);
+  send(res, 200, { ok: true });
+}, { auth: 'admin' });
+
 // פתיחת שיחה חדשה ללקוח (יוזמה של העובד)
 route('POST', /^\/api\/tickets\/new$/, async (req, res, { user }) => {
   const b = await readJson(req);
@@ -502,6 +522,8 @@ route('POST', /^\/api\/admin\/config$/, async (req, res) => {
     c.departments = b.departments.map((d) => ({ id: d.id || store.newId(), name: String(d.name || ''), description: String(d.description || ''), userId: d.userId || null })).filter((d) => d.name);
   }
   if (b.ai) c.ai = { enabled: !!b.ai.enabled, model: b.ai.model || 'claude-opus-5-5', apiKey: unmask(b.ai.apiKey, c.ai.apiKey) || '' };
+  if (b.groups) c.groups = { enabled: !!b.groups.enabled, autoReply: !!b.groups.autoReply };
+  if (Array.isArray(b.ignoredChats)) c.ignoredChats = c.ignoredChats.filter((x) => b.ignoredChats.some((y) => y.chatId === x.chatId && y.instanceId === x.instanceId));
   if (b.autoReply) c.autoReply = { enabled: !!b.autoReply.enabled, routed: String(b.autoReply.routed || ''), unknown: String(b.autoReply.unknown || '') };
   store.saveConfig();
   send(res, 200, { config: adminConfigView() });

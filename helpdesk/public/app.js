@@ -249,7 +249,7 @@ function renderList() {
         <div class="row1"><span class="name">${esc(t.customerName)}</span><span class="time">${fmtTime(t.updatedAt)}</span></div>
         <div class="row2"><span class="last">${t.lastDir === 'out' ? '↩ ' : ''}${esc(t.lastText)}</span>${t.awaiting ? '<span class="dot"></span>' : ''}</div>
         <div class="row3">
-          <span class="chip">#${t.id}</span>
+          <span class="chip">#${t.id}</span>${t.isGroup ? '<span class="chip">👥 קבוצה</span>' : ''}
           ${t.instanceName ? `<span class="chip">📱 ${esc(t.instanceName)}</span>` : ''}
           ${t.status === 'routing' ? '<span class="chip">🤖 מנתב...</span>' : t.departmentName ? `<span class="chip dep">${esc(t.departmentName)}</span>` : ''}
           ${S.me.role === 'admin' && t.assigneeName ? `<span class="chip who">👤 ${esc(t.assigneeName)}</span>` : ''}
@@ -309,12 +309,22 @@ function renderChatHead() {
   const ro = S.view.readOnly;
   h.innerHTML = `<div class="av" style="background:${avColor(t.phone)}">${esc(initials(t.customerName))}</div>
     <div class="who"><b>${esc(t.customerName)}</b>
-      <small dir="ltr">+${esc(t.phone)}</small> <small>· #${t.id} · 📱 ${esc(t.instanceName)}${t.departmentName ? ' · ' + esc(t.departmentName) : ''}${t.assigneeName ? ' · 👤 ' + esc(t.assigneeName) : ''}${t.status === 'closed' ? ' · ✅ סגורה' : ''}</small></div>
+      ${t.isGroup ? '<small>👥 קבוצה</small>' : `<small dir="ltr">+${esc(t.phone)}</small>`} <small>· #${t.id} · 📱 ${esc(t.instanceName)}${t.departmentName ? ' · ' + esc(t.departmentName) : ''}${t.assigneeName ? ' · 👤 ' + esc(t.assigneeName) : ''}${t.status === 'closed' ? ' · ✅ סגורה' : ''}</small></div>
     ${ro ? '<span class="chip">צפייה בלבד</span>' : t.status === 'closed'
       ? '<button id="reopenBtn">🔄 פתח מחדש</button>'
-      : '<button id="transferBtn">↪️ העבר שיחה</button><button class="primary" id="closeBtn">✅ סגור קריאה</button>'}`;
+      : '<button id="transferBtn">↪️ העבר שיחה</button><button class="primary" id="closeBtn">✅ סגור קריאה</button>'}
+    ${S.me.role === 'admin' && !ro ? `<button class="ghost" id="ignoreBtn" title="לא לפתוח יותר קריאות מ${t.isGroup ? 'הקבוצה' : 'הצ׳אט'} הזה">🔕 התעלם</button>` : ''}`;
   if ($('#transferBtn')) $('#transferBtn').onclick = transferDialog;
   if ($('#closeBtn')) $('#closeBtn').onclick = closeTicket;
+  if ($('#ignoreBtn')) $('#ignoreBtn').onclick = async (e) => {
+    const b = e.currentTarget;
+    if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'בטוח? לא ייפתחו יותר קריאות מכאן – לחץ שוב'; return; }
+    try {
+      await api('POST', `/api/tickets/${t.id}/ignore`);
+      S.tickets.delete(t.id); S.sel = null; S.view = null; renderList(); renderChat();
+      toast(`🔕 "${t.customerName}" לא יפתח יותר קריאות. אפשר לבטל ב"ניהול ← כללי"`, false, 6000);
+    } catch (er) { toast(er.message, true); }
+  };
   if ($('#reopenBtn')) $('#reopenBtn').onclick = async () => { try { await api('POST', `/api/tickets/${t.id}/reopen`); openTicket(t.id); } catch (e) { toast(e.message, true); } };
 }
 
@@ -342,7 +352,8 @@ function messageHtml(m) {
     else if (m.type === 'location') media = `<a href="${esc(m.url)}" target="_blank">📍 פתח מיקום במפה</a><br>`;
     else media = `<a href="${esc(m.url)}" target="_blank">📎 ${esc(m.fileName || 'קובץ')}</a><br>`;
   } else if (m.type !== 'text') media = `<i>${{ image: '📷 תמונה', video: '🎬 וידאו', audio: '🎤 הקלטה', file: '📎 ' + esc(m.fileName || 'קובץ') }[m.type] || ''}</i><br>`;
-  const by = m.dir === 'out' && m.byName ? `<div class="by">${esc(m.byName)}</div>` : '';
+  const by = m.dir === 'out' && m.byName ? `<div class="by">${esc(m.byName)}</div>`
+    : m.dir === 'in' && m.senderName ? `<div class="by sender">${esc(m.senderName)}</div>` : '';
   return `<div class="msg ${m.dir} ${m.auto ? 'auto' : ''}" data-mid="${m.id}">${by}${media}${esc(m.text)}<div class="meta">${fmtTime(m.ts)} ${ticks(m)}</div></div>`;
 }
 
@@ -611,10 +622,18 @@ function adminGeneral() {
     <div><label>כמה שניות לחכות להודעות נוספות לפני ניתוב</label><input id="gDelay" type="number" min="0" max="120" value="${c.routeDelaySec}"></div>
     <div><label>מאיפה אפשר להיכנס למוקד</label><select id="gHost"><option value="127.0.0.1">רק מהשרת עצמו (מומלץ)</option><option value="0.0.0.0" ${c.host === '0.0.0.0' ? 'selected' : ''}>גם ממחשבים אחרים ברשת המשרד</option></select></div>
     <div><label>פורט</label><input id="gPort" type="number" value="${c.port}"></div></div>
+    <h4>👥 קבוצות</h4>
+    <label class="check"><input type="checkbox" id="gGroups" ${c.groups.enabled ? 'checked' : ''}> הודעות מקבוצות פותחות קריאות</label>
+    <label class="check"><input type="checkbox" id="gGroupsAR" ${c.groups.autoReply ? 'checked' : ''}> לשלוח מענה אוטומטי גם לקבוצות</label>
+    <h4>🔕 צ'אטים וקבוצות שמתעלמים מהם</h4>
+    <div id="ignList">${c.ignoredChats.length ? c.ignoredChats.map((x, i) => `<div class="row" style="margin-top:4px"><span style="flex:1">${x.isGroup ? '👥' : '👤'} ${esc(x.name || x.chatId)}</span><button class="ghost" data-unign="${i}">החזר</button></div>`).join('') : '<div class="hint">אין. (כפתור "🔕 התעלם" בראש כל שיחה)</div>'}</div>
     <div class="hint">שינוי "מאיפה אפשר להיכנס" או הפורט נכנס לתוקף אחרי הפעלה מחדש של השרת.<br>
     לקוח שכותב "שלום" ואז את הבעיה – ההמתנה נותנת ל-AI את כל ההודעות ביחד, וכך הניתוב מדויק יותר.</div>
     <div class="row"><span style="flex:1"></span><button class="primary" id="gSave">💾 שמור</button></div>`;
-  $('#gSave').onclick = () => saveConfig({ companyName: $('#gName').value, routeDelaySec: $('#gDelay').value, host: $('#gHost').value, port: $('#gPort').value });
+  let ign = [...c.ignoredChats];
+  $('#apane').querySelectorAll('[data-unign]').forEach((b) => (b.onclick = () => { ign.splice(Number(b.dataset.unign), 1); b.parentElement.remove(); }));
+  $('#gSave').onclick = () => saveConfig({ companyName: $('#gName').value, routeDelaySec: $('#gDelay').value, host: $('#gHost').value, port: $('#gPort').value,
+    groups: { enabled: $('#gGroups').checked, autoReply: $('#gGroupsAR').checked }, ignoredChats: ign });
 }
 
 boot();
