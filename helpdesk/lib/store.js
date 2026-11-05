@@ -36,6 +36,7 @@ const DEFAULT_CONFIG = {
   routeDelaySec: 15, // מחכים כמה שניות להודעות נוספות לפני ניתוב
   groups: { enabled: true, autoReply: false }, // הודעות מקבוצות פותחות קריאות; בלי מענה אוטומטי לקבוצה
   ignoredChats: [], // { instanceId, chatId, name } – צ'אטים/קבוצות שלא פותחים מהם קריאות
+  chatRules: [], // { instanceId, chatId, name, isGroup, userId } – צ'אט/קבוצה שמשויכים קבוע לעובד
   autoReply: {
     enabled: true,
     routed: 'שלום{name}, קיבלנו את פנייתך 🙏\nהיא הועברה ל{agent} ({department}). נחזור אליך בהקדם.',
@@ -54,6 +55,7 @@ db.config.ai = Object.assign({}, DEFAULT_CONFIG.ai, db.config.ai);
 db.config.autoReply = Object.assign({}, DEFAULT_CONFIG.autoReply, db.config.autoReply);
 db.config.groups = Object.assign({}, DEFAULT_CONFIG.groups, db.config.groups);
 db.config.ignoredChats = db.config.ignoredChats || [];
+db.config.chatRules = db.config.chatRules || [];
 
 const newId = () => crypto.randomBytes(6).toString('hex');
 

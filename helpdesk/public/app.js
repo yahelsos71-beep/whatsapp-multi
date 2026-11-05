@@ -103,6 +103,7 @@ async function startMain() {
       <span class="logo">💬 מוקד וואטסאפ</span>
       <span id="insts"></span>
       <span class="spacer"></span>
+      <button id="taskBtn" title="שליחת משימה לעובד בקבוצה המשותפת איתו">📋 קריאה לעובד</button>
       <button id="newChat" title="שליחת הודעה ללקוח חדש">✉️ שיחה חדשה</button>
       <button id="muteBtn"></button>
       <button id="mySettings" title="צלצולים וסיסמה">⚙️</button>
@@ -121,6 +122,7 @@ async function startMain() {
   $('#logout').onclick = async () => { await api('POST', '/api/logout').catch(() => {}); location.reload(); };
   $('#mySettings').onclick = mySettingsDialog;
   $('#newChat').onclick = newChatDialog;
+  $('#taskBtn').onclick = taskDialog;
   $('#q').oninput = (e) => { S.q = e.target.value.trim(); renderList(); };
   const paintMute = () => { $('#muteBtn').textContent = Sounds.settings.muted ? '🔕' : '🔔'; $('#muteBtn').title = Sounds.settings.muted ? 'הצלצולים כבויים' : 'הצלצולים פעילים'; };
   $('#muteBtn').onclick = () => { Sounds.settings.muted = !Sounds.settings.muted; Sounds.save(); paintMute(); };
@@ -313,9 +315,23 @@ function renderChatHead() {
     ${ro ? '<span class="chip">צפייה בלבד</span>' : t.status === 'closed'
       ? '<button id="reopenBtn">🔄 פתח מחדש</button>'
       : '<button id="transferBtn">↪️ העבר שיחה</button><button class="primary" id="closeBtn">✅ סגור קריאה</button>'}
+    ${t.pinnedTo ? `<span class="chip who">📌 קבוע: ${esc(t.pinnedTo)}</span>` : ''}
+    ${S.me.role === 'admin' && !ro ? `<button class="ghost" id="pinBtn" title="כל הודעה מ${t.isGroup ? 'הקבוצה' : 'הצ׳אט'} הזה תגיע ישר לעובד שתבחר, בלי AI">📌 קבע לעובד</button>` : ''}
     ${S.me.role === 'admin' && !ro ? `<button class="ghost" id="ignoreBtn" title="לא לפתוח יותר קריאות מ${t.isGroup ? 'הקבוצה' : 'הצ׳אט'} הזה">🔕 התעלם</button>` : ''}`;
   if ($('#transferBtn')) $('#transferBtn').onclick = transferDialog;
   if ($('#closeBtn')) $('#closeBtn').onclick = closeTicket;
+  if ($('#pinBtn')) $('#pinBtn').onclick = () => {
+    openModal(`<h3>📌 קיבוע ${t.isGroup ? 'הקבוצה' : 'הצ׳אט'} "${esc(t.customerName)}" לעובד</h3>
+      <div class="hint">כל הודעה חדשה מכאן תיפתח כקריאה ישר אצל העובד – בלי ניתוב AI.${t.isGroup ? '<br>קבוצה שמקובעת לעובד מופיעה גם בכפתור "📋 קריאה לעובד".' : ''}</div>
+      <div class="pick" style="margin-top:10px">${S.users.map((u) => `<button data-id="${u.id}">${esc(u.name)}${t.pinnedTo === u.name ? ' ✓' : ''}</button>`).join('')}
+      ${t.pinnedTo ? '<button data-id="" class="danger">✖ בטל קיבוע</button>' : ''}</div>
+      <div class="row"><button id="cancel">ביטול</button></div>`);
+    $('#cancel').onclick = closeModal;
+    box.querySelectorAll('.pick button').forEach((b) => (b.onclick = async () => {
+      try { const r = await api('POST', `/api/tickets/${t.id}/pin`, { userId: b.dataset.id || null }); closeModal(); toast(r.pinnedTo ? `📌 קובע ל${r.pinnedTo} ✓` : 'הקיבוע בוטל'); openTicket(t.id); }
+      catch (er) { toast(er.message, true); }
+    }));
+  };
   if ($('#ignoreBtn')) $('#ignoreBtn').onclick = async (e) => {
     const b = e.currentTarget;
     if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'בטוח? לא ייפתחו יותר קריאות מכאן – לחץ שוב'; return; }
@@ -353,7 +369,7 @@ function messageHtml(m) {
     else media = `<a href="${esc(m.url)}" target="_blank">📎 ${esc(m.fileName || 'קובץ')}</a><br>`;
   } else if (m.type !== 'text') media = `<i>${{ image: '📷 תמונה', video: '🎬 וידאו', audio: '🎤 הקלטה', file: '📎 ' + esc(m.fileName || 'קובץ') }[m.type] || ''}</i><br>`;
   const by = m.dir === 'out' && m.byName ? `<div class="by">${esc(m.byName)}</div>`
-    : m.dir === 'in' && m.senderName ? `<div class="by sender">${esc(m.senderName)}</div>` : '';
+    : m.dir === 'in' && m.senderName ? `<div class="by sender">${m.staff ? '👤 ' : ''}${esc(m.senderName)}</div>` : '';
   return `<div class="msg ${m.dir} ${m.auto ? 'auto' : ''}" data-mid="${m.id}">${by}${media}${esc(m.text)}<div class="meta">${fmtTime(m.ts)} ${ticks(m)}</div></div>`;
 }
 
@@ -477,6 +493,32 @@ function newChatDialog() {
   };
 }
 
+async function taskDialog() {
+  const targets = await api('GET', '/api/tasks/targets').catch(() => []);
+  const list = targets.filter((x) => x.userId !== S.me.id);
+  if (!list.length) {
+    return openModal(`<h3>📋 קריאה לעובד</h3><div class="hint">עוד לא הוגדרו קבוצות לעובדים.<br>
+      כדי להגדיר: פותחים במוקד את הקבוצה (למשל "חיים וחני") ← <b>📌 קבע לעובד</b> ← בוחרים את חני.<br>
+      (הקבוצה מופיעה במוקד אחרי שנשלחת בה הודעה כלשהי.)</div><div class="row"><button id="cancel">סגור</button></div>`), ($('#cancel').onclick = closeModal);
+  }
+  openModal(`<h3>📋 קריאה לעובד</h3>
+    <div class="hint">ההודעה נשלחת לקבוצה המשותפת עם העובד, ונפתחת אצלו קריאה עם צלצול – עד שיענה או יסגור.</div>
+    <label>למי?</label><div class="pick" id="tpick">${list.map((x, i) => `<button data-i="${i}"><b>${esc(x.userName)}</b><span class="chip">👥 ${esc(x.group)}</span></button>`).join('')}</div>
+    <label>מה המשימה?</label><textarea id="ttext" rows="4" placeholder="למשל: להתקשר ללקוח משה כהן לגבי החשבונית מאוקטובר"></textarea>
+    <div class="row"><button class="primary" id="tsend" disabled>שלח ופתח קריאה</button><button id="cancel">ביטול</button></div>`);
+  let sel = null;
+  box.querySelectorAll('#tpick button').forEach((b) => (b.onclick = () => {
+    sel = list[+b.dataset.i];
+    box.querySelectorAll('#tpick button').forEach((x) => x.classList.toggle('primary', x === b));
+    $('#tsend').disabled = false; $('#tsend').textContent = `שלח ל${sel.userName}`; $('#ttext').focus();
+  }));
+  $('#cancel').onclick = closeModal;
+  $('#tsend').onclick = async () => {
+    try { const t = await api('POST', '/api/tasks', { userId: sel.userId, text: $('#ttext').value }); closeModal(); toast(`נשלח ל${sel.userName} ✓ קריאה #${t.id}`); }
+    catch (e) { toast(e.message, true, 6000); }
+  };
+}
+
 // ---------- הגדרות אישיות ----------
 function mySettingsDialog() {
   const s = Sounds.settings;
@@ -561,13 +603,14 @@ function adminUsers() {
       <div class="grid2"><div><label>שם</label><input id="uname" value="${esc(u?.name || '')}" placeholder="טל"></div>
       <div><label>שם משתמש (לכניסה, באנגלית)</label><input id="uuser" dir="ltr" value="${esc(u?.username || '')}" placeholder="tal"></div>
       <div><label>${u ? 'סיסמה חדשה (ריק = בלי שינוי)' : 'סיסמה'}</label><input id="upass" type="text" dir="ltr"></div>
+      <div><label>הטלפון הנייד של העובד (בשביל קבוצות)</label><input id="uphone" dir="ltr" value="${esc(u?.phone ? '0' + u.phone.slice(3) : '')}" placeholder="0521234567"></div>
       <div><label>תפקיד</label><select id="urole"><option value="agent">נציג – רואה רק את הקריאות שלו</option><option value="admin" ${u?.role === 'admin' ? 'selected' : ''}>מנהל – רואה הכל ומנהל</option></select></div></div>
       ${u ? `<label class="check"><input type="checkbox" id="uactive" ${u.active ? 'checked' : ''}> פעיל (אפשר להיכנס ולקבל קריאות)</label>` : ''}
       <div class="row"><button class="primary" id="usave">💾 שמור</button>${u ? '<button id="unew">+ עובד חדש</button>' : ''}</div>`;
     if ($('#unew')) $('#unew').onclick = () => form(null);
     $('#usave').onclick = async () => {
       try {
-        await api('POST', '/api/admin/users', { id: u?.id, name: $('#uname').value, username: $('#uuser').value, password: $('#upass').value, role: $('#urole').value, active: u ? $('#uactive').checked : true });
+        await api('POST', '/api/admin/users', { id: u?.id, name: $('#uname').value, username: $('#uuser').value, password: $('#upass').value, phone: $('#uphone').value, role: $('#urole').value, active: u ? $('#uactive').checked : true });
         A = await api('GET', '/api/admin/config'); S.users = await api('GET', '/api/users');
         toast('נשמר ✓'); draw();
       } catch (e) { toast(e.message, true); }
@@ -709,15 +752,19 @@ function adminGeneral() {
     <h4>👥 קבוצות</h4>
     <label class="check"><input type="checkbox" id="gGroups" ${c.groups.enabled ? 'checked' : ''}> הודעות מקבוצות פותחות קריאות</label>
     <label class="check"><input type="checkbox" id="gGroupsAR" ${c.groups.autoReply ? 'checked' : ''}> לשלוח מענה אוטומטי גם לקבוצות</label>
+    <h4>📌 צ'אטים וקבוצות שמקובעים לעובד</h4>
+    <div id="ruleList">${c.chatRules.length ? c.chatRules.map((x, i) => `<div class="row" style="margin-top:4px"><span style="flex:1">${x.isGroup ? '👥' : '👤'} ${esc(x.name)} ← <b>${esc(x.userName)}</b></span><button class="ghost" data-unrule="${i}">בטל</button></div>`).join('') : '<div class="hint">אין. (כפתור "📌 קבע לעובד" בראש כל שיחה)</div>'}</div>
     <h4>🔕 צ'אטים וקבוצות שמתעלמים מהם</h4>
     <div id="ignList">${c.ignoredChats.length ? c.ignoredChats.map((x, i) => `<div class="row" style="margin-top:4px"><span style="flex:1">${x.isGroup ? '👥' : '👤'} ${esc(x.name || x.chatId)}</span><button class="ghost" data-unign="${i}">החזר</button></div>`).join('') : '<div class="hint">אין. (כפתור "🔕 התעלם" בראש כל שיחה)</div>'}</div>
     <div class="hint">שינוי "מאיפה אפשר להיכנס" או הפורט נכנס לתוקף אחרי הפעלה מחדש של השרת.<br>
     לקוח שכותב "שלום" ואז את הבעיה – ההמתנה נותנת ל-AI את כל ההודעות ביחד, וכך הניתוב מדויק יותר.</div>
     <div class="row"><span style="flex:1"></span><button class="primary" id="gSave">💾 שמור</button></div>`;
   let ign = [...c.ignoredChats];
+  let rules = [...c.chatRules];
+  $('#apane').querySelectorAll('[data-unrule]').forEach((b) => (b.onclick = () => { rules.splice(Number(b.dataset.unrule), 1); b.parentElement.remove(); }));
   $('#apane').querySelectorAll('[data-unign]').forEach((b) => (b.onclick = () => { ign.splice(Number(b.dataset.unign), 1); b.parentElement.remove(); }));
   $('#gSave').onclick = () => saveConfig({ companyName: $('#gName').value, routeDelaySec: $('#gDelay').value, host: $('#gHost').value, port: $('#gPort').value,
-    groups: { enabled: $('#gGroups').checked, autoReply: $('#gGroupsAR').checked }, ignoredChats: ign });
+    groups: { enabled: $('#gGroups').checked, autoReply: $('#gGroupsAR').checked }, ignoredChats: ign, chatRules: rules });
 }
 
 boot();
