@@ -28,7 +28,7 @@ function checkPassword(user, password) {
   const { hash } = hashPassword(password, user.salt);
   return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(user.hash, 'hex'));
 }
-const publicUser = (u) => u && { id: u.id, name: u.name, username: u.username, role: u.role, active: u.active !== false };
+const publicUser = (u) => u && { id: u.id, name: u.name, username: u.username, role: u.role, active: u.active !== false, phone: u.phone || '' };
 const userById = (id) => db.users.find((u) => u.id === id);
 const admins = () => db.users.filter((u) => u.role === 'admin' && u.active !== false);
 
@@ -48,6 +48,8 @@ const depById = (id) => db.config.departments.find((d) => d.id === id);
 const ticketById = (id) => db.tickets.find((t) => t.id === String(id));
 const openTicketFor = (instanceId, chatId) =>
   db.tickets.find((t) => t.instanceId === instanceId && t.chatId === chatId && t.status !== 'closed');
+const ruleFor = (instanceId, chatId) => (db.config.chatRules || []).find((x) => x.instanceId === instanceId && x.chatId === chatId);
+const staffByPhone = (phone) => phone && db.users.find((u) => u.active !== false && u.phone && u.phone === phone);
 const isIgnored = (instanceId, chatId) => (db.config.ignoredChats || []).some((x) => x.instanceId === instanceId && x.chatId === chatId);
 const canSee = (user, t) => user.role === 'admin' || t.assigneeId === user.id;
 
@@ -84,6 +86,7 @@ function summary(t) {
   return {
     ...t,
     waName: t.customerName,
+    pinnedTo: (ruleFor(t.instanceId, t.chatId) && userById(ruleFor(t.instanceId, t.chatId).userId)?.name) || '',
     customerName: c ? (c.name || c.company || t.customerName) : t.customerName,
     company: c && c.name ? c.company || '' : '',
     assigneeName: a ? a.name : '',
@@ -254,12 +257,29 @@ async function handleNotification(inst, body) {
 
   let t = openTicketFor(inst.id, chatId);
   const isNew = !t;
+  const rule = ruleFor(inst.id, chatId);
+  const pinned = rule && userById(rule.userId);
   if (!t) {
-    t = createTicket(inst, chatId, isGroup ? (sd.chatName || 'קבוצה') : (sd.senderContactName || sd.senderName || sd.chatName));
+    const name = isGroup ? (sd.chatName || 'קבוצה') : (sd.senderContactName || sd.senderName || sd.chatName);
+    if (pinned && pinned.active !== false) {
+      // צ'אט/קבוצה שמשויכים קבוע לעובד – בלי AI ובלי מענה אוטומטי
+      t = createTicket(inst, chatId, name, { status: 'open', assigneeId: pinned.id });
+      const dep = db.config.departments.find((d) => d.userId === pinned.id);
+      if (dep) t.departmentId = dep.id;
+      note(t, `📌 משויך קבוע ל${pinned.name}`);
+    } else t = createTicket(inst, chatId, name);
     log(`new ticket #${t.id} from ${t.phone} (${inst.name})`);
   }
   if (isGroup && sd.chatName && t.customerName !== sd.chatName) t.customerName = sd.chatName;
-  addMessage(t, { ...m, dir: 'in', ts, idMessage: body.idMessage, ...(isGroup ? { senderName: sd.senderContactName || sd.senderName || String(sd.sender || '').split('@')[0] } : {}) });
+  const senderPhone = String(sd.sender || '').split('@')[0];
+  const staff = isGroup && staffByPhone(senderPhone);
+  addMessage(t, { ...m, dir: 'in', ts, idMessage: body.idMessage, ...(isGroup ? { senderName: staff ? staff.name : sd.senderContactName || sd.senderName || senderPhone, staff: !!staff } : {}) });
+  if (staff && staff.id === t.assigneeId) {
+    // העובד עצמו ענה בקבוצה מהטלפון שלו – נחשב כתשובה
+    t.awaiting = false; t.lastOutAt = ts;
+    emitTicket(t);
+    return;
+  }
   t.awaiting = true;
   t.lastInAt = ts;
   emitTicket(t, { sound: isNew ? null : 'msg' });
@@ -347,6 +367,7 @@ function adminConfigView() {
     autoReply: c.autoReply,
     groups: c.groups,
     ignoredChats: c.ignoredChats,
+    chatRules: c.chatRules.map((r) => ({ ...r, userName: userById(r.userId)?.name || '' })),
     instances: c.instances.map((i) => ({ ...i, token: mask(i.token) })),
   };
 }
@@ -505,6 +526,54 @@ route('POST', /^\/api\/tickets\/(\d+)\/reopen$/, (req, res, { user, params }) =>
   send(res, 200, summary(t));
 });
 
+// קיבוע צ'אט/קבוצה לעובד (מנהל בלבד). userId ריק = ביטול הקיבוע
+route('POST', /^\/api\/tickets\/(\d+)\/pin$/, async (req, res, { user, params }) => {
+  const t = ticketById(params[0]);
+  if (!t) return send(res, 404, { error: 'לא נמצא' });
+  const b = await readJson(req);
+  db.config.chatRules = db.config.chatRules.filter((x) => !(x.instanceId === t.instanceId && x.chatId === t.chatId));
+  const to = b.userId && userById(b.userId);
+  if (to) {
+    db.config.chatRules.push({ instanceId: t.instanceId, chatId: t.chatId, name: t.customerName, isGroup: !!t.isGroup, userId: to.id });
+    note(t, `📌 ${user.name} קיבע/ה את ${t.isGroup ? 'הקבוצה' : 'הצ\'אט'} ל${to.name}`);
+    if (t.status !== 'closed' && t.assigneeId !== to.id) {
+      const old = t.assigneeId;
+      t.assigneeId = to.id;
+      if (t.status === 'routing') { t.status = 'open'; clearTimeout(routingTimers.get(t.id)); routingTimers.delete(t.id); }
+      const dep = db.config.departments.find((d) => d.userId === to.id);
+      if (dep) t.departmentId = dep.id;
+      if (old && userById(old)?.role !== 'admin') sendTo(old, { type: 'remove', id: t.id });
+    }
+  } else note(t, `📌 ${user.name} ביטל/ה את הקיבוע`);
+  store.saveConfig();
+  emitTicket(t, { sound: to ? 'new' : null });
+  send(res, 200, summary(t));
+}, { auth: 'admin' });
+
+// "קריאה לעובד": שולח משימה לקבוצה המשויכת לעובד ופותח לו קריאה
+route('GET', /^\/api\/tasks\/targets$/, (req, res) => {
+  send(res, 200, db.config.chatRules.filter((r) => r.isGroup && userById(r.userId)?.active !== false)
+    .map((r) => ({ userId: r.userId, userName: userById(r.userId)?.name || '', group: r.name, instanceName: instById(r.instanceId)?.name || '' })));
+});
+route('POST', /^\/api\/tasks$/, async (req, res, { user }) => {
+  const b = await readJson(req);
+  const text = String(b.text || '').trim();
+  if (!text) return send(res, 400, { error: 'כתוב מה המשימה' });
+  const r = db.config.chatRules.find((x) => x.isGroup && x.userId === b.userId);
+  const emp = r && userById(r.userId);
+  const inst = r && instById(r.instanceId);
+  if (!r || !emp || !inst) return send(res, 400, { error: 'לא הוגדרה קבוצה לעובד הזה' });
+  let t = openTicketFor(inst.id, r.chatId);
+  if (!t) t = createTicket(inst, r.chatId, r.name, { status: 'open', assigneeId: emp.id });
+  t.isGroup = true;
+  if (t.assigneeId !== emp.id) t.assigneeId = emp.id;
+  note(t, `📋 ${user.name} פתח/ה קריאה ל${emp.name}`);
+  try { await sendText(t, text, user); } catch (e) { return send(res, 502, { error: 'השליחה לקבוצה נכשלה: ' + e.message }); }
+  t.awaiting = true; t.lastInAt = now(); // מחכה לטיפול של העובד
+  emitTicket(t, { sound: 'new' });
+  send(res, 200, summary(t));
+});
+
 // התעלמות מצ'אט/קבוצה: לא ייפתחו ממנו קריאות (מנהל בלבד)
 route('POST', /^\/api\/tickets\/(\d+)\/ignore$/, (req, res, { user, params }) => {
   const t = ticketById(params[0]);
@@ -623,6 +692,7 @@ route('POST', /^\/api\/admin\/config$/, async (req, res) => {
   }
   if (b.ai) c.ai = { enabled: !!b.ai.enabled, model: b.ai.model || 'claude-opus-5-5', apiKey: unmask(b.ai.apiKey, c.ai.apiKey) || '' };
   if (b.groups) c.groups = { enabled: !!b.groups.enabled, autoReply: !!b.groups.autoReply };
+  if (Array.isArray(b.chatRules)) c.chatRules = c.chatRules.filter((x) => b.chatRules.some((y) => y.chatId === x.chatId && y.instanceId === x.instanceId));
   if (Array.isArray(b.ignoredChats)) c.ignoredChats = c.ignoredChats.filter((x) => b.ignoredChats.some((y) => y.chatId === x.chatId && y.instanceId === x.instanceId));
   if (b.autoReply) c.autoReply = { enabled: !!b.autoReply.enabled, routed: String(b.autoReply.routed || ''), unknown: String(b.autoReply.unknown || '') };
   store.saveConfig();
@@ -670,7 +740,7 @@ route('POST', /^\/api\/admin\/users$/, async (req, res, { user }) => {
     db.users.push(u);
   }
   if (u.id === user.id && b.role !== 'admin') return send(res, 400, { error: 'אי אפשר להוריד לעצמך הרשאת מנהל' });
-  Object.assign(u, { name: String(b.name || username), username, role: b.role === 'admin' ? 'admin' : 'agent', active: b.active !== false });
+  Object.assign(u, { name: String(b.name || username), username, role: b.role === 'admin' ? 'admin' : 'agent', active: b.active !== false, phone: normPhone(b.phone) });
   if (b.password) Object.assign(u, hashPassword(b.password));
   store.saveUsers();
   send(res, 200, publicUser(u));
