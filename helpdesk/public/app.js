@@ -223,7 +223,7 @@ function currentList() {
   }
   if (S.q) {
     const q = S.q.toLowerCase();
-    list = list.filter((t) => String(t.customerName).toLowerCase().includes(q) || String(t.phone).includes(q.replace(/\D/g, '') || '§') || String(t.id) === q.replace('#', ''));
+    list = list.filter((t) => String(t.customerName).toLowerCase().includes(q) || String(t.company || '').toLowerCase().includes(q) || String(t.phone).includes(q.replace(/\D/g, '') || '§') || String(t.id) === q.replace('#', ''));
   }
   return list;
 }
@@ -249,7 +249,7 @@ function renderList() {
         <div class="row1"><span class="name">${esc(t.customerName)}</span><span class="time">${fmtTime(t.updatedAt)}</span></div>
         <div class="row2"><span class="last">${t.lastDir === 'out' ? '↩ ' : ''}${esc(t.lastText)}</span>${t.awaiting ? '<span class="dot"></span>' : ''}</div>
         <div class="row3">
-          <span class="chip">#${t.id}</span>${t.isGroup ? '<span class="chip">👥 קבוצה</span>' : ''}
+          <span class="chip">#${t.id}</span>${t.isGroup ? '<span class="chip">👥 קבוצה</span>' : ''}${t.company ? `<span class="chip dep">🏢 ${esc(t.company)}</span>` : ''}
           ${t.instanceName ? `<span class="chip">📱 ${esc(t.instanceName)}</span>` : ''}
           ${t.status === 'routing' ? '<span class="chip">🤖 מנתב...</span>' : t.departmentName ? `<span class="chip dep">${esc(t.departmentName)}</span>` : ''}
           ${S.me.role === 'admin' && t.assigneeName ? `<span class="chip who">👤 ${esc(t.assigneeName)}</span>` : ''}
@@ -308,7 +308,7 @@ function renderChatHead() {
   const t = S.view.ticket;
   const ro = S.view.readOnly;
   h.innerHTML = `<div class="av" style="background:${avColor(t.phone)}">${esc(initials(t.customerName))}</div>
-    <div class="who"><b>${esc(t.customerName)}</b>
+    <div class="who"><b>${esc(t.customerName)}${t.company ? ` <span class="chip dep">🏢 ${esc(t.company)}</span>` : ''}</b>
       ${t.isGroup ? '<small>👥 קבוצה</small>' : `<small dir="ltr">+${esc(t.phone)}</small>`} <small>· #${t.id} · 📱 ${esc(t.instanceName)}${t.departmentName ? ' · ' + esc(t.departmentName) : ''}${t.assigneeName ? ' · 👤 ' + esc(t.assigneeName) : ''}${t.status === 'closed' ? ' · ✅ סגורה' : ''}</small></div>
     ${ro ? '<span class="chip">צפייה בלבד</span>' : t.status === 'closed'
       ? '<button id="reopenBtn">🔄 פתח מחדש</button>'
@@ -444,16 +444,35 @@ function newChatDialog() {
   const insts = S.instances.filter((i) => i.enabled);
   if (!insts.length) return toast('לא הוגדרו מספרי וואטסאפ', true);
   openModal(`<h3>✉️ שיחה חדשה עם לקוח</h3>
+    <label>🔍 חיפוש באנשי הקשר (שם חברה, שם או טלפון)</label>
+    <input id="csearch" placeholder="למשל: קי סי, משה, 052..." autocomplete="off">
+    <div class="pick" id="cres" style="max-height:220px;overflow-y:auto;margin-top:6px"></div>
     <label>מאיזה מספר לשלוח?</label><select id="ninst">${insts.map((i) => `<option value="${i.id}">${esc(i.name)}</option>`).join('')}</select>
     <div class="grid2"><div><label>טלפון הלקוח</label><input id="nphone" dir="ltr" placeholder="0521234567"></div>
-    <div><label>שם (לא חובה)</label><input id="nname"></div></div>
+    <div><label>שם</label><input id="nname"></div></div>
     <label>הודעה</label><textarea id="ntext" rows="4"></textarea>
     <div class="row"><button class="primary" id="nsend">שלח ופתח קריאה</button><button id="cancel">ביטול</button></div>`);
   $('#cancel').onclick = closeModal;
+  const fmt = (p) => (p.startsWith('972') ? '0' + p.slice(3) : p);
+  let timer;
+  const search = async () => {
+    const q = $('#csearch').value.trim();
+    if (!q) { $('#cres').innerHTML = ''; return; }
+    const r = await api('GET', '/api/contacts?q=' + encodeURIComponent(q)).catch(() => ({ list: [], total: 0 }));
+    if (!r.total) { $('#cres').innerHTML = '<div class="hint">אין עדיין אנשי קשר – המנהל מייבא אותם ב"ניהול ← 📇 אנשי קשר"</div>'; return; }
+    $('#cres').innerHTML = r.list.length ? r.list.flatMap((c) => c.phones.map((p) => `<button data-p="${p}" data-n="${esc(c.name || c.company)}">
+      <span style="flex:1">${c.company ? '🏢 ' + esc(c.company) : ''}${c.company && c.name ? ' · ' : ''}${esc(c.name || '')}</span><span dir="ltr" class="chip">${fmt(p)}</span></button>`)).join('')
+      : '<div class="hint">לא נמצא</div>';
+    $('#cres').querySelectorAll('button').forEach((b) => (b.onclick = () => {
+      $('#nphone').value = fmt(b.dataset.p); $('#nname').value = b.dataset.n; $('#cres').innerHTML = ''; $('#csearch').value = b.dataset.n; $('#ntext').focus();
+    }));
+  };
+  $('#csearch').oninput = () => { clearTimeout(timer); timer = setTimeout(search, 200); };
+  $('#csearch').focus();
   $('#nsend').onclick = async () => {
     try {
       const t = await api('POST', '/api/tickets/new', { instanceId: $('#ninst').value, phone: $('#nphone').value, name: $('#nname').value, text: $('#ntext').value });
-      closeModal(); S.tickets.set(t.id, t); S.tab = S.me.role === 'admin' ? S.tab : 'mine'; openTicket(t.id);
+      closeModal(); S.tickets.set(t.id, t); openTicket(t.id);
     } catch (e) { toast(e.message, true, 6000); }
   };
 }
@@ -490,12 +509,12 @@ function mySettingsDialog() {
 let A = null; // {config, users, instances}
 async function adminDialog(tab = 'deps') {
   try { A = await api('GET', '/api/admin/config'); } catch (e) { return toast(e.message, true); }
-  const tabs = [['deps', '🏷️ מחלקות וניתוב'], ['users', '👥 עובדים'], ['wa', '📱 מספרי וואטסאפ'], ['ai', '🤖 AI ומענה אוטומטי'], ['general', '⚙️ כללי']];
+  const tabs = [['deps', '🏷️ מחלקות וניתוב'], ['users', '👥 עובדים'], ['contacts', '📇 אנשי קשר'], ['wa', '📱 מספרי וואטסאפ'], ['ai', '🤖 AI ומענה אוטומטי'], ['general', '⚙️ כללי']];
   openModal(`<h3>🛠️ ניהול המוקד</h3><div class="stabs">${tabs.map(([k, n]) => `<button data-k="${k}" class="${k === tab ? 'on' : ''}">${n}</button>`).join('')}</div><div id="apane"></div>
     <div class="row"><span style="flex:1"></span><button id="aclose">סגור</button></div>`, true);
   box.querySelectorAll('.stabs button').forEach((b) => (b.onclick = () => adminDialog(b.dataset.k)));
   $('#aclose').onclick = closeModal;
-  ({ deps: adminDeps, users: adminUsers, wa: adminWa, ai: adminAi, general: adminGeneral })[tab]();
+  ({ deps: adminDeps, users: adminUsers, contacts: adminContacts, wa: adminWa, ai: adminAi, general: adminGeneral })[tab]();
 }
 const userOptions = (cur) => `<option value="">— בחר עובד —</option>` + A.users.filter((u) => u.active).map((u) => `<option value="${u.id}" ${u.id === cur ? 'selected' : ''}>${esc(u.name)}</option>`).join('');
 async function saveConfig(patch, msg = 'נשמר ✓') {
@@ -555,6 +574,71 @@ function adminUsers() {
     };
   };
   draw();
+}
+
+function adminContacts() {
+  const fmt = (p) => (p.startsWith('972') ? '0' + p.slice(3) : p);
+  $('#apane').innerHTML = `<div class="card2"><b>📥 ייבוא מ-iCount</b>
+      <div class="hint">ב-iCount: <b>לקוחות ← רשימת לקוחות ← ייצוא לאקסל</b>. את הקובץ שירד בוחרים כאן (xlsx או csv).<br>
+      ייבוא חדש מחליף את אנשי הקשר מהייבוא הקודם (מי שהוספת ידנית נשאר). אפשר לייבא שוב מתי שרוצים כדי לעדכן.</div>
+      <div class="row"><input type="file" id="cfile" accept=".xlsx,.csv,.txt" style="flex:1"></div><div id="cmap"></div></div>
+    <div class="card2"><b>🔍 אנשי הקשר</b> <span class="hint" id="ctotal"></span>
+      <div class="row"><input id="cq" placeholder="חיפוש לפי חברה, שם או טלפון" style="flex:1"></div>
+      <div id="clist"></div></div>
+    <div class="card2" id="cform"></div>`;
+  const list = async () => {
+    const r = await api('GET', '/api/contacts?limit=50&q=' + encodeURIComponent($('#cq').value.trim()));
+    $('#ctotal').textContent = `(${r.total} סה"כ)`;
+    $('#clist').innerHTML = `<table><tr><th>חברה</th><th>שם</th><th>טלפונים</th><th></th></tr>${r.list.map((c) => `<tr>
+      <td>${esc(c.company)}</td><td>${esc(c.name)}</td><td dir="ltr" style="text-align:right">${c.phones.map(fmt).join(', ')}</td>
+      <td><button class="ghost" data-e="${c.id}">✏️</button><button class="ghost" data-d="${c.id}">🗑️</button></td></tr>`).join('')}</table>`;
+    $('#clist').querySelectorAll('[data-e]').forEach((b) => (b.onclick = () => form(r.list.find((c) => c.id === b.dataset.e))));
+    $('#clist').querySelectorAll('[data-d]').forEach((b) => (b.onclick = async () => { await api('DELETE', '/api/admin/contacts/' + b.dataset.d); list(); }));
+  };
+  const form = (c) => {
+    $('#cform').innerHTML = `<b>${c ? '✏️ עריכת איש קשר' : '+ איש קשר חדש (ידני)'}</b>
+      <div class="grid2"><div><label>חברה</label><input id="fc" value="${esc(c?.company || '')}"></div><div><label>שם</label><input id="fn" value="${esc(c?.name || '')}"></div></div>
+      <label>טלפונים (מופרדים בפסיק)</label><input id="fp" dir="ltr" value="${c ? c.phones.map(fmt).join(', ') : ''}">
+      <div class="row"><button class="primary" id="fsave">💾 שמור</button>${c ? '<button id="fnew">+ חדש</button>' : ''}</div>`;
+    if ($('#fnew')) $('#fnew').onclick = () => form(null);
+    $('#fsave').onclick = async () => {
+      try { await api('POST', '/api/admin/contacts', { id: c?.id, company: $('#fc').value, name: $('#fn').value, phones: $('#fp').value }); toast('נשמר ✓'); form(null); list(); }
+      catch (e) { toast(e.message, true); }
+    };
+  };
+  let t; $('#cq').oninput = () => { clearTimeout(t); t = setTimeout(list, 250); };
+  $('#cfile').onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    let p;
+    try { p = await api('POST', '/api/admin/contacts/parse', f, { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(f.name) }); }
+    catch (er) { return toast(er.message, true, 7000); }
+    const opt = (cur, none = '— אין —') => `<option value="-1">${none}</option>` + p.headers.map((h, i) => `<option value="${i}" ${i === cur ? 'selected' : ''}>${esc(h || 'עמודה ' + (i + 1))}</option>`).join('');
+    $('#cmap').innerHTML = `<div class="hint">נמצאו <b>${p.rows.length}</b> שורות. בדוק שהעמודות נבחרו נכון:</div>
+      <div class="grid2"><div><label>שם החברה</label><select id="mc">${opt(p.guess.company)}</select></div>
+      <div><label>שם איש הקשר</label><select id="mn">${opt(p.guess.name)}</select></div>
+      <div><label>או: שם פרטי</label><select id="mf">${opt(p.guess.first)}</select></div>
+      <div><label>ושם משפחה</label><select id="ml">${opt(p.guess.last)}</select></div></div>
+      <label>עמודות של טלפון (אפשר כמה)</label>
+      <div>${p.headers.map((h, i) => `<label class="check" style="display:inline-flex;margin-left:14px"><input type="checkbox" data-ph="${i}" ${p.guess.phones.includes(i) ? 'checked' : ''}> ${esc(h || 'עמודה ' + (i + 1))}</label>`).join('')}</div>
+      <div class="hint" id="mprev"></div>
+      <div class="row"><button class="primary" id="mgo">📥 ייבא</button></div>`;
+    const getMap = () => ({ company: +$('#mc').value, name: +$('#mn').value, first: +$('#mf').value, last: +$('#ml').value, phones: [...$('#cmap').querySelectorAll('[data-ph]:checked')].map((x) => +x.dataset.ph) });
+    const prev = () => {
+      const m = getMap(); const c = (r, i) => (i >= 0 ? r[i] || '' : '');
+      $('#mprev').innerHTML = 'דוגמה: ' + p.rows.slice(0, 3).map((r) => `🏢 ${esc(c(r, m.company))} · 👤 ${esc(c(r, m.name) || [c(r, m.first), c(r, m.last)].join(' '))} · 📞 ${esc(m.phones.map((i) => c(r, i)).filter(Boolean).join(', '))}`).join('<br>');
+    };
+    $('#cmap').querySelectorAll('select,input').forEach((el) => (el.onchange = prev)); prev();
+    $('#mgo').onclick = async () => {
+      const m = getMap();
+      if (!m.phones.length) return toast('סמן לפחות עמודת טלפון אחת', true);
+      try {
+        const r = await api('POST', '/api/admin/contacts/import', { rows: p.rows, map: m });
+        toast(`יובאו ${r.imported} אנשי קשר ✓${r.noPhone ? ` (${r.noPhone} בלי טלפון דולגו)` : ''}`, false, 7000);
+        $('#cmap').innerHTML = ''; $('#cfile').value = ''; list();
+      } catch (er) { toast(er.message, true); }
+    };
+  };
+  form(null); list();
 }
 
 function adminWa() {

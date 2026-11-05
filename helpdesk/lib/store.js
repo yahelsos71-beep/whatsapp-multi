@@ -23,7 +23,7 @@ function writeJson(file, value) {
 }
 function flushAll() {
   for (const f of Object.keys(timers)) clearTimeout(timers[f]);
-  try { writeJsonNow('config.json', db.config); writeJsonNow('users.json', db.users); writeJsonNow('tickets.json', db.tickets); writeJsonNow('sessions.json', db.sessions); } catch {}
+  try { writeJsonNow('config.json', db.config); writeJsonNow('users.json', db.users); writeJsonNow('tickets.json', db.tickets); writeJsonNow('sessions.json', db.sessions); writeJsonNow('contacts.json', db.contacts); } catch {}
 }
 
 const DEFAULT_CONFIG = {
@@ -48,6 +48,7 @@ const db = {
   users: readJson('users.json', []),
   tickets: readJson('tickets.json', []),
   sessions: readJson('sessions.json', {}),
+  contacts: readJson('contacts.json', []), // { id, company, name, phones: ['9725...'], source: 'import'|'manual' }
 };
 db.config.ai = Object.assign({}, DEFAULT_CONFIG.ai, db.config.ai);
 db.config.autoReply = Object.assign({}, DEFAULT_CONFIG.autoReply, db.config.autoReply);
@@ -89,5 +90,6 @@ module.exports = {
   saveUsers: () => writeJson('users.json', db.users),
   saveTickets: () => writeJson('tickets.json', db.tickets),
   saveSessions: () => writeJson('sessions.json', db.sessions),
+  saveContacts: () => writeJson('contacts.json', db.contacts),
   flushAll,
 };

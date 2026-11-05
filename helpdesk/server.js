@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const store = require('./lib/store');
 const ga = require('./lib/greenapi');
 const { routeTicket } = require('./lib/ai');
+const { parseSheet } = require('./lib/sheet');
 
 const { db } = store;
 const APP_DIR = __dirname;
@@ -50,14 +51,41 @@ const openTicketFor = (instanceId, chatId) =>
 const isIgnored = (instanceId, chatId) => (db.config.ignoredChats || []).some((x) => x.instanceId === instanceId && x.chatId === chatId);
 const canSee = (user, t) => user.role === 'admin' || t.assigneeId === user.id;
 
+// =====================================================================
+// אנשי קשר (מ-iCount / ידני)
+// =====================================================================
+function normPhone(raw) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.startsWith('0')) d = '972' + d.slice(1);
+  else if (/^5\d{8}$/.test(d) || /^[2-9]\d{7}$/.test(d)) d = '972' + d;
+  return d.length >= 9 ? d : '';
+}
+let contactByPhone = new Map();
+function reindexContacts() {
+  contactByPhone = new Map();
+  for (const c of db.contacts) for (const p of c.phones || []) if (!contactByPhone.has(p)) contactByPhone.set(p, c);
+}
+reindexContacts();
+const contactFor = (phone) => contactByPhone.get(phone) || null;
+function displayName(t) {
+  const c = !t.isGroup && contactFor(t.phone);
+  return c ? (c.name || c.company || t.customerName) : t.customerName;
+}
+
 function summary(t) {
   const msgs = store.messages(t.id);
   const last = [...msgs].reverse().find((m) => m.dir !== 'note' && !m.auto);
   const a = userById(t.assigneeId);
   const d = depById(t.departmentId);
   const inst = instById(t.instanceId);
+  const c = !t.isGroup && contactFor(t.phone);
   return {
     ...t,
+    waName: t.customerName,
+    customerName: c ? (c.name || c.company || t.customerName) : t.customerName,
+    company: c && c.name ? c.company || '' : '',
     assigneeName: a ? a.name : '',
     departmentName: d ? d.name : '',
     instanceName: inst ? inst.name : '',
@@ -138,7 +166,9 @@ function scheduleRouting(t) {
 async function doRouting(t) {
   if (t.status !== 'routing') return;
   const texts = store.messages(t.id).filter((m) => m.dir === 'in').map((m) => (m.senderName ? m.senderName + ': ' : '') + (m.text || `[${m.type}]`)).slice(0, 10);
-  const r = await routeTicket(db.config, { customerName: (t.isGroup ? 'WhatsApp group: ' : '') + t.customerName, texts });
+  const ct = !t.isGroup && contactFor(t.phone);
+  const who = t.isGroup ? 'WhatsApp group: ' + t.customerName : ct ? `${ct.name || t.customerName}${ct.company ? ' (company: ' + ct.company + ')' : ''}` : t.customerName;
+  const r = await routeTicket(db.config, { customerName: who, texts });
   const dep = r.departmentId ? depById(r.departmentId) : null;
   let assignee = dep && userById(dep.userId);
   if (!assignee || assignee.active === false) assignee = admins()[0] || null;
@@ -153,7 +183,8 @@ async function doRouting(t) {
   const ar = db.config.autoReply;
   if (ar.enabled && (!t.isGroup || db.config.groups.autoReply)) {
     const tpl = dep ? ar.routed : ar.unknown;
-    const name = t.customerName && !/^\d+$/.test(t.customerName) ? ' ' + t.customerName.split(' ')[0] : '';
+    const dn = displayName(t);
+    const name = dn && !/^[\d+\s-]+$/.test(dn) && !t.isGroup ? ' ' + dn.split(' ')[0] : '';
     const text = tpl
       .replace(/\{name\}/g, name)
       .replace(/\{agent\}/g, assignee ? assignee.name : '')
@@ -491,9 +522,8 @@ route('POST', /^\/api\/tickets\/new$/, async (req, res, { user }) => {
   const b = await readJson(req);
   const inst = instById(b.instanceId);
   if (!inst) return send(res, 400, { error: 'בחר מספר וואטסאפ' });
-  let phone = String(b.phone || '').replace(/\D/g, '');
-  if (phone.startsWith('0')) phone = '972' + phone.slice(1);
-  if (phone.length < 9) return send(res, 400, { error: 'מספר טלפון לא תקין' });
+  const phone = normPhone(b.phone);
+  if (!phone) return send(res, 400, { error: 'מספר טלפון לא תקין' });
   const chatId = phone + '@c.us';
   let t = openTicketFor(inst.id, chatId);
   if (t && !canSee(user, t)) return send(res, 400, { error: `יש כבר קריאה פתוחה ללקוח הזה אצל ${userById(t.assigneeId)?.name || 'עובד אחר'}` });
@@ -507,6 +537,76 @@ route('POST', /^\/api\/tickets\/new$/, async (req, res, { user }) => {
   emitTicket(t);
   send(res, 200, summary(t));
 });
+
+// ---------- אנשי קשר ----------
+route('GET', /^\/api\/contacts$/, (req, res, { query }) => {
+  const q = String(query.get('q') || '').trim().toLowerCase();
+  const qd = q.replace(/\D/g, '');
+  const qn = qd.length >= 3 ? (qd.startsWith('0') ? qd.slice(1) : qd.startsWith('972') ? qd.slice(3) : qd) : '';
+  let list = db.contacts;
+  if (q) list = list.filter((c) => String(c.company || '').toLowerCase().includes(q) || String(c.name || '').toLowerCase().includes(q) || (qn && (c.phones || []).some((p) => p.includes(qn))));
+  send(res, 200, { total: db.contacts.length, list: list.slice(0, Number(query.get('limit')) || 30) });
+});
+
+// ייבוא: שלב 1 – קריאת הקובץ והצגת העמודות
+route('POST', /^\/api\/admin\/contacts\/parse$/, async (req, res) => {
+  let buf;
+  try { buf = await readBody(req, 30 * 1024 * 1024); } catch { return send(res, 413, { error: 'הקובץ גדול מדי' }); }
+  let rows;
+  try { rows = parseSheet(buf, decodeURIComponent(req.headers['x-file-name'] || '')); } catch (e) { return send(res, 400, { error: e.message }); }
+  if (rows.length < 2) return send(res, 400, { error: 'לא נמצאו שורות בקובץ' });
+  // שורת הכותרות = השורה הראשונה מתוך 10 הראשונות שיש בה הכי הרבה תאים מלאים
+  let h = 0;
+  rows.slice(0, 10).forEach((r, i) => { if (r.filter((c) => String(c).trim()).length > rows[h].filter((c) => String(c).trim()).length) h = i; });
+  const headers = rows[h].map((c) => String(c).trim());
+  const data = rows.slice(h + 1);
+  const find = (re) => headers.findIndex((x) => re.test(x));
+  const guess = {
+    company: find(/חברה|שם לקוח|^לקוח|שם העסק|עסק|company|client/i),
+    name: find(/איש קשר|contact/i),
+    first: find(/שם פרטי|first/i),
+    last: find(/שם משפחה|last/i),
+    phones: headers.map((x, i) => (/טלפון|נייד|פלאפון|סלולר|mobile|phone|tel/i.test(x) ? i : -1)).filter((i) => i >= 0),
+  };
+  if (guess.company < 0) guess.company = find(/שם/);
+  send(res, 200, { headers, rows: data, guess });
+}, { auth: 'admin' });
+
+// ייבוא: שלב 2 – שמירת אנשי הקשר לפי מיפוי העמודות
+route('POST', /^\/api\/admin\/contacts\/import$/, async (req, res) => {
+  const b = await readBody(req, 40 * 1024 * 1024).then((x) => JSON.parse(x.toString('utf8')));
+  const m = b.map || {};
+  const cell = (r, i) => (i >= 0 && r[i] != null ? String(r[i]).trim() : '');
+  const imported = [];
+  let noPhone = 0;
+  for (const r of b.rows || []) {
+    const phones = [...new Set((m.phones || []).flatMap((i) => cell(r, i).split(/[,;/]| או /)).map(normPhone).filter(Boolean))];
+    if (!phones.length) { noPhone++; continue; }
+    const name = cell(r, m.name) || [cell(r, m.first), cell(r, m.last)].filter(Boolean).join(' ');
+    imported.push({ id: store.newId(), company: cell(r, m.company), name, phones, source: 'import' });
+  }
+  const manual = db.contacts.filter((c) => c.source !== 'import');
+  db.contacts = b.replace === false ? [...db.contacts, ...imported] : [...manual, ...imported];
+  reindexContacts(); store.saveContacts();
+  send(res, 200, { imported: imported.length, noPhone, total: db.contacts.length });
+}, { auth: 'admin' });
+
+route('POST', /^\/api\/admin\/contacts$/, async (req, res) => {
+  const b = await readJson(req);
+  const phones = [...new Set(String(b.phones || '').split(/[,;\n]/).map(normPhone).filter(Boolean))];
+  if (!phones.length) return send(res, 400, { error: 'צריך לפחות מספר טלפון אחד תקין' });
+  let c = b.id && db.contacts.find((x) => x.id === b.id);
+  if (!c) { c = { id: store.newId(), source: 'manual' }; db.contacts.push(c); }
+  Object.assign(c, { company: String(b.company || ''), name: String(b.name || ''), phones });
+  reindexContacts(); store.saveContacts();
+  send(res, 200, c);
+}, { auth: 'admin' });
+
+route('DELETE', /^\/api\/admin\/contacts\/(\w+)$/, (req, res, { params }) => {
+  db.contacts = db.contacts.filter((c) => c.id !== params[0]);
+  reindexContacts(); store.saveContacts();
+  send(res, 200, { ok: true });
+}, { auth: 'admin' });
 
 // ---------- ניהול (מנהל בלבד) ----------
 route('GET', /^\/api\/admin\/config$/, (req, res) => send(res, 200, { config: adminConfigView(), users: db.users.map(publicUser), instances: instancesStatus() }), { auth: 'admin' });
@@ -642,11 +742,11 @@ process.on('unhandledRejection', (e) => log('unhandled', e && (e.stack || e.mess
 const PORT = Number(process.env.HD_PORT) || db.config.port || 8080;
 const HOST = process.env.HD_HOST || db.config.host || '127.0.0.1';
 server.on('error', (e) => {
-  if (e.code === 'EADDRINUSE') { log(`הפורט ${PORT} תפוס – כנראה שהשרת כבר פועל.`); process.exit(10); }
+  if (e.code === 'EADDRINUSE') { log(`Port ${PORT} is busy - the server is probably already running.`); process.exit(10); }
   log('server error', e.message); process.exit(1);
 });
 server.listen(PORT, HOST, () => {
-  log(`מוקד וואטסאפ v${VERSION} פועל: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+  log(`WhatsApp Helpdesk v${VERSION} running: http://localhost:${PORT}${HOST === '0.0.0.0' ? ' (open to the office network)' : ' (this server only)'}`);
   startPollers();
   for (const t of db.tickets) if (t.status === 'routing') scheduleRouting(t);
   refreshStates();
