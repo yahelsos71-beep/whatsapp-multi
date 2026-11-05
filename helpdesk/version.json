@@ -1,15 +1,15 @@
 {
-  "version": 4,
+  "version": 5,
   "files": {
-    "server.js": "002029ffdffa93043b217dffb69e6e01c7e1f4001cad664b1a4881c1c2cea5b3",
-    "lib/ai.js": "20a1226d49e5d5d2236a83553be39333900cca9dd2438a18d4769b8f613979bd",
+    "server.js": "9748dec21025c09233f1646d1513378d62e53f285a69269f451ef4121b5a3c17",
+    "lib/ai.js": "a86761c5735519efe6d73fff0f2450800a36a5a8ed816ca41ef898fbe53a80c3",
     "lib/greenapi.js": "1b64d4d76dca289fe55bde7133e616449d31245ea803ab562bab423357504c84",
     "lib/sheet.js": "837e53085b7ee0da1c4816ea15d6d6bb5dfb8bd90d0b20266bcb231104eda5ed",
-    "lib/store.js": "1a85d6ddd0d9a15de78fa56d0afe461b6cca6e6f3cadcc8526cb0633740e1798",
-    "public/app.js": "3cdbb60c8f37dfb1c3a316ca7323f665761bbeb60f7f16a25467c84b9421b134",
+    "lib/store.js": "a2d6a297c10e9035fdd917f949f9283a16862ff51d2517366a00425e5ade67b6",
+    "public/app.js": "fc842a0e047c9c411106facae13df9eddfd9e7ad70a576e576d817f41cef84a2",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "7de67381b74a1fc0d4674c8919c39052de9e5f67fd0415b9020f0293983f9f76"
   },
-  "notes": "קיבוע קבוצה לעובד + קריאה לעובד"
+  "notes": "עוזר AI שמתכתב עם הלקוח + קבוצות עובדים דו-כיווניות"
 }

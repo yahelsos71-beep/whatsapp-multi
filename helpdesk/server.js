@@ -7,7 +7,7 @@ const path = require('path');
 const crypto = require('crypto');
 const store = require('./lib/store');
 const ga = require('./lib/greenapi');
-const { routeTicket } = require('./lib/ai');
+const { routeTicket, intake } = require('./lib/ai');
 const { parseSheet } = require('./lib/sheet');
 
 const { db } = store;
@@ -49,6 +49,25 @@ const ticketById = (id) => db.tickets.find((t) => t.id === String(id));
 const openTicketFor = (instanceId, chatId) =>
   db.tickets.find((t) => t.instanceId === instanceId && t.chatId === chatId && t.status !== 'closed');
 const ruleFor = (instanceId, chatId) => (db.config.chatRules || []).find((x) => x.instanceId === instanceId && x.chatId === chatId);
+// בקבוצה משותפת עם עובד (חיים+חני): התור עובר למי שצריך לענות – מי שכתב, הקריאה עוברת לשני
+function pinnedPeer(t, fromUserId) {
+  const r = t.isGroup && ruleFor(t.instanceId, t.chatId);
+  if (!r) return null;
+  const emp = userById(r.userId);
+  const boss = userById(r.ownerId) || admins()[0];
+  if (!emp || !boss || emp.id === boss.id) return null;
+  return fromUserId === emp.id ? boss : emp;
+}
+function handTo(t, peer) {
+  if (!peer) return false;
+  const old = t.assigneeId;
+  t.assigneeId = peer.id;
+  const dep = db.config.departments.find((d) => d.userId === peer.id);
+  t.departmentId = dep ? dep.id : null;
+  if (old && old !== peer.id && userById(old)?.role !== 'admin') sendTo(old, { type: 'remove', id: t.id });
+  t.awaiting = true; t.lastInAt = now();
+  return old !== peer.id;
+}
 const staffByPhone = (phone) => phone && db.users.find((u) => u.active !== false && u.phone && u.phone === phone);
 const isIgnored = (instanceId, chatId) => (db.config.ignoredChats || []).some((x) => x.instanceId === instanceId && x.chatId === chatId);
 const canSee = (user, t) => user.role === 'admin' || t.assigneeId === user.id;
@@ -160,53 +179,99 @@ function emitAll(ev) { for (const id of clients.keys()) sendTo(id, ev); }
 // ניתוב בעזרת AI + מענה אוטומטי
 // =====================================================================
 const routingTimers = new Map();
-function scheduleRouting(t) {
-  if (routingTimers.has(t.id)) return;
-  const delay = Math.max(0, (db.config.routeDelaySec ?? 15) * 1000 - (now() - t.createdAt));
-  routingTimers.set(t.id, setTimeout(() => { routingTimers.delete(t.id); doRouting(t).catch((e) => log('routing error', e.message)); }, delay));
+const routingBusy = new Map(); // ticketId -> rerun requested
+function clearRouting(t) { clearTimeout(routingTimers.get(t.id)); routingTimers.delete(t.id); }
+// delayMs לא מוגדר = ההמתנה הראשונה (routeDelaySec מרגע פתיחת הקריאה)
+function scheduleRouting(t, delayMs, opts = {}) {
+  clearRouting(t);
+  const delay = delayMs ?? Math.max(0, (db.config.routeDelaySec ?? 15) * 1000 - (now() - t.createdAt));
+  routingTimers.set(t.id, setTimeout(() => { routingTimers.delete(t.id); runRouting(t, opts); }, delay));
+}
+async function runRouting(t, opts) {
+  if (routingBusy.has(t.id)) { routingBusy.set(t.id, true); return; } // כבר רץ – נריץ שוב בסוף
+  routingBusy.set(t.id, false);
+  try { await doRouting(t, opts); } catch (e) { log('routing error', e.message); }
+  const again = routingBusy.get(t.id);
+  routingBusy.delete(t.id);
+  if (again && t.status === 'routing') scheduleRouting(t, 1000);
 }
 
-async function doRouting(t) {
-  if (t.status !== 'routing') return;
-  const texts = store.messages(t.id).filter((m) => m.dir === 'in').map((m) => (m.senderName ? m.senderName + ': ' : '') + (m.text || `[${m.type}]`)).slice(0, 10);
+const useIntake = (t) => !t.isGroup && db.config.ai.enabled && db.config.ai.apiKey && db.config.ai.intake !== false;
+const whoIs = (t) => {
   const ct = !t.isGroup && contactFor(t.phone);
-  const who = t.isGroup ? 'WhatsApp group: ' + t.customerName : ct ? `${ct.name || t.customerName}${ct.company ? ' (company: ' + ct.company + ')' : ''}` : t.customerName;
-  const r = await routeTicket(db.config, { customerName: who, texts });
-  const dep = r.departmentId ? depById(r.departmentId) : null;
+  return t.isGroup ? 'WhatsApp group: ' + t.customerName : ct ? `${ct.name || t.customerName}${ct.company ? ' (company: ' + ct.company + ')' : ''}` : t.customerName;
+};
+
+async function doRouting(t, { force = false } = {}) {
+  if (t.status !== 'routing') return;
+  if (!useIntake(t)) {
+    // ניתוב רגיל (קבוצות / בלי עוזר AI): סיווג אחד ומענה מתבנית
+    const texts = store.messages(t.id).filter((m) => m.dir === 'in').map((m) => (m.senderName ? m.senderName + ': ' : '') + (m.text || `[${m.type}]`)).slice(0, 10);
+    const r = await routeTicket(db.config, { customerName: whoIs(t), texts });
+    return finishRouting(t, r.departmentId, r.reason, '', '');
+  }
+  // עוזר AI: מתכתב עם הלקוח עד שברור לאן לנתב
+  const transcript = store.messages(t.id).filter((m) => m.dir !== 'note').slice(-30).map((m) => {
+    const who = m.dir === 'in' ? 'לקוח' : m.aiBot ? 'עוזר' : 'נציג';
+    return `${who}: ${m.text || `[${{ image: 'תמונה', video: 'וידאו', audio: 'הקלטה קולית', file: 'קובץ', location: 'מיקום' }[m.type] || m.type}]`}`;
+  }).join('\n');
+  const maxTurns = Math.max(0, Math.min(6, Number(db.config.ai.maxQuestions ?? 3)));
+  const turns = t.aiTurns || 0;
+  const r = await intake(db.config, { customerName: whoIs(t), transcript, turns, maxTurns, force });
+  if (t.status !== 'routing') return; // בינתיים עובד לקח את השיחה
+  if (r.action === 'ask' && r.reply) {
+    t.aiTurns = turns + 1;
+    t.aiGuess = r.departmentId;
+    try { await sendText(t, r.reply, null, { auto: true, byName: '🤖 עוזר AI', aiBot: true }); }
+    catch (e) { note(t, '⚠️ שאלת העוזר לא נשלחה: ' + e.message); return finishRouting(t, r.departmentId, 'השליחה נכשלה', '', ''); }
+    // אם הלקוח לא עונה – מנתבים לפי מה שידוע
+    scheduleRouting(t, Math.max(1, Number(db.config.ai.waitMinutes ?? 10)) * 60000, { force: true });
+    emitTicket(t);
+    return;
+  }
+  const dep = r.departmentId || (force ? t.aiGuess : null) || null;
+  const reason = r.error ? `(${r.error})` : force && !r.reply ? 'הלקוח לא ענה – נותב לפי מה שידוע' : '';
+  return finishRouting(t, dep, reason, r.summary, r.error ? '' : r.reply);
+}
+
+async function finishRouting(t, departmentId, reason, summary, aiReply) {
+  clearRouting(t);
+  const dep = departmentId ? depById(departmentId) : null;
   let assignee = dep && userById(dep.userId);
   if (!assignee || assignee.active === false) assignee = admins()[0] || null;
   t.departmentId = dep ? dep.id : null;
   t.assigneeId = assignee ? assignee.id : null;
-  t.aiReason = r.reason;
+  t.aiReason = reason;
+  t.aiSummary = summary || '';
   t.status = 'open';
-  note(t, dep ? `🤖 נותב ל${assignee ? assignee.name : '?'} (${dep.name}) – ${r.reason}` : `🤖 לא זוהתה מחלקה – הועבר ל${assignee ? assignee.name : 'מנהל'}. ${r.reason}`);
+  note(t, (dep ? `🤖 נותב ל${assignee ? assignee.name : '?'} (${dep.name})` : `🤖 לא זוהתה מחלקה – הועבר ל${assignee ? assignee.name : 'מנהל'}`) + (reason ? ` – ${reason}` : ''));
+  if (summary) note(t, '📝 סיכום הפנייה: ' + summary);
   emitTicket(t, { sound: 'new' });
   log(`ticket #${t.id} routed -> ${assignee && assignee.name} (${dep ? dep.name : 'unknown'})`);
 
   const ar = db.config.autoReply;
-  if (ar.enabled && (!t.isGroup || db.config.groups.autoReply)) {
+  if (!ar.enabled || (t.isGroup && !db.config.groups.autoReply)) return;
+  let text = aiReply;
+  if (!text) {
     const tpl = dep ? ar.routed : ar.unknown;
     const dn = displayName(t);
     const name = dn && !/^[\d+\s-]+$/.test(dn) && !t.isGroup ? ' ' + dn.split(' ')[0] : '';
-    const text = tpl
-      .replace(/\{name\}/g, name)
-      .replace(/\{agent\}/g, assignee ? assignee.name : '')
-      .replace(/\{department\}/g, dep ? dep.name : '')
-      .replace(/\{company\}/g, db.config.companyName || '');
-    try { await sendText(t, text, null, { auto: true }); } catch (e) { note(t, '⚠️ המענה האוטומטי לא נשלח: ' + e.message); }
+    text = tpl.replace(/\{name\}/g, name).replace(/\{agent\}/g, dep ? dep.name : '').replace(/\{department\}/g, dep ? dep.name : '').replace(/\{company\}/g, db.config.companyName || '');
   }
+  try { await sendText(t, text, null, { auto: true, byName: aiReply ? '🤖 עוזר AI' : 'מענה אוטומטי', aiBot: !!aiReply }); }
+  catch (e) { note(t, '⚠️ המענה האוטומטי לא נשלח: ' + e.message); }
 }
 
 // =====================================================================
 // שליחה
 // =====================================================================
 const sentIds = new Set();
-async function sendText(t, text, user, { auto = false } = {}) {
+async function sendText(t, text, user, { auto = false, byName = null, aiBot = false } = {}) {
   const inst = instById(t.instanceId);
   if (!inst) throw new Error('המספר של הקריאה לא מוגדר');
   const r = await ga.sendMessage(inst, t.chatId, text);
   if (r && r.idMessage) sentIds.add(r.idMessage);
-  const msg = addMessage(t, { dir: 'out', type: 'text', text, idMessage: r && r.idMessage, byUserId: user ? user.id : null, byName: user ? user.name : 'מענה אוטומטי', auto, status: 'sent' });
+  const msg = addMessage(t, { dir: 'out', type: 'text', text, idMessage: r && r.idMessage, byUserId: user ? user.id : null, byName: user ? user.name : byName || 'מענה אוטומטי', auto, aiBot, status: 'sent' });
   if (!auto) { t.awaiting = false; t.lastOutAt = now(); }
   emitTicket(t);
   return msg;
@@ -274,6 +339,13 @@ async function handleNotification(inst, body) {
   const senderPhone = String(sd.sender || '').split('@')[0];
   const staff = isGroup && staffByPhone(senderPhone);
   addMessage(t, { ...m, dir: 'in', ts, idMessage: body.idMessage, ...(isGroup ? { senderName: staff ? staff.name : sd.senderContactName || sd.senderName || senderPhone, staff: !!staff } : {}) });
+  const peer = pinnedPeer(t, staff ? staff.id : null);
+  if (peer) {
+    // קבוצה משותפת עם עובד: מי שכתב – התור עובר לשני (חני כתבה → לחיים; חיים כתב → לחני)
+    const changed = handTo(t, peer);
+    emitTicket(t, { sound: changed ? 'new' : 'msg' });
+    return;
+  }
   if (staff && staff.id === t.assigneeId) {
     // העובד עצמו ענה בקבוצה מהטלפון שלו – נחשב כתשובה
     t.awaiting = false; t.lastOutAt = ts;
@@ -283,7 +355,7 @@ async function handleNotification(inst, body) {
   t.awaiting = true;
   t.lastInAt = ts;
   emitTicket(t, { sound: isNew ? null : 'msg' });
-  if (t.status === 'routing') scheduleRouting(t);
+  if (t.status === 'routing') scheduleRouting(t, t.aiTurns ? Math.max(2, Number(db.config.ai.replyDelaySec ?? 8)) * 1000 : undefined);
 }
 
 const pollers = new Map(); // instId -> { stop }
@@ -363,7 +435,7 @@ function adminConfigView() {
   return {
     companyName: c.companyName, host: c.host, port: c.port, routeDelaySec: c.routeDelaySec,
     departments: c.departments,
-    ai: { enabled: c.ai.enabled, model: c.ai.model, apiKey: mask(c.ai.apiKey) },
+    ai: { enabled: c.ai.enabled, model: c.ai.model, apiKey: mask(c.ai.apiKey), intake: c.ai.intake !== false, maxQuestions: c.ai.maxQuestions ?? 3, waitMinutes: c.ai.waitMinutes ?? 10, replyDelaySec: c.ai.replyDelaySec ?? 8 },
     autoReply: c.autoReply,
     groups: c.groups,
     ignoredChats: c.ignoredChats,
@@ -466,8 +538,19 @@ route('POST', /^\/api\/tickets\/(\d+)\/send$/, async (req, res, { user, params }
   const b = await readJson(req);
   const text = String(b.text || '').trim();
   if (!text) return send(res, 400, { error: 'הודעה ריקה' });
-  try { send(res, 200, await sendText(t, text, user)); }
-  catch (e) { send(res, 502, { error: 'השליחה נכשלה: ' + e.message }); }
+  if (t.status === 'routing') {
+    // עובד ענה בזמן שהעוזר מתכתב – העובד לוקח את השיחה
+    clearRouting(t);
+    t.status = 'open';
+    if (!t.assigneeId) t.assigneeId = user.id;
+    note(t, `👤 ${user.name} לקח/ה את השיחה מהעוזר`);
+  }
+  try {
+    const msg = await sendText(t, text, user);
+    const peer = pinnedPeer(t, user.id);
+    if (peer && peer.id !== user.id) { const changed = handTo(t, peer); emitTicket(t, { sound: changed ? 'new' : 'msg' }); }
+    send(res, 200, msg);
+  } catch (e) { send(res, 502, { error: 'השליחה נכשלה: ' + e.message }); }
 });
 
 route('POST', /^\/api\/tickets\/(\d+)\/upload$/, async (req, res, { user, params }) => {
@@ -500,7 +583,7 @@ route('POST', /^\/api\/tickets\/(\d+)\/transfer$/, async (req, res, { user, para
   t.assigneeId = to.id;
   const dep = db.config.departments.find((d) => d.userId === to.id);
   if (dep) t.departmentId = dep.id;
-  if (t.status === 'routing') { t.status = 'open'; clearTimeout(routingTimers.get(t.id)); routingTimers.delete(t.id); }
+  if (t.status === 'routing') { t.status = 'open'; clearRouting(t); }
   note(t, `↪️ ${user.name} העביר/ה את השיחה ${from ? 'מ' + from.name + ' ' : ''}ל${to.name}${b.note ? ': ' + b.note : ''}`);
   if (oldAssignee && oldAssignee !== to.id && userById(oldAssignee)?.role !== 'admin') sendTo(oldAssignee, { type: 'remove', id: t.id });
   emitTicket(t, { sound: 'new' });
@@ -534,12 +617,12 @@ route('POST', /^\/api\/tickets\/(\d+)\/pin$/, async (req, res, { user, params })
   db.config.chatRules = db.config.chatRules.filter((x) => !(x.instanceId === t.instanceId && x.chatId === t.chatId));
   const to = b.userId && userById(b.userId);
   if (to) {
-    db.config.chatRules.push({ instanceId: t.instanceId, chatId: t.chatId, name: t.customerName, isGroup: !!t.isGroup, userId: to.id });
+    db.config.chatRules.push({ instanceId: t.instanceId, chatId: t.chatId, name: t.customerName, isGroup: !!t.isGroup, userId: to.id, ownerId: user.id });
     note(t, `📌 ${user.name} קיבע/ה את ${t.isGroup ? 'הקבוצה' : 'הצ\'אט'} ל${to.name}`);
     if (t.status !== 'closed' && t.assigneeId !== to.id) {
       const old = t.assigneeId;
       t.assigneeId = to.id;
-      if (t.status === 'routing') { t.status = 'open'; clearTimeout(routingTimers.get(t.id)); routingTimers.delete(t.id); }
+      if (t.status === 'routing') { t.status = 'open'; clearRouting(t); }
       const dep = db.config.departments.find((d) => d.userId === to.id);
       if (dep) t.departmentId = dep.id;
       if (old && userById(old)?.role !== 'admin') sendTo(old, { type: 'remove', id: t.id });
@@ -688,9 +771,15 @@ route('POST', /^\/api\/admin\/config$/, async (req, res) => {
   if (b.host) c.host = b.host === '0.0.0.0' ? '0.0.0.0' : '127.0.0.1';
   if (b.port) c.port = Number(b.port) || 8080;
   if (Array.isArray(b.departments)) {
-    c.departments = b.departments.map((d) => ({ id: d.id || store.newId(), name: String(d.name || ''), description: String(d.description || ''), userId: d.userId || null })).filter((d) => d.name);
+    c.departments = b.departments.map((d) => ({ id: d.id || store.newId(), name: String(d.name || ''), description: String(d.description || ''), questions: String(d.questions || ''), userId: d.userId || null })).filter((d) => d.name);
   }
-  if (b.ai) c.ai = { enabled: !!b.ai.enabled, model: b.ai.model || 'claude-opus-5-5', apiKey: unmask(b.ai.apiKey, c.ai.apiKey) || '' };
+  if (b.ai) c.ai = {
+    enabled: !!b.ai.enabled, model: b.ai.model || 'claude-opus-5-5', apiKey: unmask(b.ai.apiKey, c.ai.apiKey) || '',
+    intake: b.ai.intake !== false,
+    maxQuestions: Math.max(0, Math.min(6, Number(b.ai.maxQuestions ?? 3))),
+    waitMinutes: Math.max(1, Math.min(120, Number(b.ai.waitMinutes ?? 10))),
+    replyDelaySec: Math.max(2, Math.min(60, Number(b.ai.replyDelaySec ?? 8))),
+  };
   if (b.groups) c.groups = { enabled: !!b.groups.enabled, autoReply: !!b.groups.autoReply };
   if (Array.isArray(b.chatRules)) c.chatRules = c.chatRules.filter((x) => b.chatRules.some((y) => y.chatId === x.chatId && y.instanceId === x.instanceId));
   if (Array.isArray(b.ignoredChats)) c.ignoredChats = c.ignoredChats.filter((x) => b.ignoredChats.some((y) => y.chatId === x.chatId && y.instanceId === x.instanceId));
@@ -818,7 +907,10 @@ server.on('error', (e) => {
 server.listen(PORT, HOST, () => {
   log(`WhatsApp Helpdesk v${VERSION} running: http://localhost:${PORT}${HOST === '0.0.0.0' ? ' (open to the office network)' : ' (this server only)'}`);
   startPollers();
-  for (const t of db.tickets) if (t.status === 'routing') scheduleRouting(t);
+  for (const t of db.tickets) if (t.status === 'routing') {
+    if (t.aiTurns) scheduleRouting(t, Math.max(1, Number(db.config.ai.waitMinutes ?? 10)) * 60000, { force: true }); // מחכים לתשובת הלקוח
+    else scheduleRouting(t);
+  }
   refreshStates();
   setInterval(refreshStates, 2 * 60 * 1000);
   if (!process.env.HD_NO_UPDATE) { setTimeout(checkUpdate, 30 * 1000); setInterval(checkUpdate, 60 * 60 * 1000); }

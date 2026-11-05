@@ -32,14 +32,14 @@ const DEFAULT_CONFIG = {
   companyName: 'המשרד',
   instances: [], // { id, name, idInstance, token, apiUrl, mediaUrl, enabled }
   departments: [], // { id, name, description, userId }
-  ai: { enabled: true, apiKey: '', model: 'claude-opus-5-5' },
+  ai: { enabled: true, apiKey: '', model: 'claude-opus-5-5', intake: true, maxQuestions: 3, waitMinutes: 10, replyDelaySec: 8 },
   routeDelaySec: 15, // מחכים כמה שניות להודעות נוספות לפני ניתוב
   groups: { enabled: true, autoReply: false }, // הודעות מקבוצות פותחות קריאות; בלי מענה אוטומטי לקבוצה
   ignoredChats: [], // { instanceId, chatId, name } – צ'אטים/קבוצות שלא פותחים מהם קריאות
   chatRules: [], // { instanceId, chatId, name, isGroup, userId } – צ'אט/קבוצה שמשויכים קבוע לעובד
   autoReply: {
     enabled: true,
-    routed: 'שלום{name}, קיבלנו את פנייתך 🙏\nהיא הועברה ל{agent} ({department}). נחזור אליך בהקדם.',
+    routed: 'שלום{name}, קיבלנו את פנייתך 🙏\nנפתחה קריאה ל{department}. נחזור אליך בהקדם.',
     unknown: 'שלום{name}, קיבלנו את פנייתך 🙏\nנחזור אליך בהקדם.',
   },
 };
@@ -54,6 +54,15 @@ const db = {
 db.config.ai = Object.assign({}, DEFAULT_CONFIG.ai, db.config.ai);
 db.config.autoReply = Object.assign({}, DEFAULT_CONFIG.autoReply, db.config.autoReply);
 db.config.groups = Object.assign({}, DEFAULT_CONFIG.groups, db.config.groups);
+// עדכון הגדרות ישנות: בלי שם עובד בהודעה ללקוח, ושאלות מקדימות ברירת מחדל
+if (/\{agent\}/.test(db.config.autoReply.routed)) db.config.autoReply.routed = DEFAULT_CONFIG.autoReply.routed;
+const DEFAULT_QUESTIONS = [
+  [/מרכזי/, 'איזה קו / שלוחה? מה בדיוק לא עובד (שיחות נכנסות, יוצאות, העברות, הקלטות, תפריט קולי)? ממתי זה קורה? זה קורה לכולם או רק לשלוחה אחת? משהו השתנה לאחרונה?'],
+  [/מחשוב|מחשב/, 'איזה מכשיר או תוכנה (מחשב, מדפסת, אינטרנט, מייל, תוכנה מסוימת)? מה בדיוק קורה? יש הודעת שגיאה (אפשר לשלוח צילום מסך)? ממתי? זה קורה רק אצלך או גם לאחרים? ניסית כבר להפעיל מחדש?'],
+];
+for (const d of db.config.departments || []) {
+  if (d.questions === undefined) { const q = DEFAULT_QUESTIONS.find(([re]) => re.test(d.name)); d.questions = q ? q[1] : ''; }
+}
 db.config.ignoredChats = db.config.ignoredChats || [];
 db.config.chatRules = db.config.chatRules || [];
 

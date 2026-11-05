@@ -253,7 +253,7 @@ function renderList() {
         <div class="row3">
           <span class="chip">#${t.id}</span>${t.isGroup ? '<span class="chip">👥 קבוצה</span>' : ''}${t.company ? `<span class="chip dep">🏢 ${esc(t.company)}</span>` : ''}
           ${t.instanceName ? `<span class="chip">📱 ${esc(t.instanceName)}</span>` : ''}
-          ${t.status === 'routing' ? '<span class="chip">🤖 מנתב...</span>' : t.departmentName ? `<span class="chip dep">${esc(t.departmentName)}</span>` : ''}
+          ${t.status === 'routing' ? `<span class="chip">🤖 ${t.aiTurns ? 'העוזר מברר עם הלקוח...' : 'מנתב...'}</span>` : t.departmentName ? `<span class="chip dep">${esc(t.departmentName)}</span>` : ''}
           ${S.me.role === 'admin' && t.assigneeName ? `<span class="chip who">👤 ${esc(t.assigneeName)}</span>` : ''}
           ${t.awaiting ? `<span class="chip waittime">⏳ ${waitText(wait)}</span>` : ''}
         </div>
@@ -573,6 +573,8 @@ function adminDeps() {
         <div><label>העובד שמקבל את הפניות</label><select data-i="${i}" data-f="userId">${userOptions(d.userId)}</select></div></div>
         <label>במה המחלקה מטפלת? (בשביל ה-AI – כמה שיותר דוגמאות)</label>
         <textarea data-i="${i}" data-f="description" rows="2" placeholder="חשבוניות, קבלות, תשלומים, חובות, החזרים, הצעות מחיר">${esc(d.description)}</textarea>
+        <label>שאלות מקדימות שהעוזר ישאל כשיש תקלה (לא חובה)</label>
+        <textarea data-i="${i}" data-f="questions" rows="2" placeholder="למשל: איזה מכשיר? מה בדיוק קורה? יש הודעת שגיאה? ממתי?">${esc(d.questions || '')}</textarea>
         <div class="row" style="margin-top:6px"><button class="ghost" data-del="${i}">🗑️ מחק מחלקה</button></div></div>`).join('')}
       <div class="row"><button id="addDep">+ הוסף מחלקה</button><span style="flex:1"></span><button class="primary" id="saveDeps">💾 שמור</button></div>`;
     $('#apane').querySelectorAll('[data-f]').forEach((el) => (el.oninput = el.onchange = () => (deps[el.dataset.i][el.dataset.f] = el.value)));
@@ -723,16 +725,23 @@ function adminAi() {
     <div class="grid2"><div><label>מפתח API של Anthropic</label><input id="aiKey" dir="ltr" value="${esc(c.ai.apiKey)}" placeholder="sk-ant-..."></div>
     <div><label>מודל</label><input id="aiModel" dir="ltr" value="${esc(c.ai.model)}"></div></div>
     <div class="hint">את המפתח יוצרים ב-console.anthropic.com ← API Keys. הניתוב עולה בערך אגורות בודדות לפנייה.</div>
+    <h4>💬 עוזר AI שמתכתב עם הלקוח</h4>
+    <label class="check"><input type="checkbox" id="aiIntake" ${c.ai.intake !== false ? 'checked' : ''}> לפני פתיחת קריאה – העוזר מברר עם הלקוח במה מדובר, ובתקלה שואל שאלות מקדימות</label>
+    <div class="grid2"><div><label>מקסימום שאלות לפני ניתוב</label><input id="aiMaxQ" type="number" min="0" max="6" value="${c.ai.maxQuestions ?? 3}"></div>
+    <div><label>אם הלקוח לא עונה – לנתב אחרי (דקות)</label><input id="aiWait" type="number" min="1" max="120" value="${c.ai.waitMinutes ?? 10}"></div></div>
+    <div class="hint">העוזר כותב בעברית, בקצרה ובטון חברי, לא מזכיר שמות עובדים, ואת השאלות המקדימות לוקח מ"מחלקות וניתוב". בקבוצות הוא לא כותב.<br>
+    עובד שעונה ללקוח בזמן שהעוזר מתכתב – לוקח את השיחה, והעוזר מפסיק.</div>
     <div class="row"><input id="aiTest" style="flex:1" placeholder="נסה: 'המרכזייה לא מעבירה שיחות לשלוחה 3'"><button id="aiTestBtn">🧪 בדוק ניתוב</button></div>
     <div class="hint" id="aiRes"></div>
     <h4>💬 הודעה אוטומטית ללקוח</h4>
     <label class="check"><input type="checkbox" id="arOn" ${c.autoReply.enabled ? 'checked' : ''}> לשלוח הודעה אוטומטית כשנפתחת קריאה</label>
+    <div class="hint">ההודעות האלה נשלחות רק כשהעוזר כבוי או לא זמין (כשהעוזר פעיל – הוא כותב את ההודעה בעצמו).</div>
     <label>כשזוהתה מחלקה</label><textarea id="arRouted" rows="3">${esc(c.autoReply.routed)}</textarea>
     <label>כשלא זוהתה מחלקה</label><textarea id="arUnknown" rows="3">${esc(c.autoReply.unknown)}</textarea>
-    <div class="hint">אפשר להשתמש ב: <code>{name}</code> שם הלקוח · <code>{agent}</code> שם העובד · <code>{department}</code> המחלקה · <code>{company}</code> שם החברה</div>
+    <div class="hint">אפשר להשתמש ב: <code>{name}</code> שם הלקוח · <code>{department}</code> המחלקה · <code>{company}</code> שם החברה</div>
     <div class="row"><span style="flex:1"></span><button class="primary" id="aiSave">💾 שמור</button></div>`;
   $('#aiSave').onclick = () => saveConfig({
-    ai: { enabled: $('#aiOn').checked, apiKey: $('#aiKey').value.trim(), model: $('#aiModel').value.trim() },
+    ai: { enabled: $('#aiOn').checked, apiKey: $('#aiKey').value.trim(), model: $('#aiModel').value.trim(), intake: $('#aiIntake').checked, maxQuestions: +$('#aiMaxQ').value, waitMinutes: +$('#aiWait').value, replyDelaySec: c.ai.replyDelaySec ?? 8 },
     autoReply: { enabled: $('#arOn').checked, routed: $('#arRouted').value, unknown: $('#arUnknown').value },
   });
   $('#aiTestBtn').onclick = async () => {
