@@ -36,6 +36,11 @@ const DEFAULT_CONFIG = {
   routeDelaySec: 15, // מחכים כמה שניות להודעות נוספות לפני ניתוב
   groups: { enabled: true, autoReply: false }, // הודעות מקבוצות פותחות קריאות; בלי מענה אוטומטי לקבוצה
   ignoredChats: [], // { instanceId, chatId, name } – צ'אטים/קבוצות שלא פותחים מהם קריאות
+  hours: {
+    enabled: true, tz: 'Asia/Jerusalem', days: [0, 1, 2, 3, 4], start: '08:15', end: '17:00',
+    message: 'שלום{name} 🙏\nהמשרד סגור כעת. אנו פתוחים בימים א׳–ה׳ בין 8:15 ל-17:00.\nלפתיחת קריאה מחוץ לשעות הפעילות אנא התקשרו ל-\u200E*8349',
+  },
+  quietMinutes: 30, // אחרי שעובד ענה ללקוח – הבוט שותק כך וכך דקות
   chatRules: [], // { instanceId, chatId, name, isGroup, userId } – צ'אט/קבוצה שמשויכים קבוע לעובד
   autoReply: {
     enabled: true,
@@ -65,6 +70,8 @@ for (const d of db.config.departments || []) {
 }
 db.config.ignoredChats = db.config.ignoredChats || [];
 db.config.chatRules = db.config.chatRules || [];
+db.config.hours = Object.assign({}, DEFAULT_CONFIG.hours, db.config.hours);
+if (db.config.quietMinutes === undefined) db.config.quietMinutes = 30;
 
 const newId = () => crypto.randomBytes(6).toString('hex');
 

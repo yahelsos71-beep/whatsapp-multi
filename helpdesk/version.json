@@ -1,15 +1,15 @@
 {
-  "version": 7,
+  "version": 8,
   "files": {
-    "server.js": "1501542dea66b2c8fed031209811c9cb181de1fecc3763f17bae540e2b32fa4f",
+    "server.js": "e41d8cf425538495e5a5fc2a467c0dd562e73f4de5aaa818f665b7f16c61007f",
     "lib/ai.js": "a86761c5735519efe6d73fff0f2450800a36a5a8ed816ca41ef898fbe53a80c3",
     "lib/greenapi.js": "ee05b33cadff22e32cb75089bdf32b5f2abb22b047615e82e8adeb555305d482",
     "lib/sheet.js": "837e53085b7ee0da1c4816ea15d6d6bb5dfb8bd90d0b20266bcb231104eda5ed",
-    "lib/store.js": "a2d6a297c10e9035fdd917f949f9283a16862ff51d2517366a00425e5ade67b6",
-    "public/app.js": "5a15566dbb6dda0e7e7fa31353b1c08be62d475e2588531505a2c1d2b8b266f0",
+    "lib/store.js": "68bbf9ef020e38db255be8a6394cca9110258cdc5254badf893484116e4408c9",
+    "public/app.js": "2d90a8107730289f62347b9f02f694a0a16bb7b7785035aa492ba4e85459ae73",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "bf8e9ea263a56434377b2e6fee76da0a7919e1ecfd1826fae127d79cad27b446"
   },
-  "notes": "דשבורד למנהל"
+  "notes": "שעות פעילות + הבוט שותק 30 דק׳ אחרי תשובה של עובד"
 }

@@ -196,6 +196,34 @@ async function runRouting(t, opts) {
   if (again && t.status === 'routing') scheduleRouting(t, 1000);
 }
 
+// ---------- שעות פעילות ----------
+function isOpenNow(at = new Date()) {
+  const h = db.config.hours;
+  if (!h || !h.enabled) return true;
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: h.tz || 'Asia/Jerusalem', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    .formatToParts(at).map((x) => [x.type, x.value]));
+  const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(parts.weekday);
+  const mins = Number(parts.hour) * 60 + Number(parts.minute);
+  const toM = (s) => { const [a, b] = String(s || '0:0').split(':').map(Number); return a * 60 + (b || 0); };
+  return (h.days || []).includes(day) && mins >= toM(h.start) && mins < toM(h.end);
+}
+const offHoursSent = new Map(); // chatKey -> ts (פעם אחת בכמה שעות לכל לקוח)
+// ---------- הבוט שותק אחרי שעובד ענה ----------
+function recentHumanReply(instanceId, chatId) {
+  let best = null;
+  for (const x of db.tickets) {
+    if (x.instanceId !== instanceId || x.chatId !== chatId || !x.lastOutAt) continue;
+    if (!best || x.lastOutAt > best.lastOutAt) best = x;
+  }
+  if (!best) return null;
+  const last = [...store.messages(best.id)].reverse().find((m) => m.dir === 'out' && !m.auto);
+  return { at: best.lastOutAt, userId: last && last.byUserId ? last.byUserId : best.assigneeId };
+}
+const isQuiet = (instanceId, chatId) => {
+  const r = recentHumanReply(instanceId, chatId);
+  return r && now() - r.at < (db.config.quietMinutes ?? 30) * 60000 ? r : null;
+};
+
 const useIntake = (t) => !t.isGroup && db.config.ai.enabled && db.config.ai.apiKey && db.config.ai.intake !== false;
 const whoIs = (t) => {
   const ct = !t.isGroup && contactFor(t.phone);
@@ -204,11 +232,11 @@ const whoIs = (t) => {
 
 async function doRouting(t, { force = false } = {}) {
   if (t.status !== 'routing') return;
-  if (!useIntake(t)) {
-    // ניתוב רגיל (קבוצות / בלי עוזר AI): סיווג אחד ומענה מתבנית
+  if (!useIntake(t) || t.silent) {
+    // ניתוב רגיל (קבוצות / בלי עוזר AI / מחוץ לשעות): סיווג אחד, ובלי לכתוב ללקוח כשהקריאה שקטה
     const texts = store.messages(t.id).filter((m) => m.dir === 'in').map((m) => (m.senderName ? m.senderName + ': ' : '') + (m.text || `[${m.type}]`)).slice(0, 10);
     const r = await routeTicket(db.config, { customerName: whoIs(t), texts });
-    return finishRouting(t, r.departmentId, r.reason, '', '');
+    return finishRouting(t, r.departmentId, r.reason, '', '', { silent: !!t.silent });
   }
   // עוזר AI: מתכתב עם הלקוח עד שברור לאן לנתב
   const transcript = store.messages(t.id).filter((m) => m.dir !== 'note').slice(-30).map((m) => {
@@ -234,7 +262,7 @@ async function doRouting(t, { force = false } = {}) {
   return finishRouting(t, dep, reason, r.summary, r.error ? '' : r.reply);
 }
 
-async function finishRouting(t, departmentId, reason, summary, aiReply) {
+async function finishRouting(t, departmentId, reason, summary, aiReply, { silent = false } = {}) {
   clearRouting(t);
   const dep = departmentId ? depById(departmentId) : null;
   let assignee = dep && userById(dep.userId);
@@ -250,7 +278,7 @@ async function finishRouting(t, departmentId, reason, summary, aiReply) {
   log(`ticket #${t.id} routed -> ${assignee && assignee.name} (${dep ? dep.name : 'unknown'})`);
 
   const ar = db.config.autoReply;
-  if (!ar.enabled || (t.isGroup && !db.config.groups.autoReply)) return;
+  if (silent || !ar.enabled || (t.isGroup && !db.config.groups.autoReply)) return;
   let text = aiReply;
   if (!text) {
     const tpl = dep ? ar.routed : ar.unknown;
@@ -332,8 +360,30 @@ async function handleNotification(inst, body) {
       const dep = db.config.departments.find((d) => d.userId === pinned.id);
       if (dep) t.departmentId = dep.id;
       note(t, `📌 משויך קבוע ל${pinned.name}`);
-    } else t = createTicket(inst, chatId, name);
+    } else if (!isGroup && isQuiet(inst.id, chatId)) {
+      // עובד ענה ללקוח לאחרונה – בלי בוט; ישר לעובד שענה
+      const q = isQuiet(inst.id, chatId);
+      const who = (q.userId && userById(q.userId)?.active !== false && userById(q.userId)) || admins()[0] || null;
+      t = createTicket(inst, chatId, name, { status: 'open', assigneeId: who ? who.id : null });
+      const dep = who && db.config.departments.find((d) => d.userId === who.id);
+      if (dep) t.departmentId = dep.id;
+      note(t, `↩️ הלקוח חזר ${Math.max(1, Math.round((now() - q.at) / 60000))} דק׳ אחרי התשובה האחרונה – הועבר ישר ל${who ? who.name : 'מנהל'}, בלי בוט`);
+    } else {
+      t = createTicket(inst, chatId, name);
+      if (!isGroup && !isOpenNow()) { t.silent = true; note(t, '🌙 נפתחה מחוץ לשעות הפעילות – בלי שיחה עם העוזר'); }
+    }
     log(`new ticket #${t.id} from ${t.phone} (${inst.name})`);
+  }
+  // מחוץ לשעות הפעילות: הודעת "המשרד סגור" – פעם אחת ב-12 שעות ללקוח, ולא אם עובד ענה לו לאחרונה
+  if (!isGroup && !isOpenNow() && db.config.hours.message && !isQuiet(inst.id, chatId) && !(pinned && pinned.active !== false)) {
+    const key = inst.id + '|' + chatId;
+    if (now() - (offHoursSent.get(key) || 0) > 12 * 3600e3) {
+      offHoursSent.set(key, now());
+      const dn = displayName(t);
+      const nm = dn && !/^[\d+\s-]+$/.test(dn) ? ' ' + dn.split(' ')[0] : '';
+      const tick = t;
+      setTimeout(() => sendText(tick, db.config.hours.message.replace(/\{name\}/g, nm), null, { auto: true, byName: '🌙 מחוץ לשעות' }).catch((e) => note(tick, '⚠️ הודעת "המשרד סגור" לא נשלחה: ' + e.message)), 1500);
+    }
   }
   if (isGroup && sd.chatName && t.customerName !== sd.chatName) t.customerName = sd.chatName;
   const senderPhone = String(sd.sender || '').split('@')[0];
@@ -438,6 +488,8 @@ function adminConfigView() {
     ai: { enabled: c.ai.enabled, model: c.ai.model, apiKey: mask(c.ai.apiKey), intake: c.ai.intake !== false, maxQuestions: c.ai.maxQuestions ?? 3, waitMinutes: c.ai.waitMinutes ?? 10, replyDelaySec: c.ai.replyDelaySec ?? 8 },
     autoReply: c.autoReply,
     groups: c.groups,
+    hours: c.hours,
+    quietMinutes: c.quietMinutes ?? 30,
     ignoredChats: c.ignoredChats,
     chatRules: c.chatRules.map((r) => ({ ...r, userName: userById(r.userId)?.name || '' })),
     instances: c.instances.map((i) => ({ ...i, token: mask(i.token) })),
@@ -793,6 +845,14 @@ route('POST', /^\/api\/admin\/config$/, async (req, res) => {
     waitMinutes: Math.max(1, Math.min(120, Number(b.ai.waitMinutes ?? 10))),
     replyDelaySec: Math.max(2, Math.min(60, Number(b.ai.replyDelaySec ?? 8))),
   };
+  if (b.hours) c.hours = {
+    enabled: !!b.hours.enabled, tz: c.hours.tz || 'Asia/Jerusalem',
+    days: (Array.isArray(b.hours.days) ? b.hours.days : []).map(Number).filter((x) => x >= 0 && x <= 6),
+    start: /^\d{1,2}:\d{2}$/.test(b.hours.start) ? b.hours.start : c.hours.start,
+    end: /^\d{1,2}:\d{2}$/.test(b.hours.end) ? b.hours.end : c.hours.end,
+    message: String(b.hours.message ?? c.hours.message),
+  };
+  if (b.quietMinutes !== undefined) c.quietMinutes = Math.max(0, Math.min(600, Number(b.quietMinutes) || 0));
   if (b.groups) c.groups = { enabled: !!b.groups.enabled, autoReply: !!b.groups.autoReply };
   if (Array.isArray(b.chatRules)) c.chatRules = c.chatRules.filter((x) => b.chatRules.some((y) => y.chatId === x.chatId && y.instanceId === x.instanceId));
   if (Array.isArray(b.ignoredChats)) c.ignoredChats = c.ignoredChats.filter((x) => b.ignoredChats.some((y) => y.chatId === x.chatId && y.instanceId === x.instanceId));

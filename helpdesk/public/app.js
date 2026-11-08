@@ -805,6 +805,15 @@ function adminAi() {
     עובד שעונה ללקוח בזמן שהעוזר מתכתב – לוקח את השיחה, והעוזר מפסיק.</div>
     <div class="row"><input id="aiTest" style="flex:1" placeholder="נסה: 'המרכזייה לא מעבירה שיחות לשלוחה 3'"><button id="aiTestBtn">🧪 בדוק ניתוב</button></div>
     <div class="hint" id="aiRes"></div>
+    <h4>🕒 שעות פעילות</h4>
+    <label class="check"><input type="checkbox" id="hOn" ${c.hours.enabled ? 'checked' : ''}> מחוץ לשעות הפעילות – לשלוח ללקוח הודעת "המשרד סגור" (במקום שיחה עם העוזר)</label>
+    <div class="row" style="margin-top:6px">${['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'].map((d, i) => `<label class="check" style="margin:0 0 0 10px"><input type="checkbox" data-day="${i}" ${c.hours.days.includes(i) ? 'checked' : ''}> ${d}</label>`).join('')}</div>
+    <div class="grid2"><div><label>משעה</label><input id="hStart" type="time" value="${esc(c.hours.start)}"></div><div><label>עד שעה</label><input id="hEnd" type="time" value="${esc(c.hours.end)}"></div></div>
+    <label>ההודעה ללקוח מחוץ לשעות</label><textarea id="hMsg" rows="3">${esc(c.hours.message)}</textarea>
+    <div class="hint">נשלחת פעם אחת ב-12 שעות לכל לקוח, לא לקבוצות. הקריאה עדיין נפתחת ומנותבת בשקט – כדי שהעובד יראה אותה בבוקר. (חגים – צריך לכבות ידנית.)</div>
+    <h4>🤫 הבוט שותק אחרי תשובה של עובד</h4>
+    <div class="grid2"><div><label>כמה דקות אחרי שעובד ענה ללקוח – הבוט לא כותב לו</label><input id="qMin" type="number" min="0" max="600" value="${c.quietMinutes ?? 30}"></div></div>
+    <div class="hint">אם הלקוח כותב שוב בזמן הזה (גם אחרי שהקריאה נסגרה) – אין עוזר, אין מענה אוטומטי ואין "המשרד סגור", והקריאה עוברת ישר לעובד שענה לו.</div>
     <h4>💬 הודעה אוטומטית ללקוח</h4>
     <label class="check"><input type="checkbox" id="arOn" ${c.autoReply.enabled ? 'checked' : ''}> לשלוח הודעה אוטומטית כשנפתחת קריאה</label>
     <div class="hint">ההודעות האלה נשלחות רק כשהעוזר כבוי או לא זמין (כשהעוזר פעיל – הוא כותב את ההודעה בעצמו).</div>
@@ -815,6 +824,8 @@ function adminAi() {
   $('#aiSave').onclick = () => saveConfig({
     ai: { enabled: $('#aiOn').checked, apiKey: $('#aiKey').value.trim(), model: $('#aiModel').value.trim(), intake: $('#aiIntake').checked, maxQuestions: +$('#aiMaxQ').value, waitMinutes: +$('#aiWait').value, replyDelaySec: c.ai.replyDelaySec ?? 8 },
     autoReply: { enabled: $('#arOn').checked, routed: $('#arRouted').value, unknown: $('#arUnknown').value },
+    hours: { enabled: $('#hOn').checked, days: [...$('#apane').querySelectorAll('[data-day]:checked')].map((x) => +x.dataset.day), start: $('#hStart').value, end: $('#hEnd').value, message: $('#hMsg').value },
+    quietMinutes: +$('#qMin').value,
   });
   $('#aiTestBtn').onclick = async () => {
     $('#aiRes').textContent = 'שואל את Claude...';
