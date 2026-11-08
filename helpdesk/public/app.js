@@ -315,11 +315,13 @@ function renderChatHead() {
     ${ro ? '<span class="chip">צפייה בלבד</span>' : t.status === 'closed'
       ? '<button id="reopenBtn">🔄 פתח מחדש</button>'
       : '<button id="transferBtn">↪️ העבר שיחה</button><button class="primary" id="closeBtn">✅ סגור קריאה</button>'}
+    <button class="ghost" id="waHistBtn" title="ההודעות הקודמות עם ${t.isGroup ? 'הקבוצה' : 'הלקוח'} מוואטסאפ – גם מלפני המוקד">📜 היסטוריה</button>
     ${t.pinnedTo ? `<span class="chip who">📌 קבוע: ${esc(t.pinnedTo)}</span>` : ''}
     ${S.me.role === 'admin' && !ro ? `<button class="ghost" id="pinBtn" title="כל הודעה מ${t.isGroup ? 'הקבוצה' : 'הצ׳אט'} הזה תגיע ישר לעובד שתבחר, בלי AI">📌 קבע לעובד</button>` : ''}
     ${S.me.role === 'admin' && !ro ? `<button class="ghost" id="ignoreBtn" title="לא לפתוח יותר קריאות מ${t.isGroup ? 'הקבוצה' : 'הצ׳אט'} הזה">🔕 התעלם</button>` : ''}`;
   if ($('#transferBtn')) $('#transferBtn').onclick = transferDialog;
   if ($('#closeBtn')) $('#closeBtn').onclick = closeTicket;
+  $('#waHistBtn').onclick = () => waHistoryDialog(t);
   if ($('#pinBtn')) $('#pinBtn').onclick = () => {
     openModal(`<h3>📌 קיבוע ${t.isGroup ? 'הקבוצה' : 'הצ׳אט'} "${esc(t.customerName)}" לעובד</h3>
       <div class="hint">כל הודעה חדשה מכאן תיפתח כקריאה ישר אצל העובד – בלי ניתוב AI.${t.isGroup ? '<br>קבוצה שמקובעת לעובד מופיעה גם בכפתור "📋 קריאה לעובד".' : ''}</div>
@@ -491,6 +493,26 @@ function newChatDialog() {
       closeModal(); S.tickets.set(t.id, t); openTicket(t.id);
     } catch (e) { toast(e.message, true, 6000); }
   };
+}
+
+async function waHistoryDialog(t, count = 100) {
+  openModal(`<h3>📜 היסטוריית וואטסאפ – ${esc(t.customerName)}</h3><div class="hint">טוען מ-Green API...</div>`, true);
+  let r;
+  try { r = await api('GET', `/api/tickets/${t.id}/wa-history?count=${count}`); }
+  catch (e) { box.innerHTML = `<h3>📜 היסטוריית וואטסאפ</h3><div class="err">${esc(e.message)}</div><div class="row"><button id="cancel">סגור</button></div>`; $('#cancel').onclick = closeModal; return; }
+  let lastDay = '', html = '';
+  for (const m of r.items) {
+    const day = new Date(m.ts).toLocaleDateString('he-IL');
+    if (day !== lastDay) { html += `<div class="day">${day}</div>`; lastDay = day; }
+    html += messageHtml({ ...m, byName: '' });
+  }
+  box.innerHTML = `<h3>📜 היסטוריית וואטסאפ – ${esc(t.customerName)} <span class="hint">(${r.items.length} הודעות אחרונות)</span></h3>
+    ${r.more ? `<div class="row" style="margin:0 0 8px"><button id="more">⬆ טען עוד הודעות ישנות</button></div>` : ''}
+    <div class="msgs" id="hmsgs" style="max-height:62vh;padding:10px 3%;background:var(--bg);border-radius:10px">${html || '<div class="empty">אין הודעות</div>'}</div>
+    <div class="row"><span style="flex:1" class="hint">צפייה בלבד. כדי לענות – סגור את החלון וכתוב בשיחה.</span><button id="cancel">סגור</button></div>`;
+  $('#cancel').onclick = closeModal;
+  if ($('#more')) $('#more').onclick = () => waHistoryDialog(t, Math.min(1000, count * 3));
+  const hm = $('#hmsgs'); hm.scrollTop = hm.scrollHeight;
 }
 
 async function taskDialog() {

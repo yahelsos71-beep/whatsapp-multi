@@ -526,6 +526,19 @@ route('GET', /^\/api\/tickets\/(\d+)$/, (req, res, { user, params }) => {
   send(res, 200, { ticket: summary(t), messages: store.messages(t.id), history, readOnly: !canSee(user, t) });
 });
 
+route('GET', /^\/api\/tickets\/(\d+)\/wa-history$/, async (req, res, { user, params, query }) => {
+  const t = visibleTicket(user, params[0]);
+  if (!t) return send(res, 404, { error: 'לא נמצא' });
+  const inst = instById(t.instanceId);
+  if (!inst) return send(res, 400, { error: 'המספר של הקריאה לא מוגדר' });
+  const count = Math.max(20, Math.min(1000, Number(query.get('count')) || 100));
+  try {
+    const list = await ga.getChatHistory(inst, t.chatId, count);
+    const items = (Array.isArray(list) ? list : []).map(ga.parseHistoryItem).sort((a, b) => a.ts - b.ts);
+    send(res, 200, { items, count, more: items.length >= count });
+  } catch (e) { send(res, 502, { error: 'לא הצלחתי למשוך היסטוריה מ-Green API: ' + e.message }); }
+});
+
 function myTicket(user, id, res) {
   const t = ticketById(id);
   if (!t || !canSee(user, t)) { send(res, 404, { error: 'לא נמצא' }); return null; }

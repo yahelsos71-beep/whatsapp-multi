@@ -78,4 +78,23 @@ function parseMessage(md) {
   return out;
 }
 
-module.exports = { receiveNotification, deleteNotification, sendMessage, sendFile, getStateInstance, enableNotifications, parseMessage };
+// היסטוריית צ'אט מוואטסאפ (ההודעות האחרונות, כולל מלפני המוקד)
+const getChatHistory = (inst, chatId, count = 100) => call(inst, 'getChatHistory', { json: { chatId, count }, timeoutMs: 60000 });
+
+// ממיר פריט מההיסטוריה של Green API למבנה שלנו
+function parseHistoryItem(h) {
+  const t = h.typeMessage || '';
+  const type = { imageMessage: 'image', videoMessage: 'video', documentMessage: 'file', audioMessage: 'audio', stickerMessage: 'image', locationMessage: 'location' }[t] || 'text';
+  let text = h.textMessage || (h.extendedTextMessage && h.extendedTextMessage.text) || h.caption || '';
+  if (!text && t === 'contactMessage') text = '👤 איש קשר';
+  if (!text && t === 'reactionMessage') text = '(תגובה)';
+  if (!text && t === 'deletedMessage') text = '(הודעה נמחקה)';
+  if (!text && type === 'text' && t && !/text/i.test(t)) text = `[${t}]`;
+  return {
+    id: h.idMessage, dir: h.type === 'outgoing' ? 'out' : 'in', ts: (h.timestamp || 0) * 1000, type, text,
+    url: h.downloadUrl || (t === 'locationMessage' && h.location ? `https://maps.google.com/?q=${h.location.latitude},${h.location.longitude}` : ''),
+    fileName: h.fileName || '', senderName: h.type === 'outgoing' ? '' : h.senderName || h.senderContactName || '', status: h.statusMessage || '',
+  };
+}
+
+module.exports = { getChatHistory, parseHistoryItem, receiveNotification, deleteNotification, sendMessage, sendFile, getStateInstance, enableNotifications, parseMessage };
