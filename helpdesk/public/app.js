@@ -107,7 +107,7 @@ async function startMain() {
       <button id="newChat" title="שליחת הודעה ללקוח חדש">✉️ שיחה חדשה</button>
       <button id="muteBtn"></button>
       <button id="mySettings" title="צלצולים וסיסמה">⚙️</button>
-      ${S.me.role === 'admin' ? '<button id="adminBtn">🛠️ ניהול</button>' : ''}
+      ${S.me.role === 'admin' ? '<button id="dashBtn">📊 דשבורד</button><button id="adminBtn">🛠️ ניהול</button>' : ''}
       <span class="me">${esc(S.me.name)} · v${S.version}</span>
       <button class="ghost" id="logout">יציאה</button>
     </div>
@@ -118,7 +118,7 @@ async function startMain() {
     </div>
     <div class="chat" id="chat"></div>
   </div>`;
-  if (S.me.role === 'admin') { S.tab = localStorage.getItem('hd-tab') || 'all'; $('#adminBtn').onclick = () => adminDialog(); }
+  if (S.me.role === 'admin') { S.tab = localStorage.getItem('hd-tab') || 'all'; $('#adminBtn').onclick = () => adminDialog(); $('#dashBtn').onclick = () => dashboardDialog(); }
   $('#logout').onclick = async () => { await api('POST', '/api/logout').catch(() => {}); location.reload(); };
   $('#mySettings').onclick = mySettingsDialog;
   $('#newChat').onclick = newChatDialog;
@@ -493,6 +493,56 @@ function newChatDialog() {
       closeModal(); S.tickets.set(t.id, t); openTicket(t.id);
     } catch (e) { toast(e.message, true, 6000); }
   };
+}
+
+// ---------- דשבורד (מנהל) ----------
+let dashTimer = null;
+function dur(ms) {
+  if (ms == null) return '—';
+  const m = Math.round(ms / 60000);
+  if (m < 1) return 'פחות מדקה';
+  if (m < 60) return `${m} דק׳`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}:${String(m % 60).padStart(2, '0')} שע׳`;
+  return `${Math.floor(h / 24)} ימים ${h % 24} שע׳`;
+}
+async function dashboardDialog(period = localStorage.getItem('hd-dash') || 'today') {
+  clearInterval(dashTimer);
+  let st;
+  try { st = await api('GET', '/api/admin/stats?period=' + period); } catch (e) { return toast(e.message, true); }
+  if (modal.classList.contains('on') && !box.querySelector('#dash')) closeModal();
+  const n = st.now, p = st.period_;
+  const waitCls = (ms) => (ms > 15 * 60000 ? 'late' : ms > 5 * 60000 ? 'mid' : '');
+  const periods = [['today', 'היום'], ['week', '7 ימים'], ['month', '30 יום'], ['all', 'הכל']];
+  const max = Math.max(1, ...p.byUser.map((u) => u.closed));
+  const tile = (label, value, sub = '', cls = '') => `<div class="tile ${cls}"><div class="tl">${label}</div><div class="tv">${value}</div>${sub ? `<div class="ts">${sub}</div>` : ''}</div>`;
+  const html = `<div id="dash">
+    <div class="row" style="margin:0 0 12px;justify-content:space-between"><h3 style="margin:0">📊 דשבורד</h3>
+      <div class="seg">${periods.map(([k, l]) => `<button data-p="${k}" class="${k === period ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+    <h4 style="margin-top:0">עכשיו</h4>
+    <div class="tiles">
+      ${tile('קריאות פתוחות', n.open)}
+      ${tile('ממתינות לתשובה', n.waiting, n.waiting ? 'לקוחות שמחכים' : 'אף אחד לא מחכה 👍')}
+      ${tile('ההמתנה הארוכה ביותר', n.waiting ? dur(n.oldestWaitMs) : '—', '', n.waiting ? 'wt ' + waitCls(n.oldestWaitMs) : '')}
+      ${tile('העוזר מברר עם לקוח', n.routing)}
+    </div>
+    <table class="dtable"><tr><th>עובד</th><th>פתוחות</th><th>ממתינות</th><th>ההמתנה הארוכה</th></tr>
+      ${n.byUser.map((u) => `<tr><td>${esc(u.name)}</td><td>${u.open}</td><td>${u.waiting ? `<span class="dot" style="display:inline-block;margin-left:6px;vertical-align:middle"></span>${u.waiting}` : '0'}</td>
+        <td>${u.waiting ? `<span class="chip waittime ${waitCls(u.oldestWaitMs)}">⏳ ${dur(u.oldestWaitMs)}</span>` : '—'}</td></tr>`).join('')}
+      ${n.unassigned ? `<tr><td>לא משויך</td><td>${n.unassigned}</td><td></td><td></td></tr>` : ''}</table>
+    ${n.byDept.length ? `<div class="hint" style="margin-top:6px">לפי מחלקה: ${n.byDept.map((d) => `${esc(d.name)} <b>${d.open}</b>`).join(' · ')}${n.noDept ? ` · בלי מחלקה <b>${n.noDept}</b>` : ''}</div>` : ''}
+    <h4>${periods.find((x) => x[0] === period)[1]}</h4>
+    <div class="tiles">${tile('קריאות שנפתחו', p.opened)}${tile('קריאות שנסגרו', p.closed)}</div>
+    <table class="dtable"><tr><th>עובד</th><th style="width:40%">קריאות שסגר/ה</th><th>זמן טיפול ממוצע</th><th>זמן תגובה ראשונה ממוצע</th></tr>
+      ${p.byUser.map((u) => `<tr><td>${esc(u.name)}</td>
+        <td><div class="bar" title="${esc(u.name)}: ${u.closed} קריאות נסגרו">${u.closed ? `<i style="width:${(u.closed / max) * 100}%"></i>` : ""}<b>${u.closed}</b></div></td>
+        <td>${dur(u.avgHandleMs)}</td><td>${dur(u.avgFirstResponseMs)}</td></tr>`).join('')}</table>
+    <div class="hint">זמן טיפול = מפתיחת הקריאה עד הסגירה. תגובה ראשונה = מההודעה הראשונה של הלקוח עד התשובה הראשונה של עובד (בלי העוזר והמענה האוטומטי).<br>מתעדכן לבד כל 20 שניות · ${new Date(st.generatedAt).toLocaleTimeString('he-IL')}</div>
+    <div class="row"><span style="flex:1"></span><button id="dclose">סגור</button></div></div>`;
+  if (box.querySelector('#dash')) box.innerHTML = html; else openModal(html, true);
+  box.querySelectorAll('.seg button').forEach((b) => (b.onclick = () => { localStorage.setItem('hd-dash', b.dataset.p); dashboardDialog(b.dataset.p); }));
+  $('#dclose').onclick = () => { clearInterval(dashTimer); closeModal(); };
+  dashTimer = setInterval(() => { if (box.querySelector('#dash') && modal.classList.contains('on')) dashboardDialog(period); else clearInterval(dashTimer); }, 20000);
 }
 
 async function waHistoryDialog(t, count = 100) {

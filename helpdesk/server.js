@@ -848,6 +848,55 @@ route('POST', /^\/api\/admin\/users$/, async (req, res, { user }) => {
   send(res, 200, publicUser(u));
 }, { auth: 'admin' });
 
+// דשבורד למנהל: מה פתוח עכשיו + כמה כל עובד סגר בתקופה
+route('GET', /^\/api\/admin\/stats$/, (req, res, { query }) => {
+  const period = query.get('period') || 'today';
+  const d = new Date();
+  const start = period === 'today' ? new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+    : period === 'week' ? now() - 7 * 864e5 : period === 'month' ? now() - 30 * 864e5 : 0;
+  const open = db.tickets.filter((t) => t.status !== 'closed');
+  const waiting = open.filter((t) => t.awaiting && t.status !== 'routing');
+  const oldest = waiting.reduce((m, t) => Math.min(m, t.lastInAt || t.updatedAt), Infinity);
+  const people = db.users.filter((u) => u.active !== false);
+  const nowByUser = people.map((u) => {
+    const mine = open.filter((t) => t.assigneeId === u.id);
+    const w = mine.filter((t) => t.awaiting);
+    return { id: u.id, name: u.name, open: mine.length, waiting: w.length, oldestWaitMs: w.length ? now() - Math.min(...w.map((t) => t.lastInAt || t.updatedAt)) : 0 };
+  });
+  const closed = db.tickets.filter((t) => t.status === 'closed' && (t.closedAt || 0) >= start).slice(-3000);
+  const firstResponse = (t) => {
+    const msgs = store.messages(t.id);
+    const firstIn = msgs.find((m) => m.dir === 'in');
+    if (!firstIn) return null;
+    const reply = msgs.find((m) => m.dir === 'out' && !m.auto && m.ts >= firstIn.ts);
+    return reply ? reply.ts - firstIn.ts : null;
+  };
+  const avg = (a) => (a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : null);
+  const closedByUser = people.map((u) => {
+    const mine = closed.filter((t) => t.closedBy === u.id);
+    return {
+      id: u.id, name: u.name, closed: mine.length,
+      avgHandleMs: avg(mine.map((t) => t.closedAt - t.createdAt)),
+      avgFirstResponseMs: avg(mine.map(firstResponse).filter((x) => x != null)),
+    };
+  }).sort((a, b) => b.closed - a.closed);
+  const byDept = db.config.departments.map((dep) => ({ name: dep.name, open: open.filter((t) => t.departmentId === dep.id).length }));
+  send(res, 200, {
+    period, generatedAt: now(),
+    now: {
+      open: open.length, waiting: waiting.length, routing: open.filter((t) => t.status === 'routing').length,
+      unassigned: open.filter((t) => !t.assigneeId && t.status !== 'routing').length,
+      oldestWaitMs: Number.isFinite(oldest) ? now() - oldest : 0,
+      byUser: nowByUser, byDept, noDept: open.filter((t) => !t.departmentId).length,
+    },
+    period_: {
+      opened: db.tickets.filter((t) => t.createdAt >= start).length,
+      closed: closed.length,
+      byUser: closedByUser,
+    },
+  });
+}, { auth: 'admin' });
+
 route('POST', /^\/api\/admin\/test-ai$/, async (req, res) => {
   const b = await readJson(req);
   const r = await routeTicket(db.config, { customerName: 'בדיקה', texts: [String(b.text || 'שלום, יש לי בעיה עם המרכזייה')] });
