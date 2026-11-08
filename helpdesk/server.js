@@ -70,6 +70,7 @@ function handTo(t, peer) {
 }
 const staffByPhone = (phone) => phone && db.users.find((u) => u.active !== false && u.phone && u.phone === phone);
 const isIgnored = (instanceId, chatId) => (db.config.ignoredChats || []).some((x) => x.instanceId === instanceId && x.chatId === chatId);
+const ignoredByName = (name) => !!name && (db.config.ignoreGroupNames || []).some((w) => w && String(name).includes(w));
 const canSee = (user, t) => user.role === 'admin' || t.assigneeId === user.id;
 
 // =====================================================================
@@ -108,6 +109,7 @@ function summary(t) {
     pinnedTo: (ruleFor(t.instanceId, t.chatId) && userById(ruleFor(t.instanceId, t.chatId).userId)?.name) || '',
     customerName: c ? (c.name || c.company || t.customerName) : t.customerName,
     company: c && c.name ? c.company || '' : '',
+    contact: c ? { id: c.id, name: c.name || '', company: c.company || '', phones: c.phones } : null,
     assigneeName: a ? a.name : '',
     departmentName: d ? d.name : '',
     instanceName: inst ? inst.name : '',
@@ -115,6 +117,16 @@ function summary(t) {
     lastDir: last ? last.dir : '',
     count: msgs.length,
   };
+}
+
+function closeIgnoredGroups() {
+  for (const t of db.tickets) {
+    if (t.status !== 'closed' && t.isGroup && ignoredByName(t.customerName)) {
+      t.status = 'closed'; t.closedAt = now(); t.awaiting = false;
+      note(t, '🔕 נסגרה – קבוצה שמתעלמים ממנה');
+      emitTicket(t);
+    }
+  }
 }
 
 function nextTicketId() {
@@ -332,6 +344,7 @@ async function handleNotification(inst, body) {
   const isGroup = chatId.endsWith('@g.us');
   if (isGroup && !db.config.groups.enabled) return;
   if (isIgnored(inst.id, chatId)) return;
+  if (isGroup && ignoredByName(sd.chatName)) return; // קבוצות שמתעלמים מהן לפי שם (פורום מתקינים, מתח נמוך...)
   const m = ga.parseMessage(body.messageData);
   if (m.type === 'reaction' || m.type === 'deleted') return;
   if (m.type === 'edited') { m.type = 'text'; m.text = '✏️ (נערכה) ' + m.text; }
@@ -491,6 +504,7 @@ function adminConfigView() {
     hours: c.hours,
     quietMinutes: c.quietMinutes ?? 30,
     ignoredChats: c.ignoredChats,
+    ignoreGroupNames: c.ignoreGroupNames || [],
     chatRules: c.chatRules.map((r) => ({ ...r, userName: userById(r.userId)?.name || '' })),
     instances: c.instances.map((i) => ({ ...i, token: mask(i.token) })),
   };
@@ -699,26 +713,37 @@ route('POST', /^\/api\/tickets\/(\d+)\/pin$/, async (req, res, { user, params })
 }, { auth: 'admin' });
 
 // "קריאה לעובד": שולח משימה לקבוצה המשויכת לעובד ופותח לו קריאה
-route('GET', /^\/api\/tasks\/targets$/, (req, res) => {
-  send(res, 200, db.config.chatRules.filter((r) => r.isGroup && userById(r.userId)?.active !== false)
-    .map((r) => ({ userId: r.userId, userName: userById(r.userId)?.name || '', group: r.name, instanceName: instById(r.instanceId)?.name || '' })));
-});
+// "קריאה לעובד" / "פנייה למנהל": הודעה בקבוצה המשותפת (חיים+חני). התור עובר לצד השני
+function taskTargetsFor(user) {
+  return db.config.chatRules.filter((r) => r.isGroup && userById(r.userId)?.active !== false).map((r) => {
+    const emp = userById(r.userId);
+    const boss = userById(r.ownerId) || admins()[0];
+    let target = null;
+    if (user.id === emp.id) target = boss; // העובד כותב למנהל
+    else if (user.role === 'admin' || (boss && user.id === boss.id)) target = emp; // המנהל כותב לעובד
+    return target && target.id !== user.id ? { key: r.instanceId + '|' + r.chatId, userId: target.id, userName: target.name, group: r.name, instanceName: instById(r.instanceId)?.name || '' } : null;
+  }).filter(Boolean);
+}
+route('GET', /^\/api\/tasks\/targets$/, (req, res, { user }) => send(res, 200, taskTargetsFor(user)));
 route('POST', /^\/api\/tasks$/, async (req, res, { user }) => {
   const b = await readJson(req);
   const text = String(b.text || '').trim();
-  if (!text) return send(res, 400, { error: 'כתוב מה המשימה' });
-  const r = db.config.chatRules.find((x) => x.isGroup && x.userId === b.userId);
-  const emp = r && userById(r.userId);
-  const inst = r && instById(r.instanceId);
-  if (!r || !emp || !inst) return send(res, 400, { error: 'לא הוגדרה קבוצה לעובד הזה' });
-  let t = openTicketFor(inst.id, r.chatId);
-  if (!t) t = createTicket(inst, r.chatId, r.name, { status: 'open', assigneeId: emp.id });
+  if (!text) return send(res, 400, { error: 'כתוב מה לשלוח' });
+  const tg = taskTargetsFor(user).find((x) => x.key === b.key || (!b.key && x.userId === b.userId));
+  if (!tg) return send(res, 400, { error: 'לא הוגדרה קבוצה משותפת' });
+  const [instanceId, chatId] = tg.key.split('|');
+  const r = ruleFor(instanceId, chatId);
+  const inst = instById(instanceId);
+  const target = userById(tg.userId);
+  if (!r || !inst || !target) return send(res, 400, { error: 'לא הוגדרה קבוצה משותפת' });
+  let t = openTicketFor(inst.id, chatId);
+  if (!t) t = createTicket(inst, chatId, r.name, { status: 'open', assigneeId: target.id });
   t.isGroup = true;
-  if (t.assigneeId !== emp.id) t.assigneeId = emp.id;
-  note(t, `📋 ${user.name} פתח/ה קריאה ל${emp.name}`);
+  note(t, `📋 ${user.name} פתח/ה פנייה ל${target.name}`);
   try { await sendText(t, text, user); } catch (e) { return send(res, 502, { error: 'השליחה לקבוצה נכשלה: ' + e.message }); }
-  t.awaiting = true; t.lastInAt = now(); // מחכה לטיפול של העובד
+  const changed = handTo(t, target); // מחכה לטיפול של הצד השני
   emitTicket(t, { sound: 'new' });
+  if (changed && user.role !== 'admin') sendTo(user.id, { type: 'remove', id: t.id });
   send(res, 200, summary(t));
 });
 
@@ -808,7 +833,8 @@ route('POST', /^\/api\/admin\/contacts\/import$/, async (req, res) => {
   send(res, 200, { imported: imported.length, noPhone, total: db.contacts.length });
 }, { auth: 'admin' });
 
-route('POST', /^\/api\/admin\/contacts$/, async (req, res) => {
+route('POST', /^\/api\/contacts$/, async (req, res) => saveContact(req, res));
+async function saveContact(req, res) {
   const b = await readJson(req);
   const phones = [...new Set(String(b.phones || '').split(/[,;\n]/).map(normPhone).filter(Boolean))];
   if (!phones.length) return send(res, 400, { error: 'צריך לפחות מספר טלפון אחד תקין' });
@@ -816,8 +842,11 @@ route('POST', /^\/api\/admin\/contacts$/, async (req, res) => {
   if (!c) { c = { id: store.newId(), source: 'manual' }; db.contacts.push(c); }
   Object.assign(c, { company: String(b.company || ''), name: String(b.name || ''), phones });
   reindexContacts(); store.saveContacts();
+  // רענון הקריאות הפתוחות של הלקוח אצל מי שרואה אותן
+  for (const t of db.tickets) if (t.status !== 'closed' && phones.includes(t.phone)) emitTicket(t);
   send(res, 200, c);
-}, { auth: 'admin' });
+}
+route('POST', /^\/api\/admin\/contacts$/, async (req, res) => saveContact(req, res), { auth: 'admin' });
 
 route('DELETE', /^\/api\/admin\/contacts\/(\w+)$/, (req, res, { params }) => {
   db.contacts = db.contacts.filter((c) => c.id !== params[0]);
@@ -854,6 +883,10 @@ route('POST', /^\/api\/admin\/config$/, async (req, res) => {
   };
   if (b.quietMinutes !== undefined) c.quietMinutes = Math.max(0, Math.min(600, Number(b.quietMinutes) || 0));
   if (b.groups) c.groups = { enabled: !!b.groups.enabled, autoReply: !!b.groups.autoReply };
+  if (Array.isArray(b.ignoreGroupNames)) {
+    c.ignoreGroupNames = b.ignoreGroupNames.map((x) => String(x).trim()).filter(Boolean);
+    closeIgnoredGroups();
+  }
   if (Array.isArray(b.chatRules)) c.chatRules = c.chatRules.filter((x) => b.chatRules.some((y) => y.chatId === x.chatId && y.instanceId === x.instanceId));
   if (Array.isArray(b.ignoredChats)) c.ignoredChats = c.ignoredChats.filter((x) => b.ignoredChats.some((y) => y.chatId === x.chatId && y.instanceId === x.instanceId));
   if (b.autoReply) c.autoReply = { enabled: !!b.autoReply.enabled, routed: String(b.autoReply.routed || ''), unknown: String(b.autoReply.unknown || '') };
@@ -1029,6 +1062,7 @@ server.on('error', (e) => {
 server.listen(PORT, HOST, () => {
   log(`WhatsApp Helpdesk v${VERSION} running: http://localhost:${PORT}${HOST === '0.0.0.0' ? ' (open to the office network)' : ' (this server only)'}`);
   startPollers();
+  closeIgnoredGroups();
   for (const t of db.tickets) if (t.status === 'routing') {
     if (t.aiTurns) scheduleRouting(t, Math.max(1, Number(db.config.ai.waitMinutes ?? 10)) * 60000, { force: true }); // מחכים לתשובת הלקוח
     else scheduleRouting(t);

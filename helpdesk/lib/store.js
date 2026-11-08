@@ -41,6 +41,7 @@ const DEFAULT_CONFIG = {
     message: 'שלום{name} 🙏\nהמשרד סגור כעת. אנו פתוחים בימים א׳–ה׳ בין 8:15 ל-17:00.\nלפתיחת קריאה מחוץ לשעות הפעילות אנא התקשרו ל-\u200E*8349',
   },
   quietMinutes: 30, // אחרי שעובד ענה ללקוח – הבוט שותק כך וכך דקות
+  ignoreGroupNames: ['פורום מתקינים', 'מתח נמוך'], // קבוצות שמתעלמים מהן לפי חלק מהשם
   chatRules: [], // { instanceId, chatId, name, isGroup, userId } – צ'אט/קבוצה שמשויכים קבוע לעובד
   autoReply: {
     enabled: true,
@@ -70,6 +71,7 @@ for (const d of db.config.departments || []) {
 }
 db.config.ignoredChats = db.config.ignoredChats || [];
 db.config.chatRules = db.config.chatRules || [];
+if (!db.config.ignoreGroupNames) db.config.ignoreGroupNames = ['פורום מתקינים', 'מתח נמוך'];
 db.config.hours = Object.assign({}, DEFAULT_CONFIG.hours, db.config.hours);
 if (db.config.quietMinutes === undefined) db.config.quietMinutes = 30;
 

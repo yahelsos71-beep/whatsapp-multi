@@ -35,6 +35,7 @@ function openModal(html, wide = false) { box.className = 'box' + (wide ? ' wide'
 function closeModal() { modal.classList.remove('on'); }
 modal.addEventListener('mousedown', (e) => { if (e.target === modal) closeModal(); });
 
+const localPhone = (p) => { p = String(p || ''); if (!p.startsWith('972')) return p ? '+' + p : ''; const d = '0' + p.slice(3); return d.length === 10 ? d.slice(0, 3) + '-' + d.slice(3) : d.length === 9 ? d.slice(0, 2) + '-' + d.slice(2) : d; };
 const initials = (n) => String(n || '?').trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('');
 const avColor = (s) => `hsl(${[...String(s)].reduce((a, c) => a + c.charCodeAt(0), 0) % 360} 35% 42%)`;
 function fmtTime(ts) {
@@ -103,7 +104,7 @@ async function startMain() {
       <span class="logo">💬 מוקד וואטסאפ</span>
       <span id="insts"></span>
       <span class="spacer"></span>
-      <button id="taskBtn" title="שליחת משימה לעובד בקבוצה המשותפת איתו">📋 קריאה לעובד</button>
+      <button id="taskBtn" title="הודעה בקבוצה המשותפת – פותחת קריאה אצל הצד השני">${S.me.role === 'admin' ? '📋 קריאה לעובד' : '📋 פנייה למנהל'}</button>
       <button id="newChat" title="שליחת הודעה ללקוח חדש">✉️ שיחה חדשה</button>
       <button id="muteBtn"></button>
       <button id="mySettings" title="צלצולים וסיסמה">⚙️</button>
@@ -248,7 +249,7 @@ function renderList() {
     return `<div class="${cls}" data-id="${t.id}">
       <div class="av" style="background:${avColor(t.phone)}">${esc(initials(t.customerName))}</div>
       <div class="body">
-        <div class="row1"><span class="name">${esc(t.customerName)}</span><span class="time">${fmtTime(t.updatedAt)}</span></div>
+        <div class="row1"><span class="name">${esc(t.customerName)}${!t.isGroup && t.customerName !== localPhone(t.phone) ? ` <span class="ph" dir="ltr">${localPhone(t.phone)}</span>` : ''}</span><span class="time">${fmtTime(t.updatedAt)}</span></div>
         <div class="row2"><span class="last">${t.lastDir === 'out' ? '↩ ' : ''}${esc(t.lastText)}</span>${t.awaiting ? '<span class="dot"></span>' : ''}</div>
         <div class="row3">
           <span class="chip">#${t.id}</span>${t.isGroup ? '<span class="chip">👥 קבוצה</span>' : ''}${t.company ? `<span class="chip dep">🏢 ${esc(t.company)}</span>` : ''}
@@ -310,11 +311,12 @@ function renderChatHead() {
   const t = S.view.ticket;
   const ro = S.view.readOnly;
   h.innerHTML = `<div class="av" style="background:${avColor(t.phone)}">${esc(initials(t.customerName))}</div>
-    <div class="who"><b>${esc(t.customerName)}${t.company ? ` <span class="chip dep">🏢 ${esc(t.company)}</span>` : ''}</b>
-      ${t.isGroup ? '<small>👥 קבוצה</small>' : `<small dir="ltr">+${esc(t.phone)}</small>`} <small>· #${t.id} · 📱 ${esc(t.instanceName)}${t.departmentName ? ' · ' + esc(t.departmentName) : ''}${t.assigneeName ? ' · 👤 ' + esc(t.assigneeName) : ''}${t.status === 'closed' ? ' · ✅ סגורה' : ''}</small></div>
+    <div class="who"><b>${esc(t.customerName)}${!t.isGroup ? ` <span class="ph big" dir="ltr">${localPhone(t.phone)}</span>` : ''}${t.company ? ` <span class="chip dep">🏢 ${esc(t.company)}</span>` : ''}</b>
+      ${t.isGroup ? '<small>👥 קבוצה</small>' : ''} <small>#${t.id} · 📱 ${esc(t.instanceName)}${t.departmentName ? ' · ' + esc(t.departmentName) : ''}${t.assigneeName ? ' · 👤 ' + esc(t.assigneeName) : ''}${t.status === 'closed' ? ' · ✅ סגורה' : ''}</small></div>
     ${ro ? '<span class="chip">צפייה בלבד</span>' : t.status === 'closed'
       ? '<button id="reopenBtn">🔄 פתח מחדש</button>'
       : '<button id="transferBtn">↪️ העבר שיחה</button><button class="primary" id="closeBtn">✅ סגור קריאה</button>'}
+    ${!t.isGroup && !ro ? `<button class="ghost" id="contactBtn" title="שמירת שם וחברה ללקוח הזה">👤 ${t.contact ? 'איש קשר' : 'שמור איש קשר'}</button>` : ''}
     <button class="ghost" id="waHistBtn" title="ההודעות הקודמות עם ${t.isGroup ? 'הקבוצה' : 'הלקוח'} מוואטסאפ – גם מלפני המוקד">📜 היסטוריה</button>
     ${t.pinnedTo ? `<span class="chip who">📌 קבוע: ${esc(t.pinnedTo)}</span>` : ''}
     ${S.me.role === 'admin' && !ro ? `<button class="ghost" id="pinBtn" title="כל הודעה מ${t.isGroup ? 'הקבוצה' : 'הצ׳אט'} הזה תגיע ישר לעובד שתבחר, בלי AI">📌 קבע לעובד</button>` : ''}
@@ -322,6 +324,21 @@ function renderChatHead() {
   if ($('#transferBtn')) $('#transferBtn').onclick = transferDialog;
   if ($('#closeBtn')) $('#closeBtn').onclick = closeTicket;
   $('#waHistBtn').onclick = () => waHistoryDialog(t);
+  if ($('#contactBtn')) $('#contactBtn').onclick = () => {
+    const c = t.contact;
+    openModal(`<h3>👤 ${c ? 'עריכת איש קשר' : 'שמירת איש קשר'}</h3>
+      <div class="grid2"><div><label>שם</label><input id="kn" value="${esc(c ? c.name : (t.waName && !/^[\d+\s-]+$/.test(t.waName) ? t.waName : ''))}"></div>
+      <div><label>חברה</label><input id="kc" value="${esc(c ? c.company : '')}"></div></div>
+      <label>טלפונים (מופרדים בפסיק)</label><input id="kp" dir="ltr" value="${esc(c ? c.phones.map(localPhone).join(', ') : localPhone(t.phone))}">
+      <div class="hint">השם והחברה יופיעו במוקד אצל כל העובדים, בכל הקריאות של הלקוח.</div>
+      <div class="row"><button class="primary" id="ksave">💾 שמור</button><button id="cancel">ביטול</button></div>`);
+    $('#cancel').onclick = closeModal;
+    $('#kn').focus();
+    $('#ksave').onclick = async () => {
+      try { await api('POST', '/api/contacts', { id: c ? c.id : undefined, name: $('#kn').value, company: $('#kc').value, phones: $('#kp').value }); closeModal(); toast('איש הקשר נשמר ✓'); openTicket(t.id); }
+      catch (e) { toast(e.message, true); }
+    };
+  };
   if ($('#pinBtn')) $('#pinBtn').onclick = () => {
     openModal(`<h3>📌 קיבוע ${t.isGroup ? 'הקבוצה' : 'הצ׳אט'} "${esc(t.customerName)}" לעובד</h3>
       <div class="hint">כל הודעה חדשה מכאן תיפתח כקריאה ישר אצל העובד – בלי ניתוב AI.${t.isGroup ? '<br>קבוצה שמקובעת לעובד מופיעה גם בכפתור "📋 קריאה לעובד".' : ''}</div>
@@ -566,27 +583,27 @@ async function waHistoryDialog(t, count = 100) {
 }
 
 async function taskDialog() {
-  const targets = await api('GET', '/api/tasks/targets').catch(() => []);
-  const list = targets.filter((x) => x.userId !== S.me.id);
+  const list = await api('GET', '/api/tasks/targets').catch(() => []);
+  const isAdmin = S.me.role === 'admin';
   if (!list.length) {
-    return openModal(`<h3>📋 קריאה לעובד</h3><div class="hint">עוד לא הוגדרו קבוצות לעובדים.<br>
-      כדי להגדיר: פותחים במוקד את הקבוצה (למשל "חיים וחני") ← <b>📌 קבע לעובד</b> ← בוחרים את חני.<br>
-      (הקבוצה מופיעה במוקד אחרי שנשלחת בה הודעה כלשהי.)</div><div class="row"><button id="cancel">סגור</button></div>`), ($('#cancel').onclick = closeModal);
+    openModal(`<h3>📋 ${isAdmin ? 'קריאה לעובד' : 'פנייה למנהל'}</h3><div class="hint">${isAdmin
+      ? 'עוד לא הוגדרו קבוצות לעובדים.<br>כדי להגדיר: פותחים במוקד את הקבוצה (למשל "חיים וחני") ← <b>📌 קבע לעובד</b> ← בוחרים את חני.<br>(הקבוצה מופיעה במוקד אחרי שנשלחת בה הודעה כלשהי.)'
+      : 'עוד לא הוגדרה קבוצה משותפת שלך עם המנהל. המנהל מגדיר אותה בכפתור 📌 קבע לעובד.'}</div><div class="row"><button id="cancel">סגור</button></div>`);
+    $('#cancel').onclick = closeModal;
+    return;
   }
-  openModal(`<h3>📋 קריאה לעובד</h3>
-    <div class="hint">ההודעה נשלחת לקבוצה המשותפת עם העובד, ונפתחת אצלו קריאה עם צלצול – עד שיענה או יסגור.</div>
+  openModal(`<h3>📋 ${isAdmin ? 'קריאה לעובד' : 'פנייה למנהל'}</h3>
+    <div class="hint">ההודעה נשלחת לקבוצה המשותפת בוואטסאפ, ונפתחת קריאה עם צלצול אצל ${isAdmin ? 'העובד' : 'הצד השני'} – עד שיענה או יסגור.</div>
     <label>למי?</label><div class="pick" id="tpick">${list.map((x, i) => `<button data-i="${i}"><b>${esc(x.userName)}</b><span class="chip">👥 ${esc(x.group)}</span></button>`).join('')}</div>
-    <label>מה המשימה?</label><textarea id="ttext" rows="4" placeholder="למשל: להתקשר ללקוח משה כהן לגבי החשבונית מאוקטובר"></textarea>
-    <div class="row"><button class="primary" id="tsend" disabled>שלח ופתח קריאה</button><button id="cancel">ביטול</button></div>`);
-  let sel = null;
-  box.querySelectorAll('#tpick button').forEach((b) => (b.onclick = () => {
-    sel = list[+b.dataset.i];
-    box.querySelectorAll('#tpick button').forEach((x) => x.classList.toggle('primary', x === b));
-    $('#tsend').disabled = false; $('#tsend').textContent = `שלח ל${sel.userName}`; $('#ttext').focus();
-  }));
+    <label>מה לכתוב?</label><textarea id="ttext" rows="4" placeholder="${isAdmin ? 'למשל: להתקשר ללקוח משה כהן לגבי החשבונית מאוקטובר' : 'למשל: לקוח מבקש הנחה – מאשר?'}"></textarea>
+    <div class="row"><button class="primary" id="tsend" disabled>שלח</button><button id="cancel">ביטול</button></div>`);
+  let sel = list.length === 1 ? list[0] : null;
+  const mark = () => { box.querySelectorAll('#tpick button').forEach((x, i) => x.classList.toggle('primary', list[i] === sel)); $('#tsend').disabled = !sel; if (sel) $('#tsend').textContent = `שלח ל${sel.userName}`; };
+  box.querySelectorAll('#tpick button').forEach((b) => (b.onclick = () => { sel = list[+b.dataset.i]; mark(); $('#ttext').focus(); }));
+  mark();
   $('#cancel').onclick = closeModal;
   $('#tsend').onclick = async () => {
-    try { const t = await api('POST', '/api/tasks', { userId: sel.userId, text: $('#ttext').value }); closeModal(); toast(`נשלח ל${sel.userName} ✓ קריאה #${t.id}`); }
+    try { const t = await api('POST', '/api/tasks', { key: sel.key, text: $('#ttext').value }); closeModal(); toast(`נשלח ל${sel.userName} ✓ קריאה #${t.id}`); }
     catch (e) { toast(e.message, true, 6000); }
   };
 }
@@ -846,6 +863,9 @@ function adminGeneral() {
     <label class="check"><input type="checkbox" id="gGroupsAR" ${c.groups.autoReply ? 'checked' : ''}> לשלוח מענה אוטומטי גם לקבוצות</label>
     <h4>📌 צ'אטים וקבוצות שמקובעים לעובד</h4>
     <div id="ruleList">${c.chatRules.length ? c.chatRules.map((x, i) => `<div class="row" style="margin-top:4px"><span style="flex:1">${x.isGroup ? '👥' : '👤'} ${esc(x.name)} ← <b>${esc(x.userName)}</b></span><button class="ghost" data-unrule="${i}">בטל</button></div>`).join('') : '<div class="hint">אין. (כפתור "📌 קבע לעובד" בראש כל שיחה)</div>'}</div>
+    <h4>🔕 קבוצות שמתעלמים מהן לפי שם</h4>
+    <label>קבוצה ששמה מכיל אחת מהמילים האלה – לא נפתחת ממנה קריאה בכלל (שורה לכל שם)</label>
+    <textarea id="gIgnNames" rows="3">${esc((c.ignoreGroupNames || []).join('\n'))}</textarea>
     <h4>🔕 צ'אטים וקבוצות שמתעלמים מהם</h4>
     <div id="ignList">${c.ignoredChats.length ? c.ignoredChats.map((x, i) => `<div class="row" style="margin-top:4px"><span style="flex:1">${x.isGroup ? '👥' : '👤'} ${esc(x.name || x.chatId)}</span><button class="ghost" data-unign="${i}">החזר</button></div>`).join('') : '<div class="hint">אין. (כפתור "🔕 התעלם" בראש כל שיחה)</div>'}</div>
     <div class="hint">שינוי "מאיפה אפשר להיכנס" או הפורט נכנס לתוקף אחרי הפעלה מחדש של השרת.<br>
@@ -856,7 +876,8 @@ function adminGeneral() {
   $('#apane').querySelectorAll('[data-unrule]').forEach((b) => (b.onclick = () => { rules.splice(Number(b.dataset.unrule), 1); b.parentElement.remove(); }));
   $('#apane').querySelectorAll('[data-unign]').forEach((b) => (b.onclick = () => { ign.splice(Number(b.dataset.unign), 1); b.parentElement.remove(); }));
   $('#gSave').onclick = () => saveConfig({ companyName: $('#gName').value, routeDelaySec: $('#gDelay').value, host: $('#gHost').value, port: $('#gPort').value,
-    groups: { enabled: $('#gGroups').checked, autoReply: $('#gGroupsAR').checked }, ignoredChats: ign, chatRules: rules });
+    groups: { enabled: $('#gGroups').checked, autoReply: $('#gGroupsAR').checked }, ignoredChats: ign, chatRules: rules,
+    ignoreGroupNames: $('#gIgnNames').value.split('\n').map((x) => x.trim()).filter(Boolean) });
 }
 
 boot();
