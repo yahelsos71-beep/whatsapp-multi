@@ -242,8 +242,41 @@ const whoIs = (t) => {
   return t.isGroup ? 'WhatsApp group: ' + t.customerName : ct ? `${ct.name || t.customerName}${ct.company ? ' (company: ' + ct.company + ')' : ''}` : t.customerName;
 };
 
+// ---------- ניתוב לפי איש קשר (למשל: דויד 05X-XXXXXXX → נועה) ----------
+const groupMembers = new Map(); // chatId -> { at, phones:Set }
+async function membersOf(t) {
+  const c = groupMembers.get(t.chatId);
+  if (c && now() - c.at < 3600e3) return c.phones;
+  const inst = instById(t.instanceId);
+  let phones = new Set();
+  try {
+    const g = await ga.getGroupData(inst, t.chatId);
+    phones = new Set((g && g.participants || []).map((p) => String(p.id || '').split('@')[0]));
+  } catch (e) { log('getGroupData failed', e.message); }
+  groupMembers.set(t.chatId, { at: now(), phones });
+  return phones;
+}
+async function personRuleFor(t) {
+  const rules = (db.config.personRules || []).filter((r) => r.phone && userById(r.userId)?.active !== false);
+  if (!rules.length) return null;
+  if (!t.isGroup) return rules.find((r) => r.phone === t.phone) || null;
+  const senders = new Set(store.messages(t.id).map((m) => m.senderPhone).filter(Boolean));
+  const bySender = rules.find((r) => senders.has(r.phone));
+  if (bySender) return bySender;
+  const members = await membersOf(t);
+  return rules.find((r) => members.has(r.phone)) || null;
+}
+
 async function doRouting(t, { force = false } = {}) {
   if (t.status !== 'routing') return;
+  if (!t.aiTurns) {
+    const pr = await personRuleFor(t);
+    if (pr && t.status === 'routing') {
+      const u = userById(pr.userId);
+      const dep = db.config.departments.find((d) => d.userId === u.id);
+      return finishRouting(t, dep ? dep.id : null, `${t.isGroup ? 'בקבוצה יש את ' : 'פנייה מ'}${pr.name || pr.phone} → ${u.name}`, '', '', { silent: !!t.isGroup || !!t.silent, assigneeId: u.id });
+    }
+  }
   if (!useIntake(t) || t.silent) {
     // ניתוב רגיל (קבוצות / בלי עוזר AI / מחוץ לשעות): סיווג אחד, ובלי לכתוב ללקוח כשהקריאה שקטה
     const texts = store.messages(t.id).filter((m) => m.dir === 'in').map((m) => (m.senderName ? m.senderName + ': ' : '') + (m.text || `[${m.type}]`)).slice(0, 10);
@@ -274,10 +307,10 @@ async function doRouting(t, { force = false } = {}) {
   return finishRouting(t, dep, reason, r.summary, r.error ? '' : r.reply);
 }
 
-async function finishRouting(t, departmentId, reason, summary, aiReply, { silent = false } = {}) {
+async function finishRouting(t, departmentId, reason, summary, aiReply, { silent = false, assigneeId = null } = {}) {
   clearRouting(t);
   const dep = departmentId ? depById(departmentId) : null;
-  let assignee = dep && userById(dep.userId);
+  let assignee = (assigneeId && userById(assigneeId)) || (dep && userById(dep.userId));
   if (!assignee || assignee.active === false) assignee = admins()[0] || null;
   t.departmentId = dep ? dep.id : null;
   t.assigneeId = assignee ? assignee.id : null;
@@ -401,7 +434,7 @@ async function handleNotification(inst, body) {
   if (isGroup && sd.chatName && t.customerName !== sd.chatName) t.customerName = sd.chatName;
   const senderPhone = String(sd.sender || '').split('@')[0];
   const staff = isGroup && staffByPhone(senderPhone);
-  addMessage(t, { ...m, dir: 'in', ts, idMessage: body.idMessage, ...(isGroup ? { senderName: staff ? staff.name : sd.senderContactName || sd.senderName || senderPhone, staff: !!staff } : {}) });
+  addMessage(t, { ...m, dir: 'in', ts, idMessage: body.idMessage, ...(isGroup ? { senderName: staff ? staff.name : sd.senderContactName || sd.senderName || senderPhone, senderPhone, staff: !!staff } : {}) });
   const peer = pinnedPeer(t, staff ? staff.id : null);
   if (peer) {
     // קבוצה משותפת עם עובד: מי שכתב – התור עובר לשני (חני כתבה → לחיים; חיים כתב → לחני)
@@ -505,6 +538,7 @@ function adminConfigView() {
     quietMinutes: c.quietMinutes ?? 30,
     ignoredChats: c.ignoredChats,
     ignoreGroupNames: c.ignoreGroupNames || [],
+    personRules: c.personRules || [],
     chatRules: c.chatRules.map((r) => ({ ...r, userName: userById(r.userId)?.name || '' })),
     instances: c.instances.map((i) => ({ ...i, token: mask(i.token) })),
   };
@@ -887,6 +921,10 @@ route('POST', /^\/api\/admin\/config$/, async (req, res) => {
     c.ignoreGroupNames = b.ignoreGroupNames.map((x) => String(x).trim()).filter(Boolean);
     closeIgnoredGroups();
   }
+  if (Array.isArray(b.personRules)) {
+    c.personRules = b.personRules.map((r) => ({ phone: normPhone(r.phone), name: String(r.name || '').trim(), userId: r.userId || null })).filter((r) => r.phone && r.userId);
+    groupMembers.clear();
+  }
   if (Array.isArray(b.chatRules)) c.chatRules = c.chatRules.filter((x) => b.chatRules.some((y) => y.chatId === x.chatId && y.instanceId === x.instanceId));
   if (Array.isArray(b.ignoredChats)) c.ignoredChats = c.ignoredChats.filter((x) => b.ignoredChats.some((y) => y.chatId === x.chatId && y.instanceId === x.instanceId));
   if (b.autoReply) c.autoReply = { enabled: !!b.autoReply.enabled, routed: String(b.autoReply.routed || ''), unknown: String(b.autoReply.unknown || '') };
@@ -1052,6 +1090,26 @@ process.on('SIGINT', () => { store.flushAll(); process.exit(0); });
 process.on('SIGTERM', () => { store.flushAll(); process.exit(0); });
 process.on('uncaughtException', (e) => log('uncaught', e.stack || e.message));
 process.on('unhandledRejection', (e) => log('unhandled', e && (e.stack || e.message)));
+
+// עדכון חד-פעמי (גרסה 11): מחלקת מכירות + דויד → נועה
+(function migrateV11() {
+  if (db.config.migratedV11) return;
+  const noa = db.users.find((u) => u.active !== false && /^(נועה|נעה)/.test(String(u.name).trim()));
+  if (noa) {
+    if (!db.config.departments.some((d) => /מכירות/.test(d.name))) {
+      db.config.departments.push({ id: store.newId(), name: 'מכירות', userId: noa.id, questions: '',
+        description: 'מכירות: הצעות מחיר, לקוח חדש שמתעניין, רכישת מוצר או שירות חדש, מחירון, הזמנה חדשה, הרחבת שירות קיים' });
+      const acc = db.config.departments.find((d) => /חשבונות/.test(d.name));
+      if (acc) acc.description = acc.description.replace(/,?\s*הצעות מחיר/, '');
+    }
+    if (!(db.config.personRules || []).some((r) => r.phone === '972500000000')) {
+      db.config.personRules = [...(db.config.personRules || []), { phone: '972500000000', name: 'דויד', userId: noa.id }];
+    }
+  }
+  if (noa) db.config.migratedV11 = true; // אם עוד אין עובדת בשם נועה – ננסה שוב בהפעלה הבאה
+  store.saveConfig();
+  log('migration v11:', noa ? `sales + David → ${noa.name}` : 'Noa not found – skipped');
+})();
 
 const PORT = Number(process.env.HD_PORT) || db.config.port || 8080;
 const HOST = process.env.HD_HOST || db.config.host || '127.0.0.1';

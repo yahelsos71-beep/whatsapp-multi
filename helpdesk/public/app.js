@@ -669,6 +669,7 @@ async function saveConfig(patch, msg = 'נשמר ✓') {
 
 function adminDeps() {
   const deps = A.config.departments.map((d) => ({ ...d }));
+  const rules = (A.config.personRules || []).map((r) => ({ ...r }));
   const draw = () => {
     $('#apane').innerHTML = `<div class="hint">כל פנייה חדשה מלקוח נקראת על ידי Claude, שמחליט לאיזו מחלקה היא שייכת לפי התיאור – ומעביר לעובד של המחלקה.
       פנייה שלא זוהתה (למשל רק "שלום") עוברת למנהל.</div>
@@ -680,11 +681,22 @@ function adminDeps() {
         <label>שאלות מקדימות שהעוזר ישאל כשיש תקלה (לא חובה)</label>
         <textarea data-i="${i}" data-f="questions" rows="2" placeholder="למשל: איזה מכשיר? מה בדיוק קורה? יש הודעת שגיאה? ממתי?">${esc(d.questions || '')}</textarea>
         <div class="row" style="margin-top:6px"><button class="ghost" data-del="${i}">🗑️ מחק מחלקה</button></div></div>`).join('')}
-      <div class="row"><button id="addDep">+ הוסף מחלקה</button><span style="flex:1"></span><button class="primary" id="saveDeps">💾 שמור</button></div>`;
+      <div class="row"><button id="addDep">+ הוסף מחלקה</button></div>
+      <h4>👤 ניתוב לפי איש קשר</h4>
+      <div class="hint">פנייה מהמספר הזה – או מכל <b>קבוצה שהוא חבר בה</b> – הולכת ישר לעובד שנבחר, בלי AI.</div>
+      ${rules.map((r, i) => `<div class="row" style="margin-top:6px">
+        <input data-r="${i}" data-rf="name" value="${esc(r.name || '')}" placeholder="שם (למשל דויד)" style="flex:1">
+        <input data-r="${i}" data-rf="phone" dir="ltr" value="${esc(r.phone ? (r.phone.startsWith('972') ? '0' + r.phone.slice(3) : r.phone) : '')}" placeholder="05X-XXXXXXX" style="flex:1">
+        <select data-r="${i}" data-rf="userId" style="flex:1">${userOptions(r.userId)}</select>
+        <button class="ghost" data-rdel="${i}">🗑️</button></div>`).join('')}
+      <div class="row"><button id="addRule">+ הוסף כלל</button><span style="flex:1"></span><button class="primary" id="saveDeps">💾 שמור</button></div>`;
+    $('#apane').querySelectorAll('[data-rf]').forEach((el) => (el.oninput = el.onchange = () => (rules[el.dataset.r][el.dataset.rf] = el.value)));
+    $('#apane').querySelectorAll('[data-rdel]').forEach((b) => (b.onclick = () => { rules.splice(Number(b.dataset.rdel), 1); draw(); }));
+    $('#addRule').onclick = () => { rules.push({ name: '', phone: '', userId: '' }); draw(); };
     $('#apane').querySelectorAll('[data-f]').forEach((el) => (el.oninput = el.onchange = () => (deps[el.dataset.i][el.dataset.f] = el.value)));
     $('#apane').querySelectorAll('[data-del]').forEach((b) => (b.onclick = () => { deps.splice(Number(b.dataset.del), 1); draw(); }));
     $('#addDep').onclick = () => { deps.push({ name: '', description: '', userId: '' }); draw(); };
-    $('#saveDeps').onclick = () => saveConfig({ departments: deps });
+    $('#saveDeps').onclick = () => saveConfig({ departments: deps, personRules: rules });
   };
   if (!deps.length) {
     deps.push(

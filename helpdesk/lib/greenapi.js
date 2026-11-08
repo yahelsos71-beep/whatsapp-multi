@@ -78,6 +78,9 @@ function parseMessage(md) {
   return out;
 }
 
+// פרטי קבוצה (כולל המשתתפים)
+const getGroupData = (inst, groupId) => call(inst, 'getGroupData', { json: { groupId }, timeoutMs: 30000 });
+
 // היסטוריית צ'אט מוואטסאפ (ההודעות האחרונות, כולל מלפני המוקד)
 const getChatHistory = (inst, chatId, count = 100) => call(inst, 'getChatHistory', { json: { chatId, count }, timeoutMs: 60000 });
 
@@ -97,4 +100,4 @@ function parseHistoryItem(h) {
   };
 }
 
-module.exports = { getChatHistory, parseHistoryItem, receiveNotification, deleteNotification, sendMessage, sendFile, getStateInstance, enableNotifications, parseMessage };
+module.exports = { getGroupData, getChatHistory, parseHistoryItem, receiveNotification, deleteNotification, sendMessage, sendFile, getStateInstance, enableNotifications, parseMessage };
