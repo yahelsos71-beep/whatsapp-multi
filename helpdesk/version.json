@@ -1,15 +1,15 @@
 {
-  "version": 9,
+  "version": 10,
   "files": {
     "server.js": "001be5fc0355093bec03e4feded3fbffd4d0338a3be63b5ac5a696e5ad40c16f",
     "lib/ai.js": "a86761c5735519efe6d73fff0f2450800a36a5a8ed816ca41ef898fbe53a80c3",
     "lib/greenapi.js": "ee05b33cadff22e32cb75089bdf32b5f2abb22b047615e82e8adeb555305d482",
     "lib/sheet.js": "837e53085b7ee0da1c4816ea15d6d6bb5dfb8bd90d0b20266bcb231104eda5ed",
     "lib/store.js": "633a8daf243ad189c1f72436b2b1b87031a2b570e62c97e8ce35976dd59d42a4",
-    "public/app.js": "95d24570e390959923616449e2b2cae2afe4b9c220f9a03dcb72fe37a4f9c227",
+    "public/app.js": "22214c71635ad4248a39eb2745aee62b4d61940cb7fbd2e7191af7598d0f7ad3",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "d60662108dde0516c3713b78d6e7aa046b5b6db4ffaeb7b496e1acdea556f167"
   },
-  "notes": "שמירת איש קשר מהשיחה, פנייה למנהל, טלפון ליד השם, התעלמות מקבוצות לפי שם"
+  "notes": "סינון לפי עובד"
 }

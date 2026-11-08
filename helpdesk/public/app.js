@@ -114,7 +114,8 @@ async function startMain() {
     </div>
     <div class="side">
       <div class="tabs" id="tabs"></div>
-      <div class="search"><input id="q" placeholder="🔍 חיפוש לפי שם או טלפון"></div>
+      <div class="search" style="display:flex;gap:6px"><input id="q" placeholder="🔍 חיפוש לפי שם או טלפון" style="flex:1">
+        ${S.me.role === 'admin' ? '<select id="fuser" title="סינון לפי עובד" style="width:auto;max-width:130px"></select>' : ''}</div>
       <div class="list" id="list"></div>
     </div>
     <div class="chat" id="chat"></div>
@@ -125,6 +126,7 @@ async function startMain() {
   $('#newChat').onclick = newChatDialog;
   $('#taskBtn').onclick = taskDialog;
   $('#q').oninput = (e) => { S.q = e.target.value.trim(); renderList(); };
+  if ($('#fuser')) $('#fuser').onchange = (e) => { S.fuser = e.target.value; try { localStorage.setItem('hd-fuser', S.fuser); } catch {} renderList(); };
   const paintMute = () => { $('#muteBtn').textContent = Sounds.settings.muted ? '🔕' : '🔔'; $('#muteBtn').title = Sounds.settings.muted ? 'הצלצולים כבויים' : 'הצלצולים פעילים'; };
   $('#muteBtn').onclick = () => { Sounds.settings.muted = !Sounds.settings.muted; Sounds.save(); paintMute(); };
   paintMute();
@@ -132,6 +134,7 @@ async function startMain() {
   const [list, users, insts] = await Promise.all([api('GET', '/api/tickets'), api('GET', '/api/users'), api('GET', '/api/instances')]);
   S.tickets = new Map(list.map((t) => [t.id, t]));
   S.users = users; S.instances = insts;
+  fillUserFilter();
   renderInstances(); renderTabs(); renderList(); renderChat();
   connectEvents();
   if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
@@ -185,6 +188,14 @@ function onEvent(ev) {
   }
 }
 
+function fillUserFilter() {
+  const el = $('#fuser'); if (!el) return;
+  try { S.fuser = S.fuser ?? localStorage.getItem('hd-fuser') ?? ''; } catch { S.fuser = S.fuser || ''; }
+  el.innerHTML = `<option value="">👥 כל העובדים</option>` + S.users.map((u) => `<option value="${u.id}">${esc(u.name)}</option>`).join('') + `<option value="none">לא משויך</option>`;
+  if (![...el.options].some((o) => o.value === S.fuser)) S.fuser = '';
+  el.value = S.fuser;
+}
+
 function renderInstances() {
   const el = $('#insts'); if (!el) return;
   el.innerHTML = S.instances.filter((i) => i.enabled).map((i) => {
@@ -224,6 +235,9 @@ function currentList() {
     if (S.tab === 'routing') list = list.filter((t) => t.status === 'routing' || !t.assigneeId);
     sortTickets(list);
   }
+  if (S.me.role === 'admin' && S.fuser && S.tab !== 'mine') {
+    list = list.filter((t) => (S.fuser === 'none' ? !t.assigneeId : t.assigneeId === S.fuser || (S.tab === 'closed' && t.closedBy === S.fuser)));
+  }
   if (S.q) {
     const q = S.q.toLowerCase();
     list = list.filter((t) => String(t.customerName).toLowerCase().includes(q) || String(t.company || '').toLowerCase().includes(q) || String(t.phone).includes(q.replace(/\D/g, '') || '§') || String(t.id) === q.replace('#', ''));
@@ -233,6 +247,7 @@ function currentList() {
 
 function renderList() {
   const el = $('#list'); if (!el) return;
+  if ($('#fuser')) $('#fuser').style.display = S.tab === 'mine' ? 'none' : '';
   const list = currentList();
   const now = Date.now();
   const myWaiting = [...S.tickets.values()].filter((t) => t.assigneeId === S.me.id && t.awaiting).length;
@@ -240,7 +255,7 @@ function renderList() {
   const counts = { mine: [...S.tickets.values()].filter((t) => t.assigneeId === S.me.id).length, all: S.tickets.size, routing: [...S.tickets.values()].filter((t) => t.status === 'routing' || !t.assigneeId).length };
   for (const [k, n] of Object.entries(counts)) { const c = document.querySelector(`[data-cnt="${k}"]`); if (c) c.textContent = n ? `(${n})` : ''; }
   if (!list.length) {
-    el.innerHTML = `<div class="empty">${S.tab === 'closed' ? 'אין קריאות סגורות' : S.q ? 'לא נמצא' : 'אין קריאות פתוחות 🎉'}</div>`;
+    el.innerHTML = `<div class="empty">${S.q ? 'לא נמצא' : S.fuser && S.tab !== 'mine' ? 'אין קריאות לעובד הזה' : S.tab === 'closed' ? 'אין קריאות סגורות' : 'אין קריאות פתוחות 🎉'}</div>`;
     return;
   }
   el.innerHTML = list.map((t) => {
@@ -702,7 +717,7 @@ function adminUsers() {
     $('#usave').onclick = async () => {
       try {
         await api('POST', '/api/admin/users', { id: u?.id, name: $('#uname').value, username: $('#uuser').value, password: $('#upass').value, phone: $('#uphone').value, role: $('#urole').value, active: u ? $('#uactive').checked : true });
-        A = await api('GET', '/api/admin/config'); S.users = await api('GET', '/api/users');
+        A = await api('GET', '/api/admin/config'); S.users = await api('GET', '/api/users'); fillUserFilter();
         toast('נשמר ✓'); draw();
       } catch (e) { toast(e.message, true); }
     };
