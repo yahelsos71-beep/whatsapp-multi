@@ -112,12 +112,12 @@ async function startMain() {
       <span class="logo">💬 מוקד וואטסאפ</span>
       <span id="insts"></span>
       <span class="spacer"></span>
-      <a id="multiBtn" href="whatsappmulti://open" style="display:none"><button tabindex="-1" title="פתיחת התוכנה WhatsApp Multi (הוואטסאפים הרגילים, כולל הפרטי)">📱 WhatsApp Multi</button></a>
-      <button id="taskBtn" title="הודעה בקבוצה המשותפת – פותחת קריאה אצל הצד השני">${S.me.role === 'admin' ? '📋 קריאה לעובד' : '📋 פנייה למנהל'}</button>
-      <button id="newChat" title="שליחת הודעה ללקוח חדש">✉️ שיחה חדשה</button>
+      <a id="multiBtn" href="whatsappmulti://open" style="display:none"><button tabindex="-1" title="פתיחת התוכנה WhatsApp Multi (הוואטסאפים הרגילים, כולל הפרטי)">📱<span class="lbl"> WhatsApp Multi</span></button></a>
+      <button id="taskBtn" title="הודעה בקבוצה המשותפת – פותחת קריאה אצל הצד השני">📋<span class="lbl"> ${S.me.role === 'admin' ? 'קריאה לעובד' : 'פנייה למנהל'}</span></button>
+      <button id="newChat" title="שליחת הודעה ללקוח חדש">✉️<span class="lbl"> שיחה חדשה</span></button>
       <button id="muteBtn"></button>
       <button id="mySettings" title="צלצולים וסיסמה">⚙️</button>
-      ${S.me.role === 'admin' ? '<button id="dashBtn">📊 דשבורד</button><button id="adminBtn">🛠️ ניהול</button>' : ''}
+      ${S.me.role === 'admin' ? '<button id="dashBtn" title="דשבורד">📊<span class="lbl"> דשבורד</span></button><button id="adminBtn" title="ניהול">🛠️<span class="lbl"> ניהול</span></button>' : ''}
       <span class="me">${esc(S.me.name)} · v${S.version}</span>
       <button class="ghost" id="logout">יציאה</button>
     </div>
