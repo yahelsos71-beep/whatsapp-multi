@@ -5,9 +5,9 @@ const zlib = require('zlib');
 function decodeText(buf) {
   if (buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) return buf.slice(3).toString('utf8');
   if (buf[0] === 0xff && buf[1] === 0xfe) return new TextDecoder('utf-16le').decode(buf.slice(2));
-  const utf8 = buf.toString('utf8');
-  if (!utf8.includes('�')) return utf8;
-  try { return new TextDecoder('windows-1255').decode(buf); } catch { return utf8; } // עברית של אקסל ישן
+  // UTF-8 תקין (גם אם יש בו תווי � שהיו כבר בקובץ) – משאירים. רק קובץ שאינו UTF-8 נקרא כעברית של אקסל ישן
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch {}
+  try { return new TextDecoder('windows-1255').decode(buf); } catch { return buf.toString('utf8'); }
 }
 function parseCsv(text) {
   const first = text.split(/\r?\n/, 1)[0] || '';
@@ -103,4 +103,26 @@ function parseSheet(buf, fileName = '') {
   return parseCsv(decodeText(buf));
 }
 
-module.exports = { parseSheet };
+// תיקון שמות שנקראו בקידוד הלא נכון (UTF-8 שפוענח כ-windows-1255): "׳׳ ׳”" → "אנה"
+let CP1255 = null;
+function fixMojibake(str) {
+  if (!str) return str;
+  // שאריות של אימוג'י / סימני � שנקראו בקידוד שגוי – מסירים
+  if (/ן¿½|נ[\u0080-\u00FF\u2010-\u203A\u20AC\u2122\u02DC]/.test(str) && !/\u05F3/.test(str)) {
+    return str.replace(/ן¿½/g, '').replace(/נ[\u0080-\u00FF\u2010-\u203A\u20AC\u2122\u02DC][\u0080-\u00FF\u2010-\u203A\u20AC\u2122\u02DCא-ת]{0,2}(ג€[\u0080-\u00FF\u2010-\u203A\u20AC\u2122\u02DCנ][\u0080-\u00FF\u2010-\u203A\u20AC\u2122\u02DC]{0,2})*/g, '').replace(/\s{2,}/g, ' ').trim();
+  }
+  if (!/\u05F3/.test(str)) return str;
+  if (!CP1255) {
+    CP1255 = new Map();
+    const dec = new TextDecoder('windows-1255');
+    for (let b = 0; b < 256; b++) { const ch = dec.decode(Uint8Array.of(b)); if (ch !== '\uFFFD' && !CP1255.has(ch)) CP1255.set(ch, b); }
+  }
+  const bytes = [];
+  for (const ch of str) { const b = CP1255.get(ch); if (b === undefined) return str; bytes.push(b); }
+  try {
+    const fixed = new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(bytes));
+    return /[\u05D0-\u05EA]/.test(fixed) ? fixed : str;
+  } catch { return str; }
+}
+
+module.exports = { parseSheet, fixMojibake };

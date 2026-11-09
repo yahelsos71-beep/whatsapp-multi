@@ -978,7 +978,15 @@ function adminGeneral() {
     <div id="ignList">${c.ignoredChats.length ? c.ignoredChats.map((x, i) => `<div class="row" style="margin-top:4px"><span style="flex:1">${x.isGroup ? '👥' : '👤'} ${esc(x.name || x.chatId)}</span><button class="ghost" data-unign="${i}">החזר</button></div>`).join('') : '<div class="hint">אין. (כפתור "🔕 התעלם" בראש כל שיחה)</div>'}</div>
     <div class="hint">שינוי "מאיפה אפשר להיכנס" או הפורט נכנס לתוקף אחרי הפעלה מחדש של השרת.<br>
     לקוח שכותב "שלום" ואז את הבעיה – ההמתנה נותנת ל-AI את כל ההודעות ביחד, וכך הניתוב מדויק יותר.</div>
+    <h4>⬆ עדכונים</h4>
+    <div class="row" style="margin-top:0"><span style="flex:1" id="updStatus">גרסה ${S.version}</span><button id="updNow">⬆ בדוק עדכון עכשיו</button></div>
     <div class="row"><span style="flex:1"></span><button class="primary" id="gSave">💾 שמור</button></div>`;
+  api('GET', '/api/admin/update-status').then((r) => { $('#updStatus').textContent = `גרסה ${r.version} · בדיקה אחרונה: ${r.at ? new Date(r.at).toLocaleTimeString('he-IL') + ' – ' + r.result : r.result}`; }).catch(() => {});
+  $('#updNow').onclick = async () => {
+    $('#updStatus').textContent = 'בודק...';
+    try { const r = await api('POST', '/api/admin/update-check'); $('#updStatus').textContent = r.result; if (/עודכן/.test(r.result)) toast('השרת מתעדכן ועולה מחדש – הדף יתרענן לבד', false, 8000); }
+    catch (e) { $('#updStatus').textContent = e.message; }
+  };
   let ign = [...c.ignoredChats];
   let rules = [...c.chatRules];
   $('#apane').querySelectorAll('[data-unrule]').forEach((b) => (b.onclick = () => { rules.splice(Number(b.dataset.unrule), 1); b.parentElement.remove(); }));

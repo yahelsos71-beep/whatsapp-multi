@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const store = require('./lib/store');
 const ga = require('./lib/greenapi');
 const { routeTicket, intake } = require('./lib/ai');
-const { parseSheet } = require('./lib/sheet');
+const { parseSheet, fixMojibake } = require('./lib/sheet');
 
 const { db } = store;
 const APP_DIR = __dirname;
@@ -1109,7 +1109,9 @@ const server = http.createServer(async (req, res) => {
 // עדכון אוטומטי מ-GitHub (כמו התוכנה הקודמת): מוריד, מחליף קבצים, ומפעיל מחדש
 // =====================================================================
 const UPDATE_BASE = process.env.HD_UPDATE_URL || 'https://raw.githubusercontent.com/yahelsos71-beep/whatsapp-multi/main/helpdesk/';
+let lastUpdateCheck = { at: 0, result: 'עוד לא נבדק' };
 async function checkUpdate() {
+  log('checking for updates...');
   try {
     const get = async (f) => {
       const r = await fetch(UPDATE_BASE + f + '?t=' + now(), { cache: 'no-store', signal: AbortSignal.timeout(30000) });
@@ -1117,7 +1119,11 @@ async function checkUpdate() {
       return Buffer.from(await r.arrayBuffer());
     };
     const remote = JSON.parse((await get('version.json')).toString('utf8'));
-    if (!remote.version || remote.version <= VERSION) return;
+    if (!remote.version || remote.version <= VERSION) {
+      lastUpdateCheck = { at: now(), result: `מעודכן – גרסה ${VERSION} היא האחרונה` };
+      log(`up to date (v${VERSION})`);
+      return lastUpdateCheck;
+    }
     const files = {};
     for (const [f, hash] of Object.entries(remote.files || {})) {
       if (!/^[\w.-]+(\/[\w.-]+)*$/.test(f) || f.includes('..')) throw new Error('bad path ' + f);
@@ -1132,11 +1138,19 @@ async function checkUpdate() {
     }
     fs.writeFileSync(path.join(APP_DIR, 'version.json'), JSON.stringify(remote, null, 2));
     log(`updated to v${remote.version} – restarting`);
+    lastUpdateCheck = { at: now(), result: `עודכן לגרסה ${remote.version} – השרת עולה מחדש` };
     emitAll({ type: 'restarting', version: remote.version });
     store.flushAll();
     setTimeout(() => process.exit(3), 1500);
-  } catch (e) { log('update check failed:', e.message); }
+    return lastUpdateCheck;
+  } catch (e) {
+    log('update check failed:', e.message);
+    lastUpdateCheck = { at: now(), result: 'הבדיקה נכשלה: ' + e.message };
+    return lastUpdateCheck;
+  }
 }
+route('POST', /^\/api\/admin\/update-check$/, async (req, res) => send(res, 200, { version: VERSION, ...(await checkUpdate()) }), { auth: 'admin' });
+route('GET', /^\/api\/admin\/update-status$/, (req, res) => send(res, 200, { version: VERSION, ...lastUpdateCheck }), { auth: 'admin' });
 
 // =====================================================================
 process.on('SIGINT', () => { store.flushAll(); process.exit(0); });
@@ -1163,6 +1177,17 @@ process.on('unhandledRejection', (e) => log('unhandled', e && (e.stack || e.mess
   store.saveConfig();
   log('migration v11:', noa ? `sales + David → ${noa.name}` : 'Noa not found – skipped');
 })();
+
+// תיקון חד-פעמי (גרסה 16): שמות אנשי קשר שיובאו בקידוד שגוי
+(function fixContactNames() {
+  let n = 0;
+  for (const c of db.contacts) {
+    const name = fixMojibake(c.name), company = fixMojibake(c.company);
+    if (name !== c.name || company !== c.company) { c.name = name; c.company = company; n++; }
+  }
+  if (n) { store.saveContacts(); log(`fixed ${n} contact names (encoding)`); }
+})();
+reindexContacts();
 
 const PORT = Number(process.env.HD_PORT) || db.config.port || 8080;
 const HOST = process.env.HD_HOST || db.config.host || '127.0.0.1';

@@ -1,15 +1,15 @@
 {
-  "version": 15,
+  "version": 16,
   "files": {
-    "server.js": "e1da200cd7b3c9822c8c94df70d22c3f584fbe091f60b8cbaa91e1e6d2f24ff1",
+    "server.js": "4e9621eb4905c2ea0e527357851bde534e42f95766e6e87ebe51a602109cd24e",
     "lib/ai.js": "a86761c5735519efe6d73fff0f2450800a36a5a8ed816ca41ef898fbe53a80c3",
     "lib/greenapi.js": "dcb312ea11e8fcc7dd8c730f95e449a2fdec3d730266a1e3d2a4d2fa0d528730",
-    "lib/sheet.js": "837e53085b7ee0da1c4816ea15d6d6bb5dfb8bd90d0b20266bcb231104eda5ed",
+    "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "85dad5ad492d356c4ca6329d084103afe8147500a443fbf848101dbaaee5dcaf",
-    "public/app.js": "a8807d5b5ea27c637c956f54d40d98cff2cf56972c92d6dd24d73fb1235efa91",
+    "public/app.js": "43d541e2222de128d0c2445f572ffc6c78871dbb8f30d1e619adf438620cf724",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "efd78b55548794046fbc22733130808c04a90695d98b09c7097a40da00ecda71"
   },
-  "notes": "תיקון זיהוי עמודת שם בייבוא"
+  "notes": "תיקון קידוד בייבוא + תיקון אוטומטי של שמות + כפתור בדיקת עדכון"
 }
