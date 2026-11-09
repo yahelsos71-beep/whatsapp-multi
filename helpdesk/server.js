@@ -537,6 +537,7 @@ function adminConfigView() {
     groups: c.groups,
     hours: c.hours,
     quietMinutes: c.quietMinutes ?? 30,
+    serviceTech: c.serviceTech || { name: '', phone: '' },
     ignoredChats: c.ignoredChats,
     ignoreGroupNames: c.ignoreGroupNames || [],
     personRules: c.personRules || [],
@@ -550,7 +551,8 @@ const route = (method, pattern, handler, { auth = 'user' } = {}) => routes.push(
 
 // ---------- התקנה ראשונה / התחברות ----------
 route('GET', /^\/api\/state$/, (req, res, { user }) =>
-  send(res, 200, { setupNeeded: db.users.length === 0, user: publicUser(user), version: VERSION, company: db.config.companyName }), { auth: 'none' });
+  send(res, 200, { setupNeeded: db.users.length === 0, user: publicUser(user), version: VERSION, company: db.config.companyName,
+    tech: user && db.config.serviceTech && db.config.serviceTech.phone ? { name: db.config.serviceTech.name || 'טכנאי' } : null }), { auth: 'none' });
 
 route('POST', /^\/api\/setup$/, async (req, res) => {
   if (db.users.length) return send(res, 400, { error: 'כבר הוגדר' });
@@ -846,6 +848,42 @@ route('POST', /^\/api\/tickets\/new$/, async (req, res, { user }) => {
   send(res, 200, summary(t));
 });
 
+// ---------- קריאת שירות לטכנאי (עידן) ----------
+route('GET', /^\/api\/tickets\/(\d+)\/service-call$/, (req, res, { user, params }) => {
+  const t = visibleTicket(user, params[0]);
+  if (!t) return send(res, 404, { error: 'לא נמצא' });
+  const s = summary(t);
+  const ins = store.messages(t.id).filter((m) => m.dir === 'in');
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const recent = ins.filter((m) => m.ts >= today.getTime());
+  const msgs = (recent.length ? recent : ins.slice(-8)).map((m) => (m.senderName ? m.senderName + ': ' : '') + (m.text || `[${m.type}]`));
+  send(res, 200, {
+    tech: db.config.serviceTech,
+    customer: s.customerName, company: s.company || '', phone: t.isGroup ? '' : t.phone, isGroup: !!t.isGroup,
+    description: t.aiSummary ? t.aiSummary + '\n\nמה שהלקוח כתב:\n' + msgs.join('\n') : msgs.join('\n'),
+  });
+});
+route('POST', /^\/api\/tickets\/(\d+)\/service-call$/, async (req, res, { user, params }) => {
+  const t = visibleTicket(user, params[0]);
+  if (!t) return send(res, 404, { error: 'לא נמצא' });
+  const tech = db.config.serviceTech || {};
+  const techPhone = normPhone(tech.phone);
+  if (!techPhone) return send(res, 400, { error: 'לא הוגדר טלפון של הטכנאי (ניהול ← כללי)' });
+  const inst = instById(t.instanceId) || db.config.instances.find((i) => i.enabled !== false);
+  if (!inst) return send(res, 400, { error: 'אין מספר וואטסאפ לשליחה' });
+  const b = await readJson(req);
+  const text = String(b.text || '').trim();
+  if (!text) return send(res, 400, { error: 'הקריאה ריקה' });
+  try {
+    const r = await ga.sendMessage(inst, techPhone + '@c.us', text);
+    if (r && r.idMessage) sentIds.add(r.idMessage);
+  } catch (e) { return send(res, 502, { error: 'השליחה נכשלה: ' + e.message }); }
+  note(t, `🛠 ${user.name} שלח/ה קריאת שירות ל${tech.name || 'טכנאי'}:\n${text}`);
+  t.serviceCalls = (t.serviceCalls || 0) + 1;
+  emitTicket(t);
+  send(res, 200, { ok: true });
+});
+
 // ---------- תבניות הודעה ----------
 route('GET', /^\/api\/templates$/, (req, res) => send(res, 200, db.config.templates));
 route('POST', /^\/api\/templates$/, async (req, res) => {
@@ -987,6 +1025,7 @@ route('POST', /^\/api\/admin\/config$/, async (req, res) => {
     end: /^\d{1,2}:\d{2}$/.test(b.hours.end) ? b.hours.end : c.hours.end,
     message: String(b.hours.message ?? c.hours.message),
   };
+  if (b.serviceTech) c.serviceTech = { name: String(b.serviceTech.name || '').trim(), phone: normPhone(b.serviceTech.phone) };
   if (b.quietMinutes !== undefined) c.quietMinutes = Math.max(0, Math.min(600, Number(b.quietMinutes) || 0));
   if (b.groups) c.groups = { enabled: !!b.groups.enabled, autoReply: !!b.groups.autoReply };
   if (Array.isArray(b.ignoreGroupNames)) {
@@ -1178,7 +1217,7 @@ process.on('SIGTERM', () => { store.flushAll(); process.exit(0); });
 process.on('uncaughtException', (e) => log('uncaught', e.stack || e.message));
 process.on('unhandledRejection', (e) => log('unhandled', e && (e.stack || e.message)));
 
-// עדכון חד-פעמי (גרסה 11): מחלקת מכירות + דויד → נועה
+// עדכון חד-פעמי (גרסה 11): מחלקת מכירות → נועה
 (function migrateV11() {
   if (db.config.migratedV11) return;
   const noa = db.users.find((u) => u.active !== false && /^(נועה|נעה)/.test(String(u.name).trim()));
@@ -1189,13 +1228,11 @@ process.on('unhandledRejection', (e) => log('unhandled', e && (e.stack || e.mess
       const acc = db.config.departments.find((d) => /חשבונות/.test(d.name));
       if (acc) acc.description = acc.description.replace(/,?\s*הצעות מחיר/, '');
     }
-    if (!(db.config.personRules || []).some((r) => r.phone === '972500000000')) {
-      db.config.personRules = [...(db.config.personRules || []), { phone: '972500000000', name: 'דויד', userId: noa.id }];
-    }
+    // (כלל הניתוב של דויד מוגדר בשרת עצמו, ב"ניתוב לפי איש קשר" – לא בקוד)
   }
   if (noa) db.config.migratedV11 = true; // אם עוד אין עובדת בשם נועה – ננסה שוב בהפעלה הבאה
   store.saveConfig();
-  log('migration v11:', noa ? `sales + David → ${noa.name}` : 'Noa not found – skipped');
+  log('migration v11:', noa ? `sales → ${noa.name}` : 'Noa not found – skipped');
 })();
 
 // חד-פעמי (גרסה 17): התבניות של KC Group

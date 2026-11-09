@@ -1,15 +1,15 @@
 {
-  "version": 17,
+  "version": 18,
   "files": {
-    "server.js": "cdc5ca1868dd206a63b3c45d611de16d4c61ec4b836b17888590060be4e10c0d",
+    "server.js": "52b13c1e143cbd33afd7517f76818b126cd2d38b692917c64aab2bf722489c49",
     "lib/ai.js": "a86761c5735519efe6d73fff0f2450800a36a5a8ed816ca41ef898fbe53a80c3",
     "lib/greenapi.js": "dcb312ea11e8fcc7dd8c730f95e449a2fdec3d730266a1e3d2a4d2fa0d528730",
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
-    "lib/store.js": "f5975911960740279f866fddc9bec92e4e1b3b6623b67a8e20eb7a0129c2ef51",
-    "public/app.js": "c8d9e273d1c368db3324696ff2501b508f2a46e286bfe4b4f53e55a04fe24625",
+    "lib/store.js": "67a5b54ca008c7997987a23dcae1968a8283fac3629e397c5ecddbad53d9afa5",
+    "public/app.js": "d04707180456c2eaaa0be509d8686f148d5f5e90dd2a76cdea020c4bc8d622db",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "52a1494fde70b331a78f08ee67db4a9275abbcb647980be7ed9a73a6e59272fe"
   },
-  "notes": "תבניות הודעה"
+  "notes": "כפתור קריאת שירות לטכנאי"
 }

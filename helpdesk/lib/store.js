@@ -43,7 +43,8 @@ const DEFAULT_CONFIG = {
   quietMinutes: 30, // אחרי שעובד ענה ללקוח – הבוט שותק כך וכך דקות
   ignoreGroupNames: ['פורום מתקינים', 'מתח נמוך'], // קבוצות שמתעלמים מהן לפי חלק מהשם
   personRules: [], // { phone, name, userId } – פנייה מהמספר הזה, או מקבוצה שהוא חבר בה, הולכת ישר לעובד
-  templates: [], // { id, title, text } – תבניות הודעה לשליחה מהירה
+  templates: [],
+  serviceTech: { name: 'עידן', phone: '' }, // טכנאי שמקבל קריאות שירות בוואטסאפ (הטלפון נשמר רק בהגדרות בשרת)
   chatRules: [], // { instanceId, chatId, name, isGroup, userId } – צ'אט/קבוצה שמשויכים קבוע לעובד
   autoReply: {
     enabled: true,
@@ -74,6 +75,7 @@ for (const d of db.config.departments || []) {
 db.config.ignoredChats = db.config.ignoredChats || [];
 db.config.chatRules = db.config.chatRules || [];
 db.config.templates = db.config.templates || [];
+if (!db.config.serviceTech) db.config.serviceTech = { name: 'עידן', phone: '' };
 db.config.personRules = db.config.personRules || [];
 if (!db.config.ignoreGroupNames) db.config.ignoreGroupNames = ['פורום מתקינים', 'מתח נמוך'];
 db.config.hours = Object.assign({}, DEFAULT_CONFIG.hours, db.config.hours);

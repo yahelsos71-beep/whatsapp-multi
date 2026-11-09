@@ -66,7 +66,7 @@ function waitText(ms) {
 async function boot() {
   let st;
   try { st = await api('GET', '/api/state'); } catch { app.innerHTML = '<div class="welcome"><h2>אין חיבור לשרת</h2>מנסה שוב...</div>'; return setTimeout(boot, 3000); }
-  S.version = st.version; S.company = st.company;
+  S.version = st.version; S.company = st.company; S.tech = st.tech;
   if (st.setupNeeded) return renderSetup();
   if (!st.user) return renderLogin();
   S.me = st.user;
@@ -367,6 +367,7 @@ function renderChatHead() {
     ${ro ? '<span class="chip">צפייה בלבד</span>' : t.status === 'closed'
       ? '<button id="reopenBtn">🔄 פתח מחדש</button>'
       : `${t.snoozeUntil ? `<span class="chip who">⏸ מושהית עד ${fmtWhen(t.snoozeUntil)}</span><button id="unsnoozeBtn">▶ החזר עכשיו</button>` : '<button id="snoozeBtn" title="עדיין לא סגרנו – מתכתבים עם הלקוח. הקריאה תעבור ל״מושהות״ ותחזור עם תזכורת">⏸ השהה</button>'}<button id="transferBtn">↪️ העבר שיחה</button><button class="primary" id="closeBtn">✅ סגור קריאה</button>`}
+    ${S.tech && !ro ? `<button id="svcBtn" title="שליחת קריאת שירות בוואטסאפ ל${esc(S.tech.name)}">🛠 קריאה ל${esc(S.tech.name)}</button>` : ''}
     ${!t.isGroup && !ro ? `<button class="ghost" id="contactBtn" title="שמירת שם וחברה ללקוח הזה">👤 ${t.contact ? 'איש קשר' : 'שמור איש קשר'}</button>` : ''}
     <button class="ghost" id="waHistBtn" title="ההודעות הקודמות עם ${t.isGroup ? 'הקבוצה' : 'הלקוח'} מוואטסאפ – גם מלפני המוקד">📜 היסטוריה</button>
     ${t.pinnedTo ? `<span class="chip who">📌 קבוע: ${esc(t.pinnedTo)}</span>` : ''}
@@ -377,6 +378,7 @@ function renderChatHead() {
   if ($('#unsnoozeBtn')) $('#unsnoozeBtn').onclick = async () => { try { await api('POST', `/api/tickets/${t.id}/snooze`, { until: null }); toast('הקריאה חזרה לרשימה ▶'); } catch (e) { toast(e.message, true); } };
   if ($('#closeBtn')) $('#closeBtn').onclick = closeTicket;
   $('#waHistBtn').onclick = () => waHistoryDialog(t);
+  if ($('#svcBtn')) $('#svcBtn').onclick = () => serviceCallDialog(t);
   if ($('#contactBtn')) $('#contactBtn').onclick = () => {
     const c = t.contact;
     openModal(`<h3>👤 ${c ? 'עריכת איש קשר' : 'שמירת איש קשר'}</h3>
@@ -515,6 +517,37 @@ async function closeTicket() {
     S.tickets.delete(t.id); S.sel = null; S.view = null;
     renderList(); renderChat(); toast(`קריאה #${t.id} נסגרה ✅`);
   } catch (e) { toast(e.message, true); }
+}
+
+// ---------- קריאת שירות לטכנאי ----------
+async function serviceCallDialog(t) {
+  let d;
+  try { d = await api('GET', `/api/tickets/${t.id}/service-call`); } catch (e) { return toast(e.message, true); }
+  const techPhone = d.tech.phone ? localPhone(d.tech.phone) : '';
+  openModal(`<h3>🛠 קריאת שירות ל${esc(d.tech.name)} <span class="hint" dir="ltr">${techPhone}</span></h3>
+    <div class="svc">
+      <div class="grid2"><div><label>לקוח</label><input id="sc_name" value="${esc(d.customer)}"></div>
+      <div><label>חברה</label><input id="sc_co" value="${esc(d.company)}"></div></div>
+      <label>טלפון הפונה</label><input id="sc_ph" dir="ltr" value="${esc(d.phone ? localPhone(d.phone) : '')}">
+      <label>כתובת (לא חובה)</label><input id="sc_addr">
+      <label>תיאור הפנייה</label><textarea id="sc_desc" rows="7">${esc(d.description)}</textarea>
+    </div>
+    <label>כך זה יישלח ל${esc(d.tech.name)}:</label><div class="tcard" style="white-space:pre-line;font-size:14px" id="sc_prev"></div>
+    <div class="row"><button class="primary" id="sc_send">📤 שלח ל${esc(d.tech.name)}</button><button id="cancel">ביטול</button></div>`, true);
+  const build = () => {
+    const name = $('#sc_name').value.trim(), co = $('#sc_co').value.trim(), ph = $('#sc_ph').value.trim(), addr = $('#sc_addr').value.trim();
+    return [`🛠 *קריאת שירות* #${t.id}`, `👤 לקוח: ${name}${co ? ` (${co})` : ''}`, ph ? `📞 טלפון: ${ph}` : '', addr ? `📍 כתובת: ${addr}` : '',
+      '', '📝 תיאור הפנייה:', $('#sc_desc').value.trim(), '', `נפתח ע״י: ${S.me.name}`]
+      .filter((x, i) => x !== '' || i === 4 || i === 7).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  };
+  const prev = () => { $('#sc_prev').textContent = build(); };
+  box.querySelectorAll('.svc input, .svc textarea').forEach((el) => (el.oninput = prev));
+  prev();
+  $('#cancel').onclick = closeModal;
+  $('#sc_send').onclick = async () => {
+    try { await api('POST', `/api/tickets/${t.id}/service-call`, { text: build() }); closeModal(); toast(`🛠 הקריאה נשלחה ל${d.tech.name} ✓`); }
+    catch (e) { toast(e.message, true, 7000); }
+  };
 }
 
 // ---------- תבניות הודעה ----------
@@ -1057,6 +1090,9 @@ function adminGeneral() {
     <div id="ignList">${c.ignoredChats.length ? c.ignoredChats.map((x, i) => `<div class="row" style="margin-top:4px"><span style="flex:1">${x.isGroup ? '👥' : '👤'} ${esc(x.name || x.chatId)}</span><button class="ghost" data-unign="${i}">החזר</button></div>`).join('') : '<div class="hint">אין. (כפתור "🔕 התעלם" בראש כל שיחה)</div>'}</div>
     <div class="hint">שינוי "מאיפה אפשר להיכנס" או הפורט נכנס לתוקף אחרי הפעלה מחדש של השרת.<br>
     לקוח שכותב "שלום" ואז את הבעיה – ההמתנה נותנת ל-AI את כל ההודעות ביחד, וכך הניתוב מדויק יותר.</div>
+    <h4>🛠 טכנאי לקריאות שירות</h4>
+    <div class="grid2"><div><label>שם</label><input id="gTechN" value="${esc(c.serviceTech?.name || '')}"></div>
+    <div><label>טלפון (הקריאה נשלחת אליו בוואטסאפ; ריק = בלי כפתור)</label><input id="gTechP" dir="ltr" value="${esc(c.serviceTech?.phone ? '0' + c.serviceTech.phone.slice(3) : '')}"></div></div>
     <h4>⬆ עדכונים</h4>
     <div class="row" style="margin-top:0"><span style="flex:1" id="updStatus">גרסה ${S.version}</span><button id="updNow">⬆ בדוק עדכון עכשיו</button></div>
     <div class="row"><span style="flex:1"></span><button class="primary" id="gSave">💾 שמור</button></div>`;
@@ -1072,7 +1108,8 @@ function adminGeneral() {
   $('#apane').querySelectorAll('[data-unign]').forEach((b) => (b.onclick = () => { ign.splice(Number(b.dataset.unign), 1); b.parentElement.remove(); }));
   $('#gSave').onclick = () => saveConfig({ companyName: $('#gName').value, routeDelaySec: $('#gDelay').value, host: $('#gHost').value, port: $('#gPort').value,
     groups: { enabled: $('#gGroups').checked, autoReply: $('#gGroupsAR').checked }, ignoredChats: ign, chatRules: rules,
-    ignoreGroupNames: $('#gIgnNames').value.split('\n').map((x) => x.trim()).filter(Boolean) });
+    ignoreGroupNames: $('#gIgnNames').value.split('\n').map((x) => x.trim()).filter(Boolean),
+    serviceTech: { name: $('#gTechN').value, phone: $('#gTechP').value } });
 }
 
 boot();
