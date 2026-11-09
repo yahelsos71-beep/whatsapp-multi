@@ -846,6 +846,26 @@ route('POST', /^\/api\/tickets\/new$/, async (req, res, { user }) => {
   send(res, 200, summary(t));
 });
 
+// ---------- תבניות הודעה ----------
+route('GET', /^\/api\/templates$/, (req, res) => send(res, 200, db.config.templates));
+route('POST', /^\/api\/templates$/, async (req, res) => {
+  const b = await readJson(req);
+  const title = String(b.title || '').trim(), text = String(b.text || '').trim();
+  if (!title || !text) return send(res, 400, { error: 'צריך כותרת ותוכן' });
+  let t = b.id && db.config.templates.find((x) => x.id === b.id);
+  if (!t) { t = { id: store.newId() }; db.config.templates.push(t); }
+  Object.assign(t, { title, text });
+  store.saveConfig();
+  emitAll({ type: 'templates' });
+  send(res, 200, t);
+});
+route('DELETE', /^\/api\/templates\/(\w+)$/, (req, res, { params }) => {
+  db.config.templates = db.config.templates.filter((x) => x.id !== params[0]);
+  store.saveConfig();
+  emitAll({ type: 'templates' });
+  send(res, 200, { ok: true });
+});
+
 // ---------- אנשי קשר ----------
 route('GET', /^\/api\/contacts$/, (req, res, { query }) => {
   const q = String(query.get('q') || '').trim().toLowerCase();
@@ -1176,6 +1196,21 @@ process.on('unhandledRejection', (e) => log('unhandled', e && (e.stack || e.mess
   if (noa) db.config.migratedV11 = true; // אם עוד אין עובדת בשם נועה – ננסה שוב בהפעלה הבאה
   store.saveConfig();
   log('migration v11:', noa ? `sales + David → ${noa.name}` : 'Noa not found – skipped');
+})();
+
+// חד-פעמי (גרסה 17): התבניות של KC Group
+(function seedTemplates() {
+  if (db.config.templatesSeeded) return;
+  const T = (title, text) => ({ id: store.newId(), title, text });
+  db.config.templates = [
+    T('הצעה', 'KC Group – כל פתרונות המחשוב והתקשורת לעסק במקום אחד\n\n• מרכזיות IP וטלפוניה בענן\n• תשתיות תקשורת ורשתות\n• פתרונות מחשוב, שרתים וענן\n• ציוד מחשוב וציוד היקפי\n• גיבוי והמשכיות עסקית\n• שירותי IT, תחזוקה ותמיכה שוטפת\n\nלהלן הצעת המחיר :'),
+    T('תחזור אלינו', 'הי אשמח שתשלח הודעה כאשר אתה יכול לדבר תודה רבה\nקי סי גרופ תקשורת לעסקים'),
+    T('אם תרצה', 'הי שלחתי לך הצעה אבל אתה לא עונה לי אם תרצה להתקדם נשמח אם תיצור קשר'),
+    T('לקוח שלא סוגר', 'רק חשוב לי שתדעו שאנחנו ב־KC Group נותנים מעטפת מלאה לעסקים בכל מה שקשור ל־\n📞 מרכזיות וטלפוניה לעסקים\n💻 מחשוב ותמיכה טכנית\n🌐 תקשורת, רשתות וסיבים\n📹 מצלמות ואבטחה\n🔐 אבטחת מידע ופתרונות מתקדמים לעסק\n\nככה שאם בעתיד עולה צורך, תקלה, שדרוג או פרויקט חדש – יש לכם כתובת אחת מסודרת לכל התחום 🙌\nנשמח לעמוד לרשותכם בכל זמן 💙'),
+    ...db.config.templates,
+  ];
+  db.config.templatesSeeded = true;
+  store.saveConfig();
 })();
 
 // תיקון חד-פעמי (גרסה 16): שמות אנשי קשר שיובאו בקידוד שגוי

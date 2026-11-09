@@ -144,6 +144,7 @@ async function startMain() {
   const [list, users, insts] = await Promise.all([api('GET', '/api/tickets'), api('GET', '/api/users'), api('GET', '/api/instances')]);
   S.tickets = new Map(list.map((t) => [t.id, t]));
   S.users = users; S.instances = insts;
+  loadTemplates();
   fillUserFilter();
   renderInstances(); renderTabs(); renderList(); renderChat();
   connectEvents();
@@ -179,6 +180,8 @@ function onEvent(ev) {
       Sounds.newMessage();
       notify(ev.sound === 'new' ? 'קריאה חדשה' : 'הודעה חדשה', `${t.customerName}: ${t.lastText || ''}`);
     }
+  } else if (ev.type === 'templates') {
+    loadTemplates();
   } else if (ev.type === 'reminder') {
     reminderPopup(ev.ticket);
   } else if (ev.type === 'remove') {
@@ -457,6 +460,7 @@ function renderComposer() {
   if (c.dataset.for === t.id && $('#txt')) return; // לא מוחקים טקסט שבאמצע הקלדה
   c.dataset.for = t.id;
   c.innerHTML = `<div class="composer">
+    <button id="tplBtn" title="תבנית הודעה">📝</button>
     <button id="attach" title="שליחת קובץ / תמונה">📎</button>
     <input type="file" id="file" hidden>
     <textarea id="txt" placeholder="כתוב הודעה... (Enter לשליחה, Shift+Enter לשורה חדשה)"></textarea>
@@ -467,6 +471,11 @@ function renderComposer() {
   txt.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); } };
   $('#sendBtn').onclick = sendText;
   $('#attach').onclick = () => $('#file').click();
+  $('#tplBtn').onclick = () => templatePicker((text) => {
+    const v = S.view && S.view.ticket;
+    txt.value = fillTemplate(text, v ? { name: v.customerName, company: v.company } : {});
+    txt.dispatchEvent(new Event('input')); txt.focus({ preventScroll: true });
+  });
   $('#file').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) sendFile(f); };
   txt.addEventListener('paste', (e) => {
     const f = [...(e.clipboardData?.files || [])][0];
@@ -506,6 +515,66 @@ async function closeTicket() {
     S.tickets.delete(t.id); S.sel = null; S.view = null;
     renderList(); renderChat(); toast(`קריאה #${t.id} נסגרה ✅`);
   } catch (e) { toast(e.message, true); }
+}
+
+// ---------- תבניות הודעה ----------
+async function loadTemplates() { S.templates = await api('GET', '/api/templates').catch(() => S.templates || []); }
+function fillTemplate(text, { name = '', company = '' } = {}) {
+  const first = name && !/^[\d+\s-]+$/.test(name) ? name.split(' ')[0] : '';
+  return text.replace(/\{name\}/g, first).replace(/\{company\}/g, company || '').replace(/\{agent\}/g, S.me.name).replace(/ {2,}/g, ' ');
+}
+function templatePicker(onPick, onCancel) {
+  const list = S.templates || [];
+  const draw = (q = '') => {
+    const f = list.filter((t) => !q || (t.title + ' ' + t.text).includes(q));
+    $('#tlist').innerHTML = f.length ? f.map((t) => `<button class="tpl" data-id="${t.id}"><b>${esc(t.title)}</b><span>${esc(t.text.slice(0, 140))}${t.text.length > 140 ? '…' : ''}</span></button>`).join('')
+      : '<div class="hint">אין תבניות. לחץ "⚙️ ניהול תבניות" כדי להוסיף.</div>';
+    $('#tlist').querySelectorAll('.tpl').forEach((b) => (b.onclick = () => { const t = list.find((x) => x.id === b.dataset.id); closeModal(); onPick(t.text); }));
+  };
+  openModal(`<h3>📝 בחר תבנית</h3><input id="tq" placeholder="🔍 חיפוש תבנית">
+    <div class="pick" id="tlist" style="margin-top:8px;max-height:55vh;overflow-y:auto"></div>
+    <div class="row"><button id="tman">⚙️ ניהול תבניות</button><span style="flex:1"></span><button id="cancel">ביטול</button></div>`);
+  draw();
+  $('#tq').oninput = (e) => draw(e.target.value.trim());
+  $('#tq').focus();
+  $('#tman').onclick = () => templatesManager();
+  $('#cancel').onclick = () => { closeModal(); if (onCancel) onCancel(); };
+}
+function templatesManager() {
+  const list = S.templates || [];
+  openModal(`<div class="row" style="margin:0 0 10px;justify-content:space-between"><h3 style="margin:0">📝 תבניות הודעה</h3><button class="primary" id="tnew">+ תבנית חדשה</button></div>
+    <div class="hint" style="margin-bottom:8px">אפשר לכתוב בתבנית <code>{name}</code> לשם הלקוח, <code>{company}</code> לחברה, <code>{agent}</code> לשם שלך.</div>
+    <div id="tcards">${list.map((t) => `<div class="tcard" data-id="${t.id}">
+      <div class="tc-head"><b>${esc(t.title)}</b><span class="tc-act">
+        <button class="ghost" data-copy title="העתק">⧉</button><button class="ghost" data-edit title="עריכה">✏️</button><button class="ghost" data-del title="מחיקה">🗑️</button></span></div>
+      <div class="tc-text">${esc(t.text)}</div>${t.text.split('\n').length > 4 || t.text.length > 220 ? '<a class="tc-more">הצג עוד</a>' : ''}</div>`).join('') || '<div class="hint">אין עדיין תבניות.</div>'}</div>
+    <div class="row"><span style="flex:1"></span><button id="cancel">סגור</button></div>`, true);
+  $('#cancel').onclick = closeModal;
+  $('#tnew').onclick = () => templateForm(null);
+  box.querySelectorAll('.tcard').forEach((c) => {
+    const t = list.find((x) => x.id === c.dataset.id);
+    c.querySelector('[data-copy]').onclick = async () => { try { await navigator.clipboard.writeText(t.text); toast('הועתק ✓'); } catch { toast('לא הצלחתי להעתיק', true); } };
+    c.querySelector('[data-edit]').onclick = () => templateForm(t);
+    const del = c.querySelector('[data-del]');
+    del.onclick = async () => {
+      if (!del.dataset.sure) { del.dataset.sure = 1; del.textContent = 'בטוח?'; return; }
+      await api('DELETE', '/api/templates/' + t.id); await loadTemplates(); templatesManager();
+    };
+    const more = c.querySelector('.tc-more');
+    if (more) more.onclick = () => { c.classList.toggle('open'); more.textContent = c.classList.contains('open') ? 'הצג פחות' : 'הצג עוד'; };
+  });
+}
+function templateForm(t) {
+  openModal(`<h3>${t ? '✏️ עריכת תבנית' : '+ תבנית חדשה'}</h3>
+    <label>כותרת</label><input id="tft" value="${esc(t ? t.title : '')}" placeholder="למשל: הצעה">
+    <label>תוכן ההודעה</label><textarea id="tfx" rows="10">${esc(t ? t.text : '')}</textarea>
+    <div class="row"><button class="primary" id="tfs">💾 שמור</button><button id="cancel">ביטול</button></div>`, true);
+  $('#tft').focus();
+  $('#cancel').onclick = () => templatesManager();
+  $('#tfs').onclick = async () => {
+    try { await api('POST', '/api/templates', { id: t ? t.id : undefined, title: $('#tft').value, text: $('#tfx').value }); await loadTemplates(); toast('התבנית נשמרה ✓'); templatesManager(); }
+    catch (e) { toast(e.message, true); }
+  };
 }
 
 function snoozeDialog(t) {
@@ -572,7 +641,8 @@ function newChatDialog() {
     <label>מאיזה מספר לשלוח?</label><select id="ninst">${insts.map((i) => `<option value="${i.id}">${esc(i.name)}</option>`).join('')}</select>
     <div class="grid2"><div><label>טלפון הלקוח</label><input id="nphone" dir="ltr" placeholder="0521234567"></div>
     <div><label>שם</label><input id="nname"></div></div>
-    <label>הודעה</label><textarea id="ntext" rows="4"></textarea>
+    <div class="row" style="margin:10px 0 4px;justify-content:space-between"><label style="margin:0">הודעה</label><button id="ntpl" type="button">📝 בחר תבנית</button></div>
+    <textarea id="ntext" rows="7"></textarea>
     <div class="row"><button class="primary" id="nsend">שלח ופתח קריאה</button><button id="cancel">ביטול</button></div>`);
   $('#cancel').onclick = closeModal;
   const fmt = (p) => (p.startsWith('972') ? '0' + p.slice(3) : p);
@@ -590,6 +660,15 @@ function newChatDialog() {
     }));
   };
   $('#csearch').oninput = () => { clearTimeout(timer); timer = setTimeout(search, 200); };
+  $('#ntpl').onclick = () => {
+    // שומרים את מה שכבר מולא, פותחים את בורר התבניות, וחוזרים
+    const keep = { inst: $('#ninst').value, phone: $('#nphone').value, name: $('#nname').value, text: $('#ntext').value, q: $('#csearch').value };
+    templatePicker((text) => {
+      newChatDialog();
+      $('#ninst').value = keep.inst; $('#nphone').value = keep.phone; $('#nname').value = keep.name; $('#csearch').value = keep.q;
+      $('#ntext').value = fillTemplate(text, { name: keep.name });
+    }, () => { newChatDialog(); $('#ninst').value = keep.inst; $('#nphone').value = keep.phone; $('#nname').value = keep.name; $('#ntext').value = keep.text; $('#csearch').value = keep.q; });
+  };
   $('#csearch').focus();
   $('#nsend').onclick = async () => {
     try {
