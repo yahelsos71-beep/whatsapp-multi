@@ -332,6 +332,7 @@ function renderChat() {
   renderHistory();
   renderMessages();
   renderComposer();
+  const m = $('#msgs'); if (m) requestAnimationFrame(() => { m.scrollTop = m.scrollHeight; });
 }
 
 // מציגים רק את ההתכתבות של היום (או את ההודעות האחרונות אם היום אין). הקודמות – בלחיצה, או ב"📜 היסטוריה"
@@ -471,7 +472,7 @@ function renderComposer() {
     const f = [...(e.clipboardData?.files || [])][0];
     if (f) { e.preventDefault(); sendFile(f); }
   });
-  txt.focus();
+  txt.focus({ preventScroll: true });
 }
 
 async function sendText() {
@@ -585,7 +586,7 @@ function newChatDialog() {
       <span style="flex:1">${c.company ? '🏢 ' + esc(c.company) : ''}${c.company && c.name ? ' · ' : ''}${esc(c.name || '')}</span><span dir="ltr" class="chip">${fmt(p)}</span></button>`)).join('')
       : '<div class="hint">לא נמצא</div>';
     $('#cres').querySelectorAll('button').forEach((b) => (b.onclick = () => {
-      $('#nphone').value = fmt(b.dataset.p); $('#nname').value = b.dataset.n; $('#cres').innerHTML = ''; $('#csearch').value = b.dataset.n; $('#ntext').focus();
+      $('#nphone').value = fmt(b.dataset.p); $('#nname').value = b.dataset.n; $('#cres').innerHTML = ''; $('#csearch').value = b.dataset.n; $('#ntext').focus({ preventScroll: true });
     }));
   };
   $('#csearch').oninput = () => { clearTimeout(timer); timer = setTimeout(search, 200); };

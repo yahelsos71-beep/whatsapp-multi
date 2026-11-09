@@ -26,7 +26,9 @@ a { color: var(--blue); }
 .err { color: #ff8a80; font-size: 14px; margin-top: 10px; min-height: 18px; }
 
 /* ---------- מסך ראשי ---------- */
-.main { display: grid; grid-template-columns: 380px 1fr; grid-template-rows: 54px 1fr; height: 100%; }
+#app { height: 100%; }
+.main { display: grid; grid-template-columns: 380px 1fr; grid-template-rows: 54px minmax(0, 1fr); height: 100vh; height: 100dvh; overflow: hidden; }
+.side, .chat { min-height: 0; overflow: hidden; }
 .top { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: var(--panel2); border-bottom: 1px solid var(--line); }
 .top .logo { font-weight: 700; font-size: 17px; margin-left: 10px; }
 .top .spacer { flex: 1; }
@@ -120,7 +122,7 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; }
 .banner { background: var(--yellow); color: #000; padding: 8px 14px; text-align: center; font-size: 14px; grid-column: 1 / -1; }
 
 @media (max-width: 800px) {
-  .main { grid-template-columns: 1fr; grid-template-rows: 54px 40vh 1fr; }
+  .main { grid-template-columns: 1fr; grid-template-rows: 54px 40vh minmax(0, 1fr); }
 }
 
 /* ---------- דשבורד ---------- */
@@ -146,4 +148,6 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; }
 .ph.big { font-size: 14px; margin-right: 6px; }
 
 #multiBtn { text-decoration: none; }
-.chat-head { position: sticky; top: 0; z-index: 2; }
+.chat-head { flex: none; }
+.composer, .closed-bar, #hist { flex: none; }
+.msgs { min-height: 0; }
