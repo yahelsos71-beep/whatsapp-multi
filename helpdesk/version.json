@@ -1,15 +1,15 @@
 {
-  "version": 19,
+  "version": 20,
   "files": {
-    "server.js": "52b13c1e143cbd33afd7517f76818b126cd2d38b692917c64aab2bf722489c49",
+    "server.js": "bba1ffad64a69b77fb772181b1c2e814875579913f2ceac4073d47e5e1f3714e",
     "lib/ai.js": "a86761c5735519efe6d73fff0f2450800a36a5a8ed816ca41ef898fbe53a80c3",
     "lib/greenapi.js": "dcb312ea11e8fcc7dd8c730f95e449a2fdec3d730266a1e3d2a4d2fa0d528730",
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
-    "lib/store.js": "67a5b54ca008c7997987a23dcae1968a8283fac3629e397c5ecddbad53d9afa5",
-    "public/app.js": "ee07fe620b7abb1393de730b005cecb9cd5267cad97f91d7e70536c192576dde",
+    "lib/store.js": "ac60a12a44b9ce1a66edcc5263eecc41f1a366c91ab49150e06a37b898fee78d",
+    "public/app.js": "b4dccc71c04d4a27b0f7a60fe3dead36a28663fd51b485f9bdb53bab4744cbb2",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
-    "public/style.css": "2b89726ad1ca1267a3f669a08d5e9fefa8c563d4898c24dfa298864cb2bc8242"
+    "public/style.css": "2b6be8663be1ff806b7ee48fecff86c42c829325dbe707146d8348352acc5c07"
   },
-  "notes": "תיקון חיתוך במסכים צרים"
+  "notes": "עיצוב בהיר, חובת 'מה בוצע' בסגירה, טיפולים קודמים, יעדי קריאת שירות (כולל קבוצה)"
 }

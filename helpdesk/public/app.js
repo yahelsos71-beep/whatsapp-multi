@@ -63,10 +63,11 @@ function waitText(ms) {
 // =====================================================================
 // כניסה
 // =====================================================================
+try { if (localStorage.getItem('hd-theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch {}
 async function boot() {
   let st;
   try { st = await api('GET', '/api/state'); } catch { app.innerHTML = '<div class="welcome"><h2>אין חיבור לשרת</h2>מנסה שוב...</div>'; return setTimeout(boot, 3000); }
-  S.version = st.version; S.company = st.company; S.tech = st.tech;
+  S.version = st.version; S.company = st.company; S.targets = st.targets || [];
   if (st.setupNeeded) return renderSetup();
   if (!st.user) return renderLogin();
   S.me = st.user;
@@ -367,7 +368,7 @@ function renderChatHead() {
     ${ro ? '<span class="chip">צפייה בלבד</span>' : t.status === 'closed'
       ? '<button id="reopenBtn">🔄 פתח מחדש</button>'
       : `${t.snoozeUntil ? `<span class="chip who">⏸ מושהית עד ${fmtWhen(t.snoozeUntil)}</span><button id="unsnoozeBtn">▶ החזר עכשיו</button>` : '<button id="snoozeBtn" title="עדיין לא סגרנו – מתכתבים עם הלקוח. הקריאה תעבור ל״מושהות״ ותחזור עם תזכורת">⏸ השהה</button>'}<button id="transferBtn">↪️ העבר שיחה</button><button class="primary" id="closeBtn">✅ סגור קריאה</button>`}
-    ${S.tech && !ro ? `<button id="svcBtn" title="שליחת קריאת שירות בוואטסאפ ל${esc(S.tech.name)}">🛠 קריאה ל${esc(S.tech.name)}</button>` : ''}
+    ${S.targets.length && !ro ? `<button id="svcBtn" title="שליחת קריאת שירות בוואטסאפ">🛠 ${S.targets.length === 1 ? 'קריאה ל' + esc(S.targets[0].name) : 'קריאת שירות'}</button>` : ''}
     ${!t.isGroup && !ro ? `<button class="ghost" id="contactBtn" title="שמירת שם וחברה ללקוח הזה">👤 ${t.contact ? 'איש קשר' : 'שמור איש קשר'}</button>` : ''}
     <button class="ghost" id="waHistBtn" title="ההודעות הקודמות עם ${t.isGroup ? 'הקבוצה' : 'הלקוח'} מוואטסאפ – גם מלפני המוקד">📜 היסטוריה</button>
     ${t.pinnedTo ? `<span class="chip who">📌 קבוע: ${esc(t.pinnedTo)}</span>` : ''}
@@ -422,8 +423,13 @@ function renderHistory() {
   const h = $('#hist'); if (!h) return;
   const list = S.view.history || [];
   if (!list.length) { h.innerHTML = ''; return; }
-  h.innerHTML = `<div class="history">📜 קריאות קודמות של הלקוח: ${list.map((x) => `<a data-id="${x.id}">#${x.id} (${new Date(x.createdAt).toLocaleDateString('he-IL')}${x.assigneeName ? ', ' + esc(x.assigneeName) : ''})</a>`).join(' · ')}</div>`;
-  h.querySelectorAll('a').forEach((a) => (a.onclick = () => openTicket(a.dataset.id)));
+  const done = list.filter((x) => x.resolution).slice(0, 3);
+  h.innerHTML = `<div class="history">
+    ${done.length ? `<div class="prev-work"><b>🧾 טיפולים קודמים:</b>${done.map((x) => `<a data-id="${x.id}" class="pw">
+      <span class="pw-meta">${new Date(x.closedAt || x.createdAt).toLocaleDateString('he-IL')}${x.closedByName ? ' · ' + esc(x.closedByName) : ''}</span>
+      <span class="pw-text">${esc(x.resolution)}</span></a>`).join('')}</div>` : ''}
+    <div>📜 קריאות קודמות: ${list.map((x) => `<a data-id="${x.id}">#${x.id} (${new Date(x.createdAt).toLocaleDateString('he-IL')}${x.assigneeName ? ', ' + esc(x.assigneeName) : ''})</a>`).join(' · ')}</div></div>`;
+  h.querySelectorAll('a[data-id]').forEach((a) => (a.onclick = () => openTicket(a.dataset.id)));
 }
 
 function ticks(m) {
@@ -510,10 +516,21 @@ async function sendFile(file) {
   } catch (e) { toast(e.message, true, 6000); }
 }
 
-async function closeTicket() {
+function closeTicket() {
   const t = S.view.ticket;
+  openModal(`<h3>✅ סגירת קריאה #${t.id} – ${esc(t.customerName)}</h3>
+    <label>מה בוצע? (חובה – יופיע בפעם הבאה שהלקוח פונה)</label>
+    <textarea id="resol" rows="4" placeholder="למשל: אופסה הסיסמה למרכזייה והוגדרה מחדש שלוחה 3. הלקוח אישר שעובד."></textarea>
+    <div class="row"><button class="primary" id="rclose">✅ סגור קריאה</button><button id="cancel">ביטול</button></div>`);
+  $('#resol').focus();
+  $('#cancel').onclick = closeModal;
+  $('#rclose').onclick = () => doCloseTicket(t, $('#resol').value.trim());
+}
+async function doCloseTicket(t, resolution) {
+  if (resolution.length < 3) { toast('כתוב בקצרה מה בוצע', true); $('#resol').focus(); return; }
   try {
-    await api('POST', `/api/tickets/${t.id}/close`);
+    await api('POST', `/api/tickets/${t.id}/close`, { resolution });
+    closeModal();
     S.tickets.delete(t.id); S.sel = null; S.view = null;
     renderList(); renderChat(); toast(`קריאה #${t.id} נסגרה ✅`);
   } catch (e) { toast(e.message, true); }
@@ -523,29 +540,40 @@ async function closeTicket() {
 async function serviceCallDialog(t) {
   let d;
   try { d = await api('GET', `/api/tickets/${t.id}/service-call`); } catch (e) { return toast(e.message, true); }
-  const techPhone = d.tech.phone ? localPhone(d.tech.phone) : '';
-  openModal(`<h3>🛠 קריאת שירות ל${esc(d.tech.name)} <span class="hint" dir="ltr">${techPhone}</span></h3>
+  if (!d.targets.length) return toast('לא הוגדרו יעדים לקריאת שירות (ניהול ← כללי)', true);
+  let target = d.targets[0];
+  openModal(`<h3>🛠 קריאת שירות</h3>
+    <label>למי לשלוח?</label>
+    <div class="seg" id="sc_to" style="flex-wrap:wrap;margin-bottom:6px">${d.targets.map((x, i) => `<button data-i="${i}" class="${i ? '' : 'on'}">${x.isGroup ? '👥' : '👤'} ${esc(x.name)}</button>`).join('')}</div>
     <div class="svc">
       <div class="grid2"><div><label>לקוח</label><input id="sc_name" value="${esc(d.customer)}"></div>
       <div><label>חברה</label><input id="sc_co" value="${esc(d.company)}"></div></div>
       <label>טלפון הפונה</label><input id="sc_ph" dir="ltr" value="${esc(d.phone ? localPhone(d.phone) : '')}">
       <label>כתובת (לא חובה)</label><input id="sc_addr">
-      <label>תיאור הפנייה</label><textarea id="sc_desc" rows="7">${esc(d.description)}</textarea>
+      <label>תיאור הפנייה</label><textarea id="sc_desc" rows="6">${esc(d.description)}</textarea>
     </div>
-    <label>כך זה יישלח ל${esc(d.tech.name)}:</label><div class="tcard" style="white-space:pre-line;font-size:14px" id="sc_prev"></div>
-    <div class="row"><button class="primary" id="sc_send">📤 שלח ל${esc(d.tech.name)}</button><button id="cancel">ביטול</button></div>`, true);
+    <label id="sc_lbl"></label><div class="tcard" style="white-space:pre-line;font-size:14px" id="sc_prev"></div>
+    <div class="row"><button class="primary" id="sc_send"></button><button id="cancel">ביטול</button></div>`, true);
   const build = () => {
     const name = $('#sc_name').value.trim(), co = $('#sc_co').value.trim(), ph = $('#sc_ph').value.trim(), addr = $('#sc_addr').value.trim();
     return [`🛠 *קריאת שירות* #${t.id}`, `👤 לקוח: ${name}${co ? ` (${co})` : ''}`, ph ? `📞 טלפון: ${ph}` : '', addr ? `📍 כתובת: ${addr}` : '',
       '', '📝 תיאור הפנייה:', $('#sc_desc').value.trim(), '', `נפתח ע״י: ${S.me.name}`]
       .filter((x, i) => x !== '' || i === 4 || i === 7).join('\n').replace(/\n{3,}/g, '\n\n').trim();
   };
-  const prev = () => { $('#sc_prev').textContent = build(); };
-  box.querySelectorAll('.svc input, .svc textarea').forEach((el) => (el.oninput = prev));
-  prev();
+  const paint = () => {
+    $('#sc_prev').textContent = build();
+    $('#sc_lbl').textContent = `כך זה יישלח ל${target.name}:`;
+    $('#sc_send').textContent = `📤 שלח ל${target.name}`;
+  };
+  box.querySelectorAll('#sc_to button').forEach((b) => (b.onclick = () => {
+    target = d.targets[+b.dataset.i];
+    box.querySelectorAll('#sc_to button').forEach((x) => x.classList.toggle('on', x === b)); paint();
+  }));
+  box.querySelectorAll('.svc input, .svc textarea').forEach((el) => (el.oninput = paint));
+  paint();
   $('#cancel').onclick = closeModal;
   $('#sc_send').onclick = async () => {
-    try { await api('POST', `/api/tickets/${t.id}/service-call`, { text: build() }); closeModal(); toast(`🛠 הקריאה נשלחה ל${d.tech.name} ✓`); }
+    try { await api('POST', `/api/tickets/${t.id}/service-call`, { targetId: target.id, text: build() }); closeModal(); toast(`🛠 הקריאה נשלחה ל${target.name} ✓`); }
     catch (e) { toast(e.message, true, 7000); }
   };
 }
@@ -818,6 +846,8 @@ function mySettingsDialog() {
     <label>צלצול תזכורת (כשלקוח מחכה לתשובה)</label><div class="row" style="margin:0"><select id="sRem" style="flex:1">${opts(s.remindTone)}</select><button id="tRem">▶</button></div>
     <label>כל כמה זמן לצלצל תזכורת</label><select id="sSec">${[[15, '15 שניות'], [30, 'חצי דקה'], [60, 'דקה'], [120, '2 דקות'], [300, '5 דקות']].map(([v, n]) => `<option value="${v}" ${v === s.remindSec ? 'selected' : ''}>${n}</option>`).join('')}</select>
     <label>עוצמה</label><input id="sVol" type="range" min="0" max="1" step="0.05" value="${s.vol}">
+    <h4>תצוגה</h4>
+    <label class="check"><input type="checkbox" id="sDark" ${document.documentElement.dataset.theme === 'dark' ? 'checked' : ''}> 🌙 מצב כהה</label>
     <h4>תוכנת WhatsApp Multi</h4>
     <label class="check"><input type="checkbox" id="sMulti" ${(() => { try { return localStorage.getItem('hd-multi') !== '0'; } catch { return true; } })() ? 'checked' : ''}> להציג למעלה כפתור "📱 WhatsApp Multi" (רק במחשב שהתוכנה מותקנת בו)</label>
     <h4>שינוי סיסמה</h4>
@@ -828,6 +858,7 @@ function mySettingsDialog() {
   $('#tNew').onclick = () => Sounds.play(s.newTone);
   $('#tRem').onclick = () => Sounds.play(s.remindTone);
   $('#sSec').onchange = (e) => { s.remindSec = Number(e.target.value); Sounds.save(); };
+  $('#sDark').onchange = (e) => { const d = e.target.checked; if (d) document.documentElement.dataset.theme = 'dark'; else delete document.documentElement.dataset.theme; try { localStorage.setItem('hd-theme', d ? 'dark' : 'light'); } catch {} };
   $('#sMulti').onchange = (e) => { try { localStorage.setItem('hd-multi', e.target.checked ? '1' : '0'); } catch {} $('#multiBtn').style.display = e.target.checked ? '' : 'none'; };
   $('#sVol').oninput = (e) => { s.vol = Number(e.target.value); Sounds.save(); };
   $('#pSave').onclick = async () => {
@@ -852,7 +883,11 @@ async function adminDialog(tab = 'deps') {
 }
 const userOptions = (cur) => `<option value="">— בחר עובד —</option>` + A.users.filter((u) => u.active).map((u) => `<option value="${u.id}" ${u.id === cur ? 'selected' : ''}>${esc(u.name)}</option>`).join('');
 async function saveConfig(patch, msg = 'נשמר ✓') {
-  try { const r = await api('POST', '/api/admin/config', patch); A.config = r.config; toast(msg); return true; } catch (e) { toast(e.message, true); return false; }
+  try {
+    const r = await api('POST', '/api/admin/config', patch); A.config = r.config; toast(msg);
+    if (patch.serviceTargets) { const st = await api('GET', '/api/state'); S.targets = st.targets || []; renderChatHead(); }
+    return true;
+  } catch (e) { toast(e.message, true); return false; }
 }
 
 function adminDeps() {
@@ -1090,9 +1125,10 @@ function adminGeneral() {
     <div id="ignList">${c.ignoredChats.length ? c.ignoredChats.map((x, i) => `<div class="row" style="margin-top:4px"><span style="flex:1">${x.isGroup ? '👥' : '👤'} ${esc(x.name || x.chatId)}</span><button class="ghost" data-unign="${i}">החזר</button></div>`).join('') : '<div class="hint">אין. (כפתור "🔕 התעלם" בראש כל שיחה)</div>'}</div>
     <div class="hint">שינוי "מאיפה אפשר להיכנס" או הפורט נכנס לתוקף אחרי הפעלה מחדש של השרת.<br>
     לקוח שכותב "שלום" ואז את הבעיה – ההמתנה נותנת ל-AI את כל ההודעות ביחד, וכך הניתוב מדויק יותר.</div>
-    <h4>🛠 טכנאי לקריאות שירות</h4>
-    <div class="grid2"><div><label>שם</label><input id="gTechN" value="${esc(c.serviceTech?.name || '')}"></div>
-    <div><label>טלפון (הקריאה נשלחת אליו בוואטסאפ; ריק = בלי כפתור)</label><input id="gTechP" dir="ltr" value="${esc(c.serviceTech?.phone ? '0' + c.serviceTech.phone.slice(3) : '')}"></div></div>
+    <h4>🛠 יעדים לקריאת שירות</h4>
+    <div class="hint">למי אפשר לשלוח "קריאת שירות" מתוך שיחה – טכנאי (טלפון) או קבוצת וואטסאפ.</div>
+    <div id="tgList"></div>
+    <div class="row"><button id="tgAddP">+ טכנאי (טלפון)</button><button id="tgAddG">+ קבוצה</button></div>
     <h4>⬆ עדכונים</h4>
     <div class="row" style="margin-top:0"><span style="flex:1" id="updStatus">גרסה ${S.version}</span><button id="updNow">⬆ בדוק עדכון עכשיו</button></div>
     <div class="row"><span style="flex:1"></span><button class="primary" id="gSave">💾 שמור</button></div>`;
@@ -1102,6 +1138,24 @@ function adminGeneral() {
     try { const r = await api('POST', '/api/admin/update-check'); $('#updStatus').textContent = r.result; if (/עודכן/.test(r.result)) toast('השרת מתעדכן ועולה מחדש – הדף יתרענן לבד', false, 8000); }
     catch (e) { $('#updStatus').textContent = e.message; }
   };
+  const targets = (c.serviceTargets || []).map((x) => ({ ...x }));
+  let groups = [];
+  const drawTargets = () => {
+    $('#tgList').innerHTML = targets.map((x, i) => `<div class="row" style="margin-top:6px">
+      <input data-t="${i}" data-tf="name" value="${esc(x.name || '')}" placeholder="שם (למשל עידן)" style="flex:1">
+      ${x.chatId !== undefined
+        ? `<select data-t="${i}" data-tf="chatId" style="flex:2"><option value="">— בחר קבוצה —</option>${groups.map((g) => `<option value="${esc(g.chatId)}" data-inst="${esc(g.instanceId)}" ${g.chatId === x.chatId ? 'selected' : ''}>👥 ${esc(g.name)} (${esc(g.instanceName)})</option>`).join('')}</select>`
+        : `<input data-t="${i}" data-tf="phone" dir="ltr" value="${esc(x.phone ? '0' + String(x.phone).slice(3) : '')}" placeholder="05X-XXXXXXX" style="flex:2">`}
+      <button class="ghost" data-tdel="${i}">🗑️</button></div>`).join('') || '<div class="hint">אין יעדים – הכפתור "🛠 קריאת שירות" לא יופיע.</div>';
+    $('#tgList').querySelectorAll('[data-tf]').forEach((el) => (el.oninput = el.onchange = () => {
+      const x = targets[el.dataset.t]; x[el.dataset.tf] = el.value;
+      if (el.dataset.tf === 'chatId') { const o = el.selectedOptions[0]; x.instanceId = o ? o.dataset.inst : null; if (!x.name && o && o.value) x.name = o.text.replace(/^👥 /, '').replace(/ \(.*\)$/, ''); drawTargets(); }
+    }));
+    $('#tgList').querySelectorAll('[data-tdel]').forEach((b) => (b.onclick = () => { targets.splice(+b.dataset.tdel, 1); drawTargets(); }));
+  };
+  api('GET', '/api/admin/known-groups').then((g) => { groups = g; drawTargets(); }).catch(drawTargets);
+  $('#tgAddP').onclick = () => { targets.push({ name: '', phone: '' }); drawTargets(); };
+  $('#tgAddG').onclick = () => { targets.push({ name: '', chatId: '' }); drawTargets(); };
   let ign = [...c.ignoredChats];
   let rules = [...c.chatRules];
   $('#apane').querySelectorAll('[data-unrule]').forEach((b) => (b.onclick = () => { rules.splice(Number(b.dataset.unrule), 1); b.parentElement.remove(); }));
@@ -1109,7 +1163,7 @@ function adminGeneral() {
   $('#gSave').onclick = () => saveConfig({ companyName: $('#gName').value, routeDelaySec: $('#gDelay').value, host: $('#gHost').value, port: $('#gPort').value,
     groups: { enabled: $('#gGroups').checked, autoReply: $('#gGroupsAR').checked }, ignoredChats: ign, chatRules: rules,
     ignoreGroupNames: $('#gIgnNames').value.split('\n').map((x) => x.trim()).filter(Boolean),
-    serviceTech: { name: $('#gTechN').value, phone: $('#gTechP').value } });
+    serviceTargets: targets });
 }
 
 boot();

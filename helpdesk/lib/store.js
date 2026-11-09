@@ -76,6 +76,10 @@ db.config.ignoredChats = db.config.ignoredChats || [];
 db.config.chatRules = db.config.chatRules || [];
 db.config.templates = db.config.templates || [];
 if (!db.config.serviceTech) db.config.serviceTech = { name: 'עידן', phone: '' };
+// יעדים לקריאת שירות: טכנאי (טלפון) או קבוצה (chatId). מעבר מהמבנה הישן של טכנאי יחיד
+if (!db.config.serviceTargets) {
+  db.config.serviceTargets = db.config.serviceTech.phone ? [{ id: 'tech1', name: db.config.serviceTech.name || 'טכנאי', phone: db.config.serviceTech.phone }] : [];
+}
 db.config.personRules = db.config.personRules || [];
 if (!db.config.ignoreGroupNames) db.config.ignoreGroupNames = ['פורום מתקינים', 'מתח נמוך'];
 db.config.hours = Object.assign({}, DEFAULT_CONFIG.hours, db.config.hours);

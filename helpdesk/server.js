@@ -537,7 +537,7 @@ function adminConfigView() {
     groups: c.groups,
     hours: c.hours,
     quietMinutes: c.quietMinutes ?? 30,
-    serviceTech: c.serviceTech || { name: '', phone: '' },
+    serviceTargets: c.serviceTargets || [],
     ignoredChats: c.ignoredChats,
     ignoreGroupNames: c.ignoreGroupNames || [],
     personRules: c.personRules || [],
@@ -552,7 +552,7 @@ const route = (method, pattern, handler, { auth = 'user' } = {}) => routes.push(
 // ---------- התקנה ראשונה / התחברות ----------
 route('GET', /^\/api\/state$/, (req, res, { user }) =>
   send(res, 200, { setupNeeded: db.users.length === 0, user: publicUser(user), version: VERSION, company: db.config.companyName,
-    tech: user && db.config.serviceTech && db.config.serviceTech.phone ? { name: db.config.serviceTech.name || 'טכנאי' } : null }), { auth: 'none' });
+    targets: user ? serviceTargets().map((x) => ({ id: x.id, name: x.name })) : [] }), { auth: 'none' });
 
 route('POST', /^\/api\/setup$/, async (req, res) => {
   if (db.users.length) return send(res, 400, { error: 'כבר הוגדר' });
@@ -625,7 +625,8 @@ route('GET', /^\/api\/tickets\/(\d+)$/, (req, res, { user, params }) => {
   const history = db.tickets
     .filter((x) => x.chatId === t.chatId && x.instanceId === t.instanceId && x.id !== t.id)
     .sort((a, b) => b.createdAt - a.createdAt)
-    .map((x) => ({ id: x.id, createdAt: x.createdAt, closedAt: x.closedAt, status: x.status, assigneeName: userById(x.assigneeId)?.name || '', departmentName: depById(x.departmentId)?.name || '' }));
+    .map((x) => ({ id: x.id, createdAt: x.createdAt, closedAt: x.closedAt, status: x.status, assigneeName: userById(x.assigneeId)?.name || '', departmentName: depById(x.departmentId)?.name || '',
+      resolution: x.resolution || '', closedByName: userById(x.closedBy)?.name || '' }));
   send(res, 200, { ticket: summary(t), messages: store.messages(t.id), history, readOnly: !canSee(user, t) });
 });
 
@@ -737,10 +738,14 @@ setInterval(() => {
   }
 }, 20000);
 
-route('POST', /^\/api\/tickets\/(\d+)\/close$/, (req, res, { user, params }) => {
+route('POST', /^\/api\/tickets\/(\d+)\/close$/, async (req, res, { user, params }) => {
   const t = myTicket(user, params[0], res); if (!t) return;
+  const b = await readJson(req);
+  const resolution = String(b.resolution || '').trim();
+  if (resolution.length < 3) return send(res, 400, { error: 'כדי לסגור – כתוב בקצרה מה בוצע' });
   t.status = 'closed'; t.closedAt = now(); t.closedBy = user.id; t.awaiting = false; t.snoozeUntil = null;
-  note(t, `✅ הקריאה נסגרה על ידי ${user.name}`);
+  t.resolution = resolution;
+  note(t, `✅ הקריאה נסגרה על ידי ${user.name}\n📝 מה בוצע: ${resolution}`);
   emitTicket(t);
   send(res, 200, summary(t));
 });
@@ -849,6 +854,7 @@ route('POST', /^\/api\/tickets\/new$/, async (req, res, { user }) => {
 });
 
 // ---------- קריאת שירות לטכנאי (עידן) ----------
+const serviceTargets = () => (db.config.serviceTargets || []).filter((x) => x.name && (x.phone || x.chatId));
 route('GET', /^\/api\/tickets\/(\d+)\/service-call$/, (req, res, { user, params }) => {
   const t = visibleTicket(user, params[0]);
   if (!t) return send(res, 404, { error: 'לא נמצא' });
@@ -858,7 +864,7 @@ route('GET', /^\/api\/tickets\/(\d+)\/service-call$/, (req, res, { user, params 
   const recent = ins.filter((m) => m.ts >= today.getTime());
   const msgs = (recent.length ? recent : ins.slice(-8)).map((m) => (m.senderName ? m.senderName + ': ' : '') + (m.text || `[${m.type}]`));
   send(res, 200, {
-    tech: db.config.serviceTech,
+    targets: serviceTargets().map((x) => ({ id: x.id, name: x.name, isGroup: !!x.chatId, phone: x.phone || '' })),
     customer: s.customerName, company: s.company || '', phone: t.isGroup ? '' : t.phone, isGroup: !!t.isGroup,
     description: t.aiSummary ? t.aiSummary + '\n\nמה שהלקוח כתב:\n' + msgs.join('\n') : msgs.join('\n'),
   });
@@ -866,23 +872,29 @@ route('GET', /^\/api\/tickets\/(\d+)\/service-call$/, (req, res, { user, params 
 route('POST', /^\/api\/tickets\/(\d+)\/service-call$/, async (req, res, { user, params }) => {
   const t = visibleTicket(user, params[0]);
   if (!t) return send(res, 404, { error: 'לא נמצא' });
-  const tech = db.config.serviceTech || {};
-  const techPhone = normPhone(tech.phone);
-  if (!techPhone) return send(res, 400, { error: 'לא הוגדר טלפון של הטכנאי (ניהול ← כללי)' });
-  const inst = instById(t.instanceId) || db.config.instances.find((i) => i.enabled !== false);
-  if (!inst) return send(res, 400, { error: 'אין מספר וואטסאפ לשליחה' });
   const b = await readJson(req);
+  const target = serviceTargets().find((x) => x.id === b.targetId) || serviceTargets()[0];
+  if (!target) return send(res, 400, { error: 'לא הוגדרו יעדים לקריאת שירות (ניהול ← כללי)' });
+  const chatId = target.chatId || (normPhone(target.phone) + '@c.us');
+  const inst = (target.instanceId && instById(target.instanceId)) || instById(t.instanceId) || db.config.instances.find((i) => i.enabled !== false);
+  if (!inst) return send(res, 400, { error: 'אין מספר וואטסאפ לשליחה' });
   const text = String(b.text || '').trim();
   if (!text) return send(res, 400, { error: 'הקריאה ריקה' });
   try {
-    const r = await ga.sendMessage(inst, techPhone + '@c.us', text);
+    const r = await ga.sendMessage(inst, chatId, text);
     if (r && r.idMessage) sentIds.add(r.idMessage);
   } catch (e) { return send(res, 502, { error: 'השליחה נכשלה: ' + e.message }); }
-  note(t, `🛠 ${user.name} שלח/ה קריאת שירות ל${tech.name || 'טכנאי'}:\n${text}`);
+  note(t, `🛠 ${user.name} שלח/ה קריאת שירות ל${target.name}:\n${text}`);
   t.serviceCalls = (t.serviceCalls || 0) + 1;
   emitTicket(t);
-  send(res, 200, { ok: true });
+  send(res, 200, { ok: true, target: target.name });
 });
+// קבוצות שהמוקד מכיר (לבחירת יעד) – מתוך הקריאות
+route('GET', /^\/api\/admin\/known-groups$/, (req, res) => {
+  const seen = new Map();
+  for (const t of db.tickets) if (t.isGroup && !seen.has(t.chatId)) seen.set(t.chatId, { chatId: t.chatId, name: t.customerName, instanceId: t.instanceId, instanceName: instById(t.instanceId)?.name || '' });
+  send(res, 200, [...seen.values()].sort((a, b) => a.name.localeCompare(b.name, 'he')));
+}, { auth: 'admin' });
 
 // ---------- תבניות הודעה ----------
 route('GET', /^\/api\/templates$/, (req, res) => send(res, 200, db.config.templates));
@@ -1025,7 +1037,12 @@ route('POST', /^\/api\/admin\/config$/, async (req, res) => {
     end: /^\d{1,2}:\d{2}$/.test(b.hours.end) ? b.hours.end : c.hours.end,
     message: String(b.hours.message ?? c.hours.message),
   };
-  if (b.serviceTech) c.serviceTech = { name: String(b.serviceTech.name || '').trim(), phone: normPhone(b.serviceTech.phone) };
+  if (Array.isArray(b.serviceTargets)) {
+    c.serviceTargets = b.serviceTargets.map((x) => ({
+      id: x.id || store.newId(), name: String(x.name || '').trim(),
+      ...(x.chatId ? { chatId: String(x.chatId), instanceId: x.instanceId || null } : { phone: normPhone(x.phone) }),
+    })).filter((x) => x.name && (x.phone || x.chatId));
+  }
   if (b.quietMinutes !== undefined) c.quietMinutes = Math.max(0, Math.min(600, Number(b.quietMinutes) || 0));
   if (b.groups) c.groups = { enabled: !!b.groups.enabled, autoReply: !!b.groups.autoReply };
   if (Array.isArray(b.ignoreGroupNames)) {
@@ -1233,6 +1250,19 @@ process.on('unhandledRejection', (e) => log('unhandled', e && (e.stack || e.mess
   if (noa) db.config.migratedV11 = true; // אם עוד אין עובדת בשם נועה – ננסה שוב בהפעלה הבאה
   store.saveConfig();
   log('migration v11:', noa ? `sales → ${noa.name}` : 'Noa not found – skipped');
+})();
+
+// חד-פעמי (גרסה 20): הקבוצה "KC + VCAT" כיעד לקריאת שירות, אם המוקד כבר מכיר אותה
+(function addVcatTarget() {
+  if (db.config.vcatTargetAdded) return;
+  const g = db.tickets.find((t) => t.isGroup && /VCAT/i.test(t.customerName));
+  if (!g) return; // ננסה שוב בהפעלה הבאה
+  if (!(db.config.serviceTargets || []).some((x) => x.chatId === g.chatId)) {
+    db.config.serviceTargets = [...(db.config.serviceTargets || []), { id: store.newId(), name: g.customerName, chatId: g.chatId, instanceId: g.instanceId }];
+  }
+  db.config.vcatTargetAdded = true;
+  store.saveConfig();
+  log('service target added:', g.customerName);
 })();
 
 // חד-פעמי (גרסה 17): התבניות של KC Group
