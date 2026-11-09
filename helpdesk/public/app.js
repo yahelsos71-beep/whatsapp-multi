@@ -854,23 +854,28 @@ function adminContacts() {
       <div class="grid2"><div><label>שם החברה</label><select id="mc">${opt(p.guess.company)}</select></div>
       <div><label>שם איש הקשר</label><select id="mn">${opt(p.guess.name)}</select></div>
       <div><label>או: שם פרטי</label><select id="mf">${opt(p.guess.first)}</select></div>
+      <div><label>שם אמצעי</label><select id="mm">${opt(p.guess.middle ?? -1)}</select></div>
       <div><label>ושם משפחה</label><select id="ml">${opt(p.guess.last)}</select></div></div>
       <label>עמודות של טלפון (אפשר כמה)</label>
       <div>${p.headers.map((h, i) => `<label class="check" style="display:inline-flex;margin-left:14px"><input type="checkbox" data-ph="${i}" ${p.guess.phones.includes(i) ? 'checked' : ''}> ${esc(h || 'עמודה ' + (i + 1))}</label>`).join('')}</div>
       <div class="hint" id="mprev"></div>
+      <label>איך לייבא?</label>
+      <label class="check"><input type="radio" name="imode" value="merge" checked> ➕ להוסיף רק אנשי קשר חדשים – מספר שכבר קיים במערכת לא ייובא שוב, וכפולים בתוך הקובץ מאוחדים</label>
+      <label class="check"><input type="radio" name="imode" value="replace"> 🔄 להחליף את הייבוא הקודם (למשל עדכון רשימה מ-iCount). מי שהוספת ידנית נשאר</label>
       <div class="row"><button class="primary" id="mgo">📥 ייבא</button></div>`;
-    const getMap = () => ({ company: +$('#mc').value, name: +$('#mn').value, first: +$('#mf').value, last: +$('#ml').value, phones: [...$('#cmap').querySelectorAll('[data-ph]:checked')].map((x) => +x.dataset.ph) });
+    const getMap = () => ({ company: +$('#mc').value, name: +$('#mn').value, first: +$('#mf').value, middle: +$('#mm').value, last: +$('#ml').value, phones: [...$('#cmap').querySelectorAll('[data-ph]:checked')].map((x) => +x.dataset.ph) });
     const prev = () => {
       const m = getMap(); const c = (r, i) => (i >= 0 ? r[i] || '' : '');
-      $('#mprev').innerHTML = 'דוגמה: ' + p.rows.slice(0, 3).map((r) => `🏢 ${esc(c(r, m.company))} · 👤 ${esc(c(r, m.name) || [c(r, m.first), c(r, m.last)].join(' '))} · 📞 ${esc(m.phones.map((i) => c(r, i)).filter(Boolean).join(', '))}`).join('<br>');
+      $('#mprev').innerHTML = 'דוגמה: ' + p.rows.slice(0, 3).map((r) => `🏢 ${esc(c(r, m.company))} · 👤 ${esc(c(r, m.name) || [c(r, m.first), c(r, m.middle), c(r, m.last)].filter(Boolean).join(' '))} · 📞 ${esc(m.phones.map((i) => c(r, i)).filter(Boolean).join(', '))}`).join('<br>');
     };
     $('#cmap').querySelectorAll('select,input').forEach((el) => (el.onchange = prev)); prev();
     $('#mgo').onclick = async () => {
       const m = getMap();
       if (!m.phones.length) return toast('סמן לפחות עמודת טלפון אחת', true);
       try {
-        const r = await api('POST', '/api/admin/contacts/import', { rows: p.rows, map: m });
-        toast(`יובאו ${r.imported} אנשי קשר ✓${r.noPhone ? ` (${r.noPhone} בלי טלפון דולגו)` : ''}`, false, 7000);
+        const mode = box.querySelector('input[name=imode]:checked').value;
+        const r = await api('POST', '/api/admin/contacts/import', { rows: p.rows, map: m, mode });
+        toast(`נוספו ${r.imported} אנשי קשר ✓` + (r.skippedExisting ? ` · ${r.skippedExisting} כבר היו במערכת` : '') + (r.mergedDupes ? ` · ${r.mergedDupes} כפולים אוחדו` : '') + (r.noPhone ? ` · ${r.noPhone} בלי טלפון` : ''), false, 10000);
         $('#cmap').innerHTML = ''; $('#cfile').value = ''; list();
       } catch (er) { toast(er.message, true); }
     };

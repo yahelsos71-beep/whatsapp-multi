@@ -1,15 +1,15 @@
 {
-  "version": 13,
+  "version": 14,
   "files": {
-    "server.js": "46f3959bae47a2c75e833e90caae587f4b89c0804be01f1182e98b50b7bb85f2",
+    "server.js": "0dc2bc0b55453b0ed72804a3a07bbf178ebeeda06385009a36e6aeb41ee839b6",
     "lib/ai.js": "a86761c5735519efe6d73fff0f2450800a36a5a8ed816ca41ef898fbe53a80c3",
     "lib/greenapi.js": "dcb312ea11e8fcc7dd8c730f95e449a2fdec3d730266a1e3d2a4d2fa0d528730",
     "lib/sheet.js": "837e53085b7ee0da1c4816ea15d6d6bb5dfb8bd90d0b20266bcb231104eda5ed",
     "lib/store.js": "85dad5ad492d356c4ca6329d084103afe8147500a443fbf848101dbaaee5dcaf",
-    "public/app.js": "82376ccec0ada9324bdc9870a78bfe779bef32c357020878ace0b683f1842d56",
+    "public/app.js": "a8807d5b5ea27c637c956f54d40d98cff2cf56972c92d6dd24d73fb1235efa91",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "efd78b55548794046fbc22733130808c04a90695d98b09c7097a40da00ecda71"
   },
-  "notes": "תיקון גלילת העמוד בפתיחת קריאה"
+  "notes": "ייבוא אנשי קשר מגוגל + הוספה בלי כפולים"
 }

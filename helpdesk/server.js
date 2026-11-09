@@ -869,34 +869,53 @@ route('POST', /^\/api\/admin\/contacts\/parse$/, async (req, res) => {
   const headers = rows[h].map((c) => String(c).trim());
   const data = rows.slice(h + 1);
   const find = (re) => headers.findIndex((x) => re.test(x));
+  const findNot = (re, not) => headers.findIndex((x) => re.test(x) && !not.test(x));
   const guess = {
-    company: find(/חברה|שם לקוח|^לקוח|שם העסק|עסק|company|client/i),
-    name: find(/איש קשר|contact/i),
-    first: find(/שם פרטי|first/i),
-    last: find(/שם משפחה|last/i),
-    phones: headers.map((x, i) => (/טלפון|נייד|פלאפון|סלולר|mobile|phone|tel/i.test(x) ? i : -1)).filter((i) => i >= 0),
+    company: find(/חברה|שם לקוח|^לקוח|שם העסק|עסק|company|client|organization name/i),
+    name: findNot(/איש קשר|contact|^name$|^שם$/i, /phonetic|label/i),
+    first: findNot(/שם פרטי|first/i, /phonetic/i),
+    middle: findNot(/שם אמצעי|middle/i, /phonetic/i),
+    last: findNot(/שם משפחה|last/i, /phonetic/i),
+    phones: headers.map((x, i) => (/טלפון|נייד|פלאפון|סלולר|mobile|phone|tel/i.test(x) && !/label|type|סוג|phonetic/i.test(x) ? i : -1)).filter((i) => i >= 0),
   };
   if (guess.company < 0) guess.company = find(/שם/);
   send(res, 200, { headers, rows: data, guess });
 }, { auth: 'admin' });
 
 // ייבוא: שלב 2 – שמירת אנשי הקשר לפי מיפוי העמודות
+// mode: 'merge' = מוסיף רק מספרים חדשים (מדלג על מה שכבר קיים); 'replace' = מחליף את הייבוא הקודם
 route('POST', /^\/api\/admin\/contacts\/import$/, async (req, res) => {
   const b = await readBody(req, 40 * 1024 * 1024).then((x) => JSON.parse(x.toString('utf8')));
   const m = b.map || {};
+  const mode = b.mode === 'replace' ? 'replace' : 'merge';
   const cell = (r, i) => (i >= 0 && r[i] != null ? String(r[i]).trim() : '');
-  const imported = [];
-  let noPhone = 0;
+  const base = mode === 'replace' ? db.contacts.filter((c) => c.source !== 'import') : db.contacts;
+  const existing = new Set(base.flatMap((c) => c.phones || []));
+  const seen = new Map(); // phone -> contact שנוסף עכשיו (לאיחוד כפולים בתוך הקובץ)
+  const added = [];
+  let noPhone = 0, skippedExisting = 0, mergedDupes = 0;
   for (const r of b.rows || []) {
-    const phones = [...new Set((m.phones || []).flatMap((i) => cell(r, i).split(/[,;/]| או /)).map(normPhone).filter(Boolean))];
+    const phones = [...new Set((m.phones || []).flatMap((i) => cell(r, i).split(/:::|[,;/]| או /)).map(normPhone).filter(Boolean))];
     if (!phones.length) { noPhone++; continue; }
-    const name = cell(r, m.name) || [cell(r, m.first), cell(r, m.last)].filter(Boolean).join(' ');
-    imported.push({ id: store.newId(), company: cell(r, m.company), name, phones, source: 'import' });
+    const name = cell(r, m.name) || [cell(r, m.first), cell(r, m.middle), cell(r, m.last)].filter(Boolean).join(' ').replace(/\s+/g, ' ');
+    const company = cell(r, m.company);
+    const fresh = phones.filter((p) => !existing.has(p));
+    if (!fresh.length) { skippedExisting++; continue; }
+    const dup = fresh.map((p) => seen.get(p)).find(Boolean);
+    if (dup) { // אותו מספר כבר הופיע בקובץ – מאחדים
+      for (const p of fresh) if (!dup.phones.includes(p)) { dup.phones.push(p); seen.set(p, dup); }
+      if (!dup.name && name) dup.name = name;
+      if (!dup.company && company) dup.company = company;
+      mergedDupes++; continue;
+    }
+    const c = { id: store.newId(), company, name, phones: fresh, source: 'import' };
+    for (const p of fresh) seen.set(p, c);
+    added.push(c);
   }
-  const manual = db.contacts.filter((c) => c.source !== 'import');
-  db.contacts = b.replace === false ? [...db.contacts, ...imported] : [...manual, ...imported];
+  db.contacts = [...base, ...added];
   reindexContacts(); store.saveContacts();
-  send(res, 200, { imported: imported.length, noPhone, total: db.contacts.length });
+  for (const t of db.tickets) if (t.status !== 'closed' && contactByPhone.has(t.phone)) emitTicket(t);
+  send(res, 200, { imported: added.length, skippedExisting, mergedDupes, noPhone, total: db.contacts.length, mode });
 }, { auth: 'admin' });
 
 route('POST', /^\/api\/contacts$/, async (req, res) => saveContact(req, res));
