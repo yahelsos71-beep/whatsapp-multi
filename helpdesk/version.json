@@ -1,7 +1,7 @@
 {
-  "version": 14,
+  "version": 15,
   "files": {
-    "server.js": "0dc2bc0b55453b0ed72804a3a07bbf178ebeeda06385009a36e6aeb41ee839b6",
+    "server.js": "e1da200cd7b3c9822c8c94df70d22c3f584fbe091f60b8cbaa91e1e6d2f24ff1",
     "lib/ai.js": "a86761c5735519efe6d73fff0f2450800a36a5a8ed816ca41ef898fbe53a80c3",
     "lib/greenapi.js": "dcb312ea11e8fcc7dd8c730f95e449a2fdec3d730266a1e3d2a4d2fa0d528730",
     "lib/sheet.js": "837e53085b7ee0da1c4816ea15d6d6bb5dfb8bd90d0b20266bcb231104eda5ed",
@@ -11,5 +11,5 @@
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "efd78b55548794046fbc22733130808c04a90695d98b09c7097a40da00ecda71"
   },
-  "notes": "ייבוא אנשי קשר מגוגל + הוספה בלי כפולים"
+  "notes": "תיקון זיהוי עמודת שם בייבוא"
 }

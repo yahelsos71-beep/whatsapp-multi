@@ -878,7 +878,8 @@ route('POST', /^\/api\/admin\/contacts\/parse$/, async (req, res) => {
     last: findNot(/שם משפחה|last/i, /phonetic/i),
     phones: headers.map((x, i) => (/טלפון|נייד|פלאפון|סלולר|mobile|phone|tel/i.test(x) && !/label|type|סוג|phonetic/i.test(x) ? i : -1)).filter((i) => i >= 0),
   };
-  if (guess.company < 0) guess.company = find(/שם/);
+  if (guess.company < 0 && guess.name < 0 && guess.first < 0) guess.company = find(/שם/);
+  if (guess.company >= 0 && guess.company === guess.name) guess.company = -1;
   send(res, 200, { headers, rows: data, guess });
 }, { auth: 'admin' });
 
