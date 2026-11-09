@@ -7,6 +7,9 @@
   --on-green: #08372a; --auto-msg: #f1f3f5; --meta: rgba(0,0,0,.45); --by: #00805f; --sender: #c2410c;
   --overlay: rgba(15,23,42,.35); --tc-text: #475467; --tc-more: #b7791f; --err: #c62828; --input: #ffffff;
   --shadow: 0 1px 2px rgba(16,24,40,.05), 0 2px 6px rgba(16,24,40,.06); --radius: 12px;
+  --c-dep-bg: #e3edff; --c-dep: #1d4ed8; --c-who-bg: #fff1d6; --c-who: #9a4f00; --c-grp-bg: #efe5ff; --c-grp: #6d28d9;
+  --c-inst-bg: #dcf6ee; --c-inst: #047857; --c-note-bg: #e8f1ff; --c-note: #1e3a8a;
+  --brand: linear-gradient(100deg, #00a884 0%, #0ea5a4 45%, #4f6bed 100%);
 }
 :root[data-theme="dark"] {
   --bg: #0b141a; --panel: #111b21; --panel2: #202c33; --line: #2a3942; --text: #e9edef; --muted: #8696a0;
@@ -16,6 +19,9 @@
   --on-green: #0b141a; --auto-msg: #3b4a54; --meta: rgba(233,237,239,.6); --by: #9fe0c9; --sender: #ffb57a;
   --overlay: rgba(0,0,0,.6); --tc-text: #b8c2c9; --tc-more: #e3b341; --err: #ff8a80; --input: #0b141a;
   --shadow: none;
+  --c-dep-bg: #1e3a5f; --c-dep: #b4d4ff; --c-who-bg: #4a3512; --c-who: #ffd59e; --c-grp-bg: #3b2a5c; --c-grp: #d8c4ff;
+  --c-inst-bg: #123d33; --c-inst: #9ff0d5; --c-note-bg: #1e2f4d; --c-note: #c7dbff;
+  --brand: linear-gradient(100deg, #0b5f50 0%, #0e6b6a 45%, #2f3f8f 100%);
 }
 * { box-sizing: border-box; }
 html, body { overflow: hidden; }
@@ -224,3 +230,46 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .seg { background: var(--chip-bg); }
 .seg button { background: transparent; }
 .seg button.on { background: var(--green); color: #fff; box-shadow: 0 1px 2px rgba(0,128,96,.25); }
+
+/* ---------- צבעוני וידידותי ---------- */
+.top { background: var(--brand); border-bottom: none; box-shadow: 0 2px 10px rgba(14,165,164,.25); }
+.top .logo, .top .me, .top .ghost { color: #fff; }
+.top button { background: rgba(255,255,255,.18); color: #fff; }
+.top button:hover { background: rgba(255,255,255,.3); filter: none; }
+.top .inst-dot { background: rgba(255,255,255,.2); color: #fff; }
+.top .inst-dot.bad { background: #ffe1e1; color: #b42318; }
+.tabs button { background: var(--chip-bg); color: var(--text); }
+.tabs button.on { background: var(--green); color: #fff; box-shadow: 0 2px 6px rgba(0,168,132,.35); }
+.chip.dep { background: var(--c-dep-bg); color: var(--c-dep); }
+.chip.who { background: var(--c-who-bg); color: var(--c-who); }
+.chip.grp { background: var(--c-grp-bg); color: var(--c-grp); }
+.chip.inst { background: var(--c-inst-bg); color: var(--c-inst); }
+.item { transition: background .12s; }
+.item.sel { background: var(--sel); box-shadow: inset -4px 0 0 var(--green); }
+.av { box-shadow: 0 2px 6px rgba(0,0,0,.12); }
+/* כפתורי פעולה בצבעים לפי משמעות */
+#snoozeBtn, #unsnoozeBtn { background: #fff1d6; color: #9a4f00; }
+#transferBtn { background: #e7e9ff; color: #3730a3; }
+#svcBtn { background: #ffe8d9; color: #b54708; }
+#closeBtn { background: var(--green); color: #fff; }
+#reopenBtn { background: #e3edff; color: #1d4ed8; }
+:root[data-theme="dark"] #snoozeBtn, :root[data-theme="dark"] #unsnoozeBtn { background: #4a3512; color: #ffd59e; }
+:root[data-theme="dark"] #transferBtn { background: #2b2f6b; color: #c9cdff; }
+:root[data-theme="dark"] #svcBtn { background: #5a2e12; color: #ffc9a3; }
+.composer #noteBtn.on { background: #ffd666; }
+.composer.notemode { background: #fff6cc; }
+.composer.notemode textarea { background: #fffbe6; border-color: #f5c542; }
+:root[data-theme="dark"] .composer.notemode { background: #3d3410; }
+:root[data-theme="dark"] .composer.notemode textarea { background: #2b250b; }
+.msg.note.internal { background: var(--c-note-bg); color: var(--c-note); text-align: right; max-width: 70%; border-right: 4px solid #4f6bed; }
+.msg.note.internal .by { color: #4f6bed; }
+.welcome h2 { font-size: 26px; background: var(--brand); -webkit-background-clip: text; background-clip: text; color: transparent; }
+/* דשבורד */
+.tiles .tile { border-top: 4px solid #00a884; }
+.tiles .tile:nth-child(2) { border-top-color: #f5a524; }
+.tiles .tile:nth-child(3) { border-top-color: #e5484d; }
+.tiles .tile:nth-child(4) { border-top-color: #4f6bed; }
+.tiles .tile:nth-child(5) { border-top-color: #a855f7; }
+.bar i { background: linear-gradient(270deg, #00a884, #4f6bed); }
+.export-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 14px 0 4px; padding: 10px 12px; background: var(--c-inst-bg); border-radius: 12px; }
+.export-row select { width: auto; }

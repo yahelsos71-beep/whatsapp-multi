@@ -626,7 +626,8 @@ route('GET', /^\/api\/tickets\/(\d+)$/, (req, res, { user, params }) => {
     .filter((x) => x.chatId === t.chatId && x.instanceId === t.instanceId && x.id !== t.id)
     .sort((a, b) => b.createdAt - a.createdAt)
     .map((x) => ({ id: x.id, createdAt: x.createdAt, closedAt: x.closedAt, status: x.status, assigneeName: userById(x.assigneeId)?.name || '', departmentName: depById(x.departmentId)?.name || '',
-      resolution: x.resolution || '', closedByName: userById(x.closedBy)?.name || '' }));
+      resolution: x.resolution || '', closedByName: userById(x.closedBy)?.name || '',
+      notes: store.messages(x.id).filter((m) => m.internal).map((m) => ({ text: m.text, by: m.byName || '', ts: m.ts })) }));
   send(res, 200, { ticket: summary(t), messages: store.messages(t.id), history, readOnly: !canSee(user, t) });
 });
 
@@ -705,6 +706,18 @@ route('POST', /^\/api\/tickets\/(\d+)\/transfer$/, async (req, res, { user, para
   if (oldAssignee && oldAssignee !== to.id && userById(oldAssignee)?.role !== 'admin') sendTo(oldAssignee, { type: 'remove', id: t.id });
   emitTicket(t, { sound: 'new' });
   send(res, 200, summary(t));
+});
+
+// הערה פנימית (לא נשלחת ללקוח) – למשל "עשינו ריסטרט לראוטר"
+route('POST', /^\/api\/tickets\/(\d+)\/note$/, async (req, res, { user, params }) => {
+  const t = visibleTicket(user, params[0]);
+  if (!t) return send(res, 404, { error: 'לא נמצא' });
+  const b = await readJson(req);
+  const text = String(b.text || '').trim();
+  if (!text) return send(res, 400, { error: 'הערה ריקה' });
+  const msg = addMessage(t, { dir: 'note', type: 'text', text, internal: true, byUserId: user.id, byName: user.name });
+  emitTicket(t);
+  send(res, 200, msg);
 });
 
 // השהיה: הקריאה עוברת לרשימת "מושהות" עד הזמן שנבחר, ואז תזכורת לנציג. until=null מבטל
@@ -1105,6 +1118,39 @@ route('POST', /^\/api\/admin\/users$/, async (req, res, { user }) => {
   if (b.password) Object.assign(u, hashPassword(b.password));
   store.saveUsers();
   send(res, 200, publicUser(u));
+}, { auth: 'admin' });
+
+// דוח לאקסל (CSV): קריאה בכל שורה – לקוח, עובד, זמני המתנה וטיפול, מה בוצע, הערות
+route('GET', /^\/api\/admin\/export$/, (req, res, { query }) => {
+  const period = query.get('period') || 'month';
+  const scope = query.get('scope') || 'closed';
+  const d = new Date();
+  const start = period === 'today' ? new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+    : period === 'week' ? now() - 7 * 864e5 : period === 'month' ? now() - 30 * 864e5 : 0;
+  const list = db.tickets.filter((t) => scope === 'closed' ? t.status === 'closed' && (t.closedAt || 0) >= start : (t.createdAt || 0) >= start)
+    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  const tz = db.config.hours?.tz || 'Asia/Jerusalem';
+  const fmt = (ts) => (ts ? new Date(ts).toLocaleString('he-IL', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '');
+  const mins = (ms) => (ms == null || ms < 0 ? '' : Math.round(ms / 60000));
+  const phoneLocal = (p) => (p && p.startsWith('972') ? '0' + p.slice(3) : p || '');
+  const head = ['מספר קריאה', 'סטטוס', 'נפתחה', 'נסגרה', 'לקוח', 'חברה', 'טלפון', 'קבוצה', 'מספר וואטסאפ', 'מחלקה', 'עובד מטפל', 'נסגרה ע"י',
+    'המתנה לתשובה ראשונה (דק׳)', 'זמן טיפול כולל (דק׳)', 'הודעות לקוח', 'הודעות שלנו', 'קריאות שירות', 'מה בוצע', 'הערות פנימיות', 'סיכום AI'];
+  const rows = list.map((t) => {
+    const s2 = summary(t);
+    const msgs = store.messages(t.id);
+    const firstIn = msgs.find((m) => m.dir === 'in');
+    const firstReply = firstIn && msgs.find((m) => m.dir === 'out' && !m.auto && m.ts >= firstIn.ts);
+    return [t.id, t.status === 'closed' ? 'סגורה' : t.snoozeUntil ? 'מושהית' : 'פתוחה', fmt(t.createdAt), fmt(t.closedAt), s2.customerName, s2.company || '',
+      t.isGroup ? '' : phoneLocal(t.phone), t.isGroup ? 'כן' : '', s2.instanceName, s2.departmentName, s2.assigneeName, userById(t.closedBy)?.name || '',
+      firstIn && firstReply ? mins(firstReply.ts - firstIn.ts) : '', t.closedAt ? mins(t.closedAt - t.createdAt) : '',
+      msgs.filter((m) => m.dir === 'in').length, msgs.filter((m) => m.dir === 'out' && !m.auto).length, t.serviceCalls || 0,
+      t.resolution || '', msgs.filter((m) => m.internal).map((m) => `${m.byName}: ${m.text}`).join(' | '), t.aiSummary || ''];
+  });
+  const cell = (v) => { const x = String(v ?? ''); return /[",\n\r]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x; };
+  const csv = '﻿' + [head, ...rows].map((r) => r.map(cell).join(',')).join('\r\n');
+  const name = `helpdesk-${scope}-${period}-${new Date().toISOString().slice(0, 10)}.csv`;
+  res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${name}"`, 'Cache-Control': 'no-store' });
+  res.end(csv);
 }, { auth: 'admin' });
 
 // דשבורד למנהל: מה פתוח עכשיו + כמה כל עובד סגר בתקופה

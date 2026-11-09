@@ -37,7 +37,7 @@ modal.addEventListener('mousedown', (e) => { if (e.target === modal) closeModal(
 
 const localPhone = (p) => { p = String(p || ''); if (!p.startsWith('972')) return p ? '+' + p : ''; const d = '0' + p.slice(3); return d.length === 10 ? d.slice(0, 3) + '-' + d.slice(3) : d.length === 9 ? d.slice(0, 2) + '-' + d.slice(2) : d; };
 const initials = (n) => String(n || '?').trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('');
-const avColor = (s) => `hsl(${[...String(s)].reduce((a, c) => a + c.charCodeAt(0), 0) % 360} 35% 42%)`;
+const avColor = (s) => `hsl(${([...String(s)].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) >>> 0) % 360} 62% 50%)`;
 function fmtTime(ts) {
   if (!ts) return '';
   const d = new Date(ts), n = new Date();
@@ -290,8 +290,8 @@ function renderList() {
         <div class="row1"><span class="name">${esc(t.customerName)}${!t.isGroup && t.customerName !== localPhone(t.phone) ? ` <span class="ph" dir="ltr">${localPhone(t.phone)}</span>` : ''}</span><span class="time">${fmtTime(t.updatedAt)}</span></div>
         <div class="row2"><span class="last">${t.lastDir === 'out' ? '↩ ' : ''}${esc(t.lastText)}</span>${t.awaiting ? '<span class="dot"></span>' : ''}</div>
         <div class="row3">
-          <span class="chip">#${t.id}</span>${t.isGroup ? '<span class="chip">👥 קבוצה</span>' : ''}${t.company ? `<span class="chip dep">🏢 ${esc(t.company)}</span>` : ''}
-          ${t.instanceName ? `<span class="chip">📱 ${esc(t.instanceName)}</span>` : ''}
+          <span class="chip">#${t.id}</span>${t.isGroup ? '<span class="chip grp">👥 קבוצה</span>' : ''}${t.company ? `<span class="chip dep">🏢 ${esc(t.company)}</span>` : ''}
+          ${t.instanceName ? `<span class="chip inst">📱 ${esc(t.instanceName)}</span>` : ''}
           ${t.status === 'routing' ? `<span class="chip">🤖 ${t.aiTurns ? 'העוזר מברר עם הלקוח...' : 'מנתב...'}</span>` : t.departmentName ? `<span class="chip dep">${esc(t.departmentName)}</span>` : ''}
           ${S.me.role === 'admin' && t.assigneeName ? `<span class="chip who">👤 ${esc(t.assigneeName)}</span>` : ''}
           ${t.awaiting ? `<span class="chip waittime">⏳ ${waitText(wait)}</span>` : ''}
@@ -423,11 +423,16 @@ function renderHistory() {
   const h = $('#hist'); if (!h) return;
   const list = S.view.history || [];
   if (!list.length) { h.innerHTML = ''; return; }
-  const done = list.filter((x) => x.resolution).slice(0, 3);
+  const items = [];
+  for (const x of list) {
+    if (x.resolution) items.push({ id: x.id, ts: x.closedAt || x.createdAt, who: x.closedByName, text: x.resolution, icon: '✅' });
+    for (const n of x.notes || []) items.push({ id: x.id, ts: n.ts, who: n.by, text: n.text, icon: '🗒' });
+  }
+  const done = items.sort((a, b) => b.ts - a.ts).slice(0, 5);
   h.innerHTML = `<div class="history">
-    ${done.length ? `<div class="prev-work"><b>🧾 טיפולים קודמים:</b>${done.map((x) => `<a data-id="${x.id}" class="pw">
-      <span class="pw-meta">${new Date(x.closedAt || x.createdAt).toLocaleDateString('he-IL')}${x.closedByName ? ' · ' + esc(x.closedByName) : ''}</span>
-      <span class="pw-text">${esc(x.resolution)}</span></a>`).join('')}</div>` : ''}
+    ${done.length ? `<div class="prev-work"><b>🧾 טיפולים קודמים:</b>${done.map((x) => `<a data-id="${x.id}" class="pw" title="${esc(x.text)}">
+      <span class="pw-meta">${x.icon} ${new Date(x.ts).toLocaleDateString('he-IL')}${x.who ? ' · ' + esc(x.who) : ''}</span>
+      <span class="pw-text">${esc(x.text)}</span></a>`).join('')}</div>` : ''}
     <div>📜 קריאות קודמות: ${list.map((x) => `<a data-id="${x.id}">#${x.id} (${new Date(x.createdAt).toLocaleDateString('he-IL')}${x.assigneeName ? ', ' + esc(x.assigneeName) : ''})</a>`).join(' · ')}</div></div>`;
   h.querySelectorAll('a[data-id]').forEach((a) => (a.onclick = () => openTicket(a.dataset.id)));
 }
@@ -439,6 +444,7 @@ function ticks(m) {
 }
 
 function messageHtml(m) {
+  if (m.dir === 'note' && m.internal) return `<div class="msg note internal" data-mid="${m.id}"><div class="by">🗒 הערה פנימית · ${esc(m.byName || '')}</div>${esc(m.text)}<div class="meta">${fmtTime(m.ts)}</div></div>`;
   if (m.dir === 'note') return `<div class="msg note" data-mid="${m.id}">${esc(m.text)} <span class="meta">${fmtTime(m.ts)}</span></div>`;
   let media = '';
   if (m.url) {
@@ -468,6 +474,7 @@ function renderComposer() {
   if (c.dataset.for === t.id && $('#txt')) return; // לא מוחקים טקסט שבאמצע הקלדה
   c.dataset.for = t.id;
   c.innerHTML = `<div class="composer">
+    <button id="noteBtn" title="הערה פנימית – לא נשלחת ללקוח (למשל: עשינו ריסטרט לראוטר)">🗒</button>
     <button id="tplBtn" title="תבנית הודעה">📝</button>
     <button id="attach" title="שליחת קובץ / תמונה">📎</button>
     <input type="file" id="file" hidden>
@@ -479,6 +486,15 @@ function renderComposer() {
   txt.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); } };
   $('#sendBtn').onclick = sendText;
   $('#attach').onclick = () => $('#file').click();
+  const setNote = (on) => {
+    S.noteMode = on;
+    $('#comp .composer').classList.toggle('notemode', on);
+    $('#noteBtn').classList.toggle('on', on);
+    txt.placeholder = on ? '🗒 הערה פנימית – רק לצוות, לא נשלחת ללקוח (Enter לשמירה)' : 'כתוב הודעה... (Enter לשליחה, Shift+Enter לשורה חדשה)';
+    txt.focus({ preventScroll: true });
+  };
+  $('#noteBtn').onclick = () => setNote(!S.noteMode);
+  setNote(false);
   $('#tplBtn').onclick = () => templatePicker((text) => {
     const v = S.view && S.view.ticket;
     txt.value = fillTemplate(text, v ? { name: v.customerName, company: v.company } : {});
@@ -497,6 +513,11 @@ async function sendText() {
   if (!text || !S.view) return;
   const id = S.view.ticket.id;
   txt.value = ''; txt.style.height = '42px';
+  if (S.noteMode) {
+    try { await api('POST', `/api/tickets/${id}/note`, { text }); toast('🗒 ההערה נשמרה – לא נשלחה ללקוח'); }
+    catch (e) { toast(e.message, true); $('#txt').value = text; }
+    return;
+  }
   try { await api('POST', `/api/tickets/${id}/send`, { text }); }
   catch (e) { toast(e.message, true, 6000); if (!$('#txt').value) $('#txt').value = text; }
 }
@@ -752,6 +773,7 @@ function dur(ms) {
 }
 async function dashboardDialog(period = localStorage.getItem('hd-dash') || 'today') {
   clearInterval(dashTimer);
+  const keepEx = $('#exPeriod') ? { p: $('#exPeriod').value, s: $('#exScope').value } : null;
   let st;
   try { st = await api('GET', '/api/admin/stats?period=' + period); } catch (e) { return toast(e.message, true); }
   if (modal.classList.contains('on') && !box.querySelector('#dash')) closeModal();
@@ -782,11 +804,22 @@ async function dashboardDialog(period = localStorage.getItem('hd-dash') || 'toda
       ${p.byUser.map((u) => `<tr><td>${esc(u.name)}</td>
         <td><div class="bar" title="${esc(u.name)}: ${u.closed} קריאות נסגרו">${u.closed ? `<i style="width:${(u.closed / max) * 100}%"></i>` : ""}<b>${u.closed}</b></div></td>
         <td>${dur(u.avgHandleMs)}</td><td>${dur(u.avgFirstResponseMs)}</td></tr>`).join('')}</table>
+    <div class="export-row"><b>⬇ הורדת דוח לאקסל</b>
+      <select id="exPeriod"><option value="week">7 ימים אחרונים</option><option value="month" selected>30 יום אחרונים</option><option value="today">היום</option><option value="all">הכל</option></select>
+      <select id="exScope"><option value="closed">קריאות שנסגרו</option><option value="all">כל הקריאות שנפתחו</option></select>
+      <button class="primary" id="exGo">⬇ הורד</button></div>
     <div class="hint">זמן טיפול = מפתיחת הקריאה עד הסגירה. תגובה ראשונה = מההודעה הראשונה של הלקוח עד התשובה הראשונה של עובד (בלי העוזר והמענה האוטומטי).<br>מתעדכן לבד כל 20 שניות · ${new Date(st.generatedAt).toLocaleTimeString('he-IL')}</div>
     <div class="row"><span style="flex:1"></span><button id="dclose">סגור</button></div></div>`;
   if (box.querySelector('#dash')) box.innerHTML = html; else openModal(html, true);
   box.querySelectorAll('.seg button').forEach((b) => (b.onclick = () => { localStorage.setItem('hd-dash', b.dataset.p); dashboardDialog(b.dataset.p); }));
   $('#dclose').onclick = () => { clearInterval(dashTimer); closeModal(); };
+  if (keepEx) { $('#exPeriod').value = keepEx.p; $('#exScope').value = keepEx.s; }
+  $('#exGo').onclick = () => {
+    const a = document.createElement('a');
+    a.href = `/api/admin/export?period=${$('#exPeriod').value}&scope=${$('#exScope').value}`;
+    a.download = ''; document.body.appendChild(a); a.click(); a.remove();
+    toast('הדוח יורד – נפתח באקסל');
+  };
   dashTimer = setInterval(() => { if (box.querySelector('#dash') && modal.classList.contains('on')) dashboardDialog(period); else clearInterval(dashTimer); }, 20000);
 }
 
