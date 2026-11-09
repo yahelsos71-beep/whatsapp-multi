@@ -13,6 +13,7 @@ const PENDING_SHARED = path.join(P.dataDir, 'pending.json');
 const PENDING_PRIVATE = path.join(P.userDir, 'pending.json');
 const USER_KEY = Buffer.from(P.user.toLowerCase()).toString('hex').slice(0, 40);
 const CLAUDE_PARTITION = `persist:p_${USER_KEY}_claude`;
+const HELPDESK_PARTITION = `persist:p_${USER_KEY}_helpdesk`;
 
 function load(file, def) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return def; } }
 function save(file, v) { try { fs.writeFileSync(file, JSON.stringify(v, null, 2)); } catch {} }
@@ -27,7 +28,7 @@ const partitionOf = (acc) => (acc.private ? `persist:p_${USER_KEY}_${acc.id}` : 
 const allAccounts = () => [...priv.map((a) => ({ ...a, private: true })), ...shared.map((a) => ({ ...a, private: false }))];
 
 const settings = Object.assign(
-  { newTone: 'double', remindTone: 'phone', remindSec: 30, vol: 0.8, muted: false, newFile: null, remindFile: null },
+  { newTone: 'double', remindTone: 'phone', remindSec: 30, vol: 0.8, muted: false, newFile: null, remindFile: null, helpdeskUrl: 'http://localhost:8080' },
   load(SETTINGS_FILE, {})
 );
 const saveSettings = () => save(SETTINGS_FILE, settings);
@@ -200,6 +201,7 @@ function build() {
   const accs = allAccounts();
   const wanted = new Set(accs.map(partitionOf));
   wanted.add(CLAUDE_PARTITION);
+  if (settings.helpdeskUrl) wanted.add(HELPDESK_PARTITION);
   for (const [p, it] of items) if (!wanted.has(p)) { it.tab.remove(); it.wv.remove(); items.delete(p); }
   tabsEl.innerHTML = '';
   accs.forEach((acc) => {
@@ -252,6 +254,24 @@ function build() {
     tab.addEventListener('click', () => select(CLAUDE_PARTITION));
   }
   tabsEl.appendChild(c.tab);
+
+  // לשונית המוקד (מוקד וואטסאפ של המשרד) – אם הוגדרה כתובת
+  if (settings.helpdeskUrl) {
+    let h = items.get(HELPDESK_PARTITION);
+    if (h && h.url !== settings.helpdeskUrl) { h.wv.src = settings.helpdeskUrl; h.url = settings.helpdeskUrl; }
+    if (!h) {
+      const wv = makeWebview(HELPDESK_PARTITION, settings.helpdeskUrl);
+      const tab = document.createElement('div');
+      tab.className = 'tab claude helpdesk';
+      tab.innerHTML = '🎧 מוקד';
+      tab.title = 'מוקד וואטסאפ של המשרד';
+      h = { tab, wv, claude: true, partition: HELPDESK_PARTITION, pending: new Set(), unread: 0, url: settings.helpdeskUrl };
+      items.set(HELPDESK_PARTITION, h);
+      tab.addEventListener('click', () => select(HELPDESK_PARTITION));
+      wv.addEventListener('page-title-updated', (e) => { const m = /\((\d+)\)/.exec(e.title); tab.innerHTML = '🎧 מוקד' + (m ? ` <span class="badge on">${m[1]}</span>` : ''); });
+    }
+    tabsEl.insertBefore(h.tab, tabsEl.firstChild);
+  }
 
   document.getElementById('empty').style.display = accs.length ? 'none' : 'block';
   if (!items.has(active)) active = accs.length ? partitionOf(accs[0]) : CLAUDE_PARTITION;
@@ -439,6 +459,9 @@ function settingsDialog() {
       ${[[15, '15 שניות'], [30, 'חצי דקה'], [60, 'דקה'], [120, '2 דקות'], [300, '5 דקות']]
         .map(([s, n]) => `<option value="${s}" ${s === settings.remindSec ? 'selected' : ''}>${n}</option>`).join('')}
     </select></div>
+    <h4>🎧 כתובת מוקד הוואטסאפ (לשונית "מוקד")</h4>
+    <div class="row"><input type="text" id="hdUrl" dir="ltr" value="${esc(settings.helpdeskUrl || '')}" placeholder="http://localhost:8080" style="flex:1;margin:0"><button id="hdSave">שמור</button></div>
+    <div class="hint">ריק = בלי לשונית מוקד. במחשב אחר ברשת: http://10.10.10.250:8080</div>
     <h4>עוצמה</h4>
     <div class="row"><input id="vol" type="range" min="0" max="1" step="0.05" value="${settings.vol}" style="flex:1"></div>
     <div class="row"><button class="primary" id="cancel">סגור</button><button id="dbg">🐞 שמור קובץ אבחון</button></div>`;
@@ -460,6 +483,7 @@ function settingsDialog() {
   bindTone('remindTone', 'remindFile');
   box.querySelector('#tNew').onclick = () => playTone(settings.newTone, settings.newFile);
   box.querySelector('#tRem').onclick = () => playTone(settings.remindTone, settings.remindFile);
+  box.querySelector('#hdSave').onclick = () => { settings.helpdeskUrl = box.querySelector('#hdUrl').value.trim(); saveSettings(); build(); toast('נשמר ✓'); };
   box.querySelector('#remindSec').onchange = (e) => { settings.remindSec = Number(e.target.value); saveSettings(); };
   box.querySelector('#vol').oninput = (e) => { settings.vol = Number(e.target.value); saveSettings(); };
   box.querySelector('#cancel').onclick = close;

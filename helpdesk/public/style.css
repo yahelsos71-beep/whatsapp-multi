@@ -4,6 +4,7 @@
   --yellow: #f9a825; --red: #e53935; --blue: #53bdeb;
 }
 * { box-sizing: border-box; }
+html, body { overflow: hidden; }
 html, body { margin: 0; height: 100%; font-family: "Segoe UI", Arial, sans-serif; background: var(--bg); color: var(--text); font-size: 15px; }
 button { font: inherit; background: var(--panel2); color: var(--text); border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; white-space: nowrap; }
 button:hover { filter: brightness(1.2); }
@@ -143,3 +144,6 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; }
 
 .ph { font-size: 12px; color: var(--muted); font-weight: 400; }
 .ph.big { font-size: 14px; margin-right: 6px; }
+
+#multiBtn { text-decoration: none; }
+.chat-head { position: sticky; top: 0; z-index: 2; }

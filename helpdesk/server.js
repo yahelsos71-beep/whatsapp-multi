@@ -65,7 +65,7 @@ function handTo(t, peer) {
   const dep = db.config.departments.find((d) => d.userId === peer.id);
   t.departmentId = dep ? dep.id : null;
   if (old && old !== peer.id && userById(old)?.role !== 'admin') sendTo(old, { type: 'remove', id: t.id });
-  t.awaiting = true; t.lastInAt = now();
+  t.awaiting = true; t.lastInAt = now(); t.snoozeUntil = null;
   return old !== peer.id;
 }
 const staffByPhone = (phone) => phone && db.users.find((u) => u.active !== false && u.phone && u.phone === phone);
@@ -450,6 +450,7 @@ async function handleNotification(inst, body) {
   }
   t.awaiting = true;
   t.lastInAt = ts;
+  if (t.snoozeUntil) { t.snoozeUntil = null; note(t, '▶ הלקוח כתב – הקריאה חזרה מהשהיה'); }
   emitTicket(t, { sound: isNew ? null : 'msg' });
   if (t.status === 'routing') scheduleRouting(t, t.aiTurns ? Math.max(2, Number(db.config.ai.replyDelaySec ?? 8)) * 1000 : undefined);
 }
@@ -703,9 +704,40 @@ route('POST', /^\/api\/tickets\/(\d+)\/transfer$/, async (req, res, { user, para
   send(res, 200, summary(t));
 });
 
+// השהיה: הקריאה עוברת לרשימת "מושהות" עד הזמן שנבחר, ואז תזכורת לנציג. until=null מבטל
+route('POST', /^\/api\/tickets\/(\d+)\/snooze$/, async (req, res, { user, params }) => {
+  const t = myTicket(user, params[0], res); if (!t) return;
+  if (t.status === 'closed') return send(res, 400, { error: 'הקריאה סגורה' });
+  const b = await readJson(req);
+  const until = Number(b.until) || 0;
+  if (until) {
+    if (until < now() + 30000) return send(res, 400, { error: 'בחר זמן עתידי' });
+    if (t.status === 'routing') { t.status = 'open'; clearRouting(t); if (!t.assigneeId) t.assigneeId = user.id; }
+    t.snoozeUntil = until; t.snoozedBy = user.id; t.awaiting = false;
+    note(t, `⏸ ${user.name} השהה/תה את הקריאה עד ${new Date(until).toLocaleString('he-IL', { timeZone: db.config.hours?.tz || 'Asia/Jerusalem', weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}`);
+  } else {
+    t.snoozeUntil = null;
+    note(t, `▶ ${user.name} החזיר/ה את הקריאה מהשהיה`);
+  }
+  emitTicket(t);
+  send(res, 200, summary(t));
+});
+
+// בדיקה כל 20 שניות: קריאות מושהות שהגיע זמנן – חוזרות לרשימה + תזכורת קופצת לנציג
+setInterval(() => {
+  for (const t of db.tickets) {
+    if (t.status === 'closed' || !t.snoozeUntil || t.snoozeUntil > now()) continue;
+    t.snoozeUntil = null;
+    t.reminderAt = now();
+    note(t, '⏰ הגיע זמן התזכורת');
+    emitTicket(t, { sound: 'new' });
+    if (t.assigneeId) sendTo(t.assigneeId, { type: 'reminder', ticket: summary(t) });
+  }
+}, 20000);
+
 route('POST', /^\/api\/tickets\/(\d+)\/close$/, (req, res, { user, params }) => {
   const t = myTicket(user, params[0], res); if (!t) return;
-  t.status = 'closed'; t.closedAt = now(); t.closedBy = user.id; t.awaiting = false;
+  t.status = 'closed'; t.closedAt = now(); t.closedBy = user.id; t.awaiting = false; t.snoozeUntil = null;
   note(t, `✅ הקריאה נסגרה על ידי ${user.name}`);
   emitTicket(t);
   send(res, 200, summary(t));
@@ -990,9 +1022,10 @@ route('GET', /^\/api\/admin\/stats$/, (req, res, { query }) => {
   const oldest = waiting.reduce((m, t) => Math.min(m, t.lastInAt || t.updatedAt), Infinity);
   const people = db.users.filter((u) => u.active !== false);
   const nowByUser = people.map((u) => {
-    const mine = open.filter((t) => t.assigneeId === u.id);
+    const mine = open.filter((t) => t.assigneeId === u.id && !t.snoozeUntil);
+    const snoozed = open.filter((t) => t.assigneeId === u.id && t.snoozeUntil).length;
     const w = mine.filter((t) => t.awaiting);
-    return { id: u.id, name: u.name, open: mine.length, waiting: w.length, oldestWaitMs: w.length ? now() - Math.min(...w.map((t) => t.lastInAt || t.updatedAt)) : 0 };
+    return { id: u.id, name: u.name, open: mine.length, snoozed, waiting: w.length, oldestWaitMs: w.length ? now() - Math.min(...w.map((t) => t.lastInAt || t.updatedAt)) : 0 };
   });
   const closed = db.tickets.filter((t) => t.status === 'closed' && (t.closedAt || 0) >= start).slice(-3000);
   const firstResponse = (t) => {
@@ -1015,7 +1048,7 @@ route('GET', /^\/api\/admin\/stats$/, (req, res, { query }) => {
   send(res, 200, {
     period, generatedAt: now(),
     now: {
-      open: open.length, waiting: waiting.length, routing: open.filter((t) => t.status === 'routing').length,
+      open: open.filter((t) => !t.snoozeUntil).length, snoozed: open.filter((t) => t.snoozeUntil).length, waiting: waiting.length, routing: open.filter((t) => t.status === 'routing').length,
       unassigned: open.filter((t) => !t.assigneeId && t.status !== 'routing').length,
       oldestWaitMs: Number.isFinite(oldest) ? now() - oldest : 0,
       byUser: nowByUser, byDept, noDept: open.filter((t) => !t.departmentId).length,

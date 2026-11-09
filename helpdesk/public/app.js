@@ -44,6 +44,14 @@ function fmtTime(ts) {
   if (d.toDateString() === n.toDateString()) return d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
   return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
 }
+function fmtWhen(ts) {
+  const d = new Date(ts), n = new Date();
+  const tm = d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === n.toDateString()) return 'היום ' + tm;
+  const tmr = new Date(n); tmr.setDate(n.getDate() + 1);
+  if (d.toDateString() === tmr.toDateString()) return 'מחר ' + tm;
+  return d.toLocaleDateString('he-IL', { weekday: 'short', day: 'numeric', month: 'numeric' }) + ' ' + tm;
+}
 function waitText(ms) {
   const m = Math.floor(ms / 60000);
   if (m < 1) return 'עכשיו';
@@ -104,6 +112,7 @@ async function startMain() {
       <span class="logo">💬 מוקד וואטסאפ</span>
       <span id="insts"></span>
       <span class="spacer"></span>
+      <a id="multiBtn" href="whatsappmulti://open" style="display:none"><button tabindex="-1" title="פתיחת התוכנה WhatsApp Multi (הוואטסאפים הרגילים, כולל הפרטי)">📱 WhatsApp Multi</button></a>
       <button id="taskBtn" title="הודעה בקבוצה המשותפת – פותחת קריאה אצל הצד השני">${S.me.role === 'admin' ? '📋 קריאה לעובד' : '📋 פנייה למנהל'}</button>
       <button id="newChat" title="שליחת הודעה ללקוח חדש">✉️ שיחה חדשה</button>
       <button id="muteBtn"></button>
@@ -124,6 +133,7 @@ async function startMain() {
   $('#logout').onclick = async () => { await api('POST', '/api/logout').catch(() => {}); location.reload(); };
   $('#mySettings').onclick = mySettingsDialog;
   $('#newChat').onclick = newChatDialog;
+  try { if (localStorage.getItem('hd-multi') !== '0') $('#multiBtn').style.display = ''; } catch {}
   $('#taskBtn').onclick = taskDialog;
   $('#q').oninput = (e) => { S.q = e.target.value.trim(); renderList(); };
   if ($('#fuser')) $('#fuser').onchange = (e) => { S.fuser = e.target.value; try { localStorage.setItem('hd-fuser', S.fuser); } catch {} renderList(); };
@@ -169,6 +179,8 @@ function onEvent(ev) {
       Sounds.newMessage();
       notify(ev.sound === 'new' ? 'קריאה חדשה' : 'הודעה חדשה', `${t.customerName}: ${t.lastText || ''}`);
     }
+  } else if (ev.type === 'reminder') {
+    reminderPopup(ev.ticket);
   } else if (ev.type === 'remove') {
     S.tickets.delete(ev.id);
     if (S.sel === ev.id) { S.sel = null; S.view = null; renderChat(); toast('השיחה הועברה לעובד אחר'); }
@@ -208,8 +220,8 @@ function renderInstances() {
 // ---------- רשימת קריאות ----------
 function renderTabs() {
   const tabs = S.me.role === 'admin'
-    ? [['all', 'כל הפתוחות'], ['mine', 'שלי'], ['routing', 'בניתוב'], ['closed', 'סגורות']]
-    : [['mine', 'הקריאות שלי'], ['closed', 'סגורות']];
+    ? [['all', 'כל הפתוחות'], ['mine', 'שלי'], ['snoozed', '⏸ מושהות'], ['routing', 'בניתוב'], ['closed', 'סגורות']]
+    : [['mine', 'הקריאות שלי'], ['snoozed', '⏸ מושהות'], ['closed', 'סגורות']];
   $('#tabs').innerHTML = tabs.map(([k, n]) => `<button data-k="${k}" class="${S.tab === k ? 'on' : ''}">${n} <span data-cnt="${k}"></span></button>`).join('');
   $('#tabs').querySelectorAll('button').forEach((b) => (b.onclick = async () => {
     S.tab = b.dataset.k; localStorage.setItem('hd-tab', S.tab); renderTabs();
@@ -231,9 +243,14 @@ function currentList() {
   if (S.tab === 'closed') list = [...S.closed];
   else {
     list = [...S.tickets.values()];
-    if (S.tab === 'mine') list = list.filter((t) => t.assigneeId === S.me.id);
-    if (S.tab === 'routing') list = list.filter((t) => t.status === 'routing' || !t.assigneeId);
-    sortTickets(list);
+    if (S.tab === 'snoozed') {
+      list = list.filter((t) => t.snoozeUntil && (S.me.role === 'admin' || t.assigneeId === S.me.id)).sort((a, b) => a.snoozeUntil - b.snoozeUntil);
+    } else {
+      list = list.filter((t) => !t.snoozeUntil);
+      if (S.tab === 'mine') list = list.filter((t) => t.assigneeId === S.me.id);
+      if (S.tab === 'routing') list = list.filter((t) => t.status === 'routing' || !t.assigneeId);
+      sortTickets(list);
+    }
   }
   if (S.me.role === 'admin' && S.fuser && S.tab !== 'mine') {
     list = list.filter((t) => (S.fuser === 'none' ? !t.assigneeId : t.assigneeId === S.fuser || (S.tab === 'closed' && t.closedBy === S.fuser)));
@@ -252,10 +269,12 @@ function renderList() {
   const now = Date.now();
   const myWaiting = [...S.tickets.values()].filter((t) => t.assigneeId === S.me.id && t.awaiting).length;
   document.title = (myWaiting ? `(${myWaiting}) ` : '') + 'מוקד וואטסאפ';
-  const counts = { mine: [...S.tickets.values()].filter((t) => t.assigneeId === S.me.id).length, all: S.tickets.size, routing: [...S.tickets.values()].filter((t) => t.status === 'routing' || !t.assigneeId).length };
+  const act = [...S.tickets.values()].filter((t) => !t.snoozeUntil);
+  const counts = { mine: act.filter((t) => t.assigneeId === S.me.id).length, all: act.length, routing: act.filter((t) => t.status === 'routing' || !t.assigneeId).length,
+    snoozed: [...S.tickets.values()].filter((t) => t.snoozeUntil && (S.me.role === 'admin' || t.assigneeId === S.me.id)).length };
   for (const [k, n] of Object.entries(counts)) { const c = document.querySelector(`[data-cnt="${k}"]`); if (c) c.textContent = n ? `(${n})` : ''; }
   if (!list.length) {
-    el.innerHTML = `<div class="empty">${S.q ? 'לא נמצא' : S.fuser && S.tab !== 'mine' ? 'אין קריאות לעובד הזה' : S.tab === 'closed' ? 'אין קריאות סגורות' : 'אין קריאות פתוחות 🎉'}</div>`;
+    el.innerHTML = `<div class="empty">${S.q ? 'לא נמצא' : S.fuser && S.tab !== 'mine' ? 'אין קריאות לעובד הזה' : S.tab === 'closed' ? 'אין קריאות סגורות' : S.tab === 'snoozed' ? 'אין קריאות מושהות' : 'אין קריאות פתוחות 🎉'}</div>`;
     return;
   }
   el.innerHTML = list.map((t) => {
@@ -272,6 +291,7 @@ function renderList() {
           ${t.status === 'routing' ? `<span class="chip">🤖 ${t.aiTurns ? 'העוזר מברר עם הלקוח...' : 'מנתב...'}</span>` : t.departmentName ? `<span class="chip dep">${esc(t.departmentName)}</span>` : ''}
           ${S.me.role === 'admin' && t.assigneeName ? `<span class="chip who">👤 ${esc(t.assigneeName)}</span>` : ''}
           ${t.awaiting ? `<span class="chip waittime">⏳ ${waitText(wait)}</span>` : ''}
+          ${t.snoozeUntil ? `<span class="chip who">⏸ עד ${fmtWhen(t.snoozeUntil)}</span>` : ''}
         </div>
       </div></div>`;
   }).join('');
@@ -310,15 +330,27 @@ function renderChat() {
   el.innerHTML = `<div class="chat-head" id="chead"></div><div id="hist"></div><div class="msgs" id="msgs"></div><div id="comp"></div>`;
   renderChatHead();
   renderHistory();
-  const msgs = $('#msgs');
+  renderMessages();
+  renderComposer();
+}
+
+// מציגים רק את ההתכתבות של היום (או את ההודעות האחרונות אם היום אין). הקודמות – בלחיצה, או ב"📜 היסטוריה"
+function renderMessages() {
+  const msgs = $('#msgs'); if (!msgs) return;
+  const all = S.view.messages;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  let shown = S.view.showAll ? all : all.filter((m) => m.ts >= today.getTime());
+  if (!shown.length) shown = all.slice(-8);
+  const hidden = all.length - shown.length;
+  msgs.innerHTML = hidden > 0 ? `<div class="day" style="cursor:pointer" id="showOlder">⬆ הצג ${hidden} הודעות קודמות בקריאה</div>` : '';
   let lastDay = '';
-  for (const m of S.view.messages) {
+  for (const m of [...shown].sort((a, b) => a.ts - b.ts)) {
     const day = new Date(m.ts).toLocaleDateString('he-IL');
     if (day !== lastDay) { msgs.insertAdjacentHTML('beforeend', `<div class="day">${day}</div>`); lastDay = day; }
     msgs.insertAdjacentHTML('beforeend', messageHtml(m));
   }
+  if ($('#showOlder')) $('#showOlder').onclick = () => { S.view.showAll = true; renderMessages(); $('#msgs').scrollTop = 0; };
   msgs.scrollTop = msgs.scrollHeight;
-  renderComposer();
 }
 
 function renderChatHead() {
@@ -330,13 +362,15 @@ function renderChatHead() {
       ${t.isGroup ? '<small>👥 קבוצה</small>' : ''} <small>#${t.id} · 📱 ${esc(t.instanceName)}${t.departmentName ? ' · ' + esc(t.departmentName) : ''}${t.assigneeName ? ' · 👤 ' + esc(t.assigneeName) : ''}${t.status === 'closed' ? ' · ✅ סגורה' : ''}</small></div>
     ${ro ? '<span class="chip">צפייה בלבד</span>' : t.status === 'closed'
       ? '<button id="reopenBtn">🔄 פתח מחדש</button>'
-      : '<button id="transferBtn">↪️ העבר שיחה</button><button class="primary" id="closeBtn">✅ סגור קריאה</button>'}
+      : `${t.snoozeUntil ? `<span class="chip who">⏸ מושהית עד ${fmtWhen(t.snoozeUntil)}</span><button id="unsnoozeBtn">▶ החזר עכשיו</button>` : '<button id="snoozeBtn" title="עדיין לא סגרנו – מתכתבים עם הלקוח. הקריאה תעבור ל״מושהות״ ותחזור עם תזכורת">⏸ השהה</button>'}<button id="transferBtn">↪️ העבר שיחה</button><button class="primary" id="closeBtn">✅ סגור קריאה</button>`}
     ${!t.isGroup && !ro ? `<button class="ghost" id="contactBtn" title="שמירת שם וחברה ללקוח הזה">👤 ${t.contact ? 'איש קשר' : 'שמור איש קשר'}</button>` : ''}
     <button class="ghost" id="waHistBtn" title="ההודעות הקודמות עם ${t.isGroup ? 'הקבוצה' : 'הלקוח'} מוואטסאפ – גם מלפני המוקד">📜 היסטוריה</button>
     ${t.pinnedTo ? `<span class="chip who">📌 קבוע: ${esc(t.pinnedTo)}</span>` : ''}
     ${S.me.role === 'admin' && !ro ? `<button class="ghost" id="pinBtn" title="כל הודעה מ${t.isGroup ? 'הקבוצה' : 'הצ׳אט'} הזה תגיע ישר לעובד שתבחר, בלי AI">📌 קבע לעובד</button>` : ''}
     ${S.me.role === 'admin' && !ro ? `<button class="ghost" id="ignoreBtn" title="לא לפתוח יותר קריאות מ${t.isGroup ? 'הקבוצה' : 'הצ׳אט'} הזה">🔕 התעלם</button>` : ''}`;
   if ($('#transferBtn')) $('#transferBtn').onclick = transferDialog;
+  if ($('#snoozeBtn')) $('#snoozeBtn').onclick = () => snoozeDialog(t);
+  if ($('#unsnoozeBtn')) $('#unsnoozeBtn').onclick = async () => { try { await api('POST', `/api/tickets/${t.id}/snooze`, { until: null }); toast('הקריאה חזרה לרשימה ▶'); } catch (e) { toast(e.message, true); } };
   if ($('#closeBtn')) $('#closeBtn').onclick = closeTicket;
   $('#waHistBtn').onclick = () => waHistoryDialog(t);
   if ($('#contactBtn')) $('#contactBtn').onclick = () => {
@@ -473,6 +507,43 @@ async function closeTicket() {
   } catch (e) { toast(e.message, true); }
 }
 
+function snoozeDialog(t) {
+  const at = (d, h, m) => { const x = new Date(); x.setDate(x.getDate() + d); x.setHours(h, m, 0, 0); return x.getTime(); };
+  const opts = [
+    ['בעוד שעה', Date.now() + 3600e3],
+    ['בעוד 4 שעות', Date.now() + 4 * 3600e3],
+    ['מחר ב-8:30', at(1, 8, 30)],
+    ['בעוד 3 ימים', Date.now() + 3 * 864e5],
+  ];
+  const local = new Date(Date.now() + 3600e3 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  openModal(`<h3>⏸ השהיית הקריאה עם ${esc(t.customerName)}</h3>
+    <div class="hint">הקריאה עוברת לרשימת "⏸ מושהות" ולא מופיעה בין הפתוחות. כשמגיע הזמן – קופצת תזכורת ${t.assigneeName ? 'ל' + esc(t.assigneeName) : ''} עם צלצול, והקריאה חוזרת לרשימה.<br>אם הלקוח כותב בינתיים – הקריאה חוזרת מיד.</div>
+    <div class="pick" style="margin-top:10px">${opts.map(([l, ts], i) => `<button data-i="${i}"><b style="flex:1">⏰ ${l}</b><span class="chip">${fmtWhen(ts)}</span></button>`).join('')}</div>
+    <label>או בחר תאריך ושעה</label><div class="row" style="margin:0"><input type="datetime-local" id="sdt" value="${local}" style="flex:1"><button class="primary" id="sgo">השהה עד</button></div>
+    <div class="row"><button id="cancel">ביטול</button></div>`);
+  const go = async (until) => {
+    try { await api('POST', `/api/tickets/${t.id}/snooze`, { until }); closeModal(); toast(`⏸ הקריאה הושהתה עד ${fmtWhen(until)}`); }
+    catch (e) { toast(e.message, true); }
+  };
+  box.querySelectorAll('.pick button').forEach((b) => (b.onclick = () => go(opts[+b.dataset.i][1])));
+  $('#sgo').onclick = () => { const v = $('#sdt').value; if (!v) return; go(new Date(v).getTime()); };
+  $('#cancel').onclick = closeModal;
+}
+
+function reminderPopup(t) {
+  Sounds.reminder();
+  notify('⏰ תזכורת לקריאה', `${t.customerName}${t.company ? ' (' + t.company + ')' : ''} – #${t.id}`);
+  const html = `<h3>⏰ תזכורת</h3>
+    <div style="font-size:17px;margin:6px 0 2px"><b>${esc(t.customerName)}</b> ${t.isGroup ? '' : `<span class="ph big" dir="ltr">${localPhone(t.phone)}</span>`}</div>
+    <div class="hint">${t.company ? '🏢 ' + esc(t.company) + ' · ' : ''}קריאה #${t.id}${t.lastText ? ' · ' + esc(t.lastText.slice(0, 80)) : ''}</div>
+    <div class="row"><button class="primary" id="ropen">פתח את הקריאה</button><button id="rlater">⏸ תזכיר שוב</button><button id="cancel">סגור</button></div>`;
+  if (modal.classList.contains('on') && !box.querySelector('#ropen')) { toast(`⏰ תזכורת: ${t.customerName} – #${t.id}`, false, 10000); return; }
+  openModal(html);
+  $('#ropen').onclick = () => { closeModal(); openTicket(t.id); };
+  $('#rlater').onclick = () => snoozeDialog(t);
+  $('#cancel').onclick = closeModal;
+}
+
 function transferDialog() {
   const t = S.view.ticket;
   const users = S.users.filter((u) => u.id !== t.assigneeId);
@@ -556,12 +627,13 @@ async function dashboardDialog(period = localStorage.getItem('hd-dash') || 'toda
       ${tile('קריאות פתוחות', n.open)}
       ${tile('ממתינות לתשובה', n.waiting, n.waiting ? 'לקוחות שמחכים' : 'אף אחד לא מחכה 👍')}
       ${tile('ההמתנה הארוכה ביותר', n.waiting ? dur(n.oldestWaitMs) : '—', '', n.waiting ? 'wt ' + waitCls(n.oldestWaitMs) : '')}
+      ${tile('⏸ מושהות', n.snoozed ?? 0)}
       ${tile('העוזר מברר עם לקוח', n.routing)}
     </div>
-    <table class="dtable"><tr><th>עובד</th><th>פתוחות</th><th>ממתינות</th><th>ההמתנה הארוכה</th></tr>
-      ${n.byUser.map((u) => `<tr><td>${esc(u.name)}</td><td>${u.open}</td><td>${u.waiting ? `<span class="dot" style="display:inline-block;margin-left:6px;vertical-align:middle"></span>${u.waiting}` : '0'}</td>
+    <table class="dtable"><tr><th>עובד</th><th>פתוחות</th><th>מושהות</th><th>ממתינות</th><th>ההמתנה הארוכה</th></tr>
+      ${n.byUser.map((u) => `<tr><td>${esc(u.name)}</td><td>${u.open}</td><td>${u.snoozed || 0}</td><td>${u.waiting ? `<span class="dot" style="display:inline-block;margin-left:6px;vertical-align:middle"></span>${u.waiting}` : '0'}</td>
         <td>${u.waiting ? `<span class="chip waittime ${waitCls(u.oldestWaitMs)}">⏳ ${dur(u.oldestWaitMs)}</span>` : '—'}</td></tr>`).join('')}
-      ${n.unassigned ? `<tr><td>לא משויך</td><td>${n.unassigned}</td><td></td><td></td></tr>` : ''}</table>
+      ${n.unassigned ? `<tr><td>לא משויך</td><td>${n.unassigned}</td><td></td><td></td><td></td></tr>` : ''}</table>
     ${n.byDept.length ? `<div class="hint" style="margin-top:6px">לפי מחלקה: ${n.byDept.map((d) => `${esc(d.name)} <b>${d.open}</b>`).join(' · ')}${n.noDept ? ` · בלי מחלקה <b>${n.noDept}</b>` : ''}</div>` : ''}
     <h4>${periods.find((x) => x[0] === period)[1]}</h4>
     <div class="tiles">${tile('קריאות שנפתחו', p.opened)}${tile('קריאות שנסגרו', p.closed)}</div>
@@ -633,6 +705,8 @@ function mySettingsDialog() {
     <label>צלצול תזכורת (כשלקוח מחכה לתשובה)</label><div class="row" style="margin:0"><select id="sRem" style="flex:1">${opts(s.remindTone)}</select><button id="tRem">▶</button></div>
     <label>כל כמה זמן לצלצל תזכורת</label><select id="sSec">${[[15, '15 שניות'], [30, 'חצי דקה'], [60, 'דקה'], [120, '2 דקות'], [300, '5 דקות']].map(([v, n]) => `<option value="${v}" ${v === s.remindSec ? 'selected' : ''}>${n}</option>`).join('')}</select>
     <label>עוצמה</label><input id="sVol" type="range" min="0" max="1" step="0.05" value="${s.vol}">
+    <h4>תוכנת WhatsApp Multi</h4>
+    <label class="check"><input type="checkbox" id="sMulti" ${(() => { try { return localStorage.getItem('hd-multi') !== '0'; } catch { return true; } })() ? 'checked' : ''}> להציג למעלה כפתור "📱 WhatsApp Multi" (רק במחשב שהתוכנה מותקנת בו)</label>
     <h4>שינוי סיסמה</h4>
     <div class="grid2"><div><label>סיסמה נוכחית</label><input id="pOld" type="password"></div><div><label>סיסמה חדשה</label><input id="pNew" type="password"></div></div>
     <div class="row"><button id="pSave">שנה סיסמה</button><span class="spacer" style="flex:1"></span><button class="primary" id="done">סגור</button></div>`);
@@ -641,6 +715,7 @@ function mySettingsDialog() {
   $('#tNew').onclick = () => Sounds.play(s.newTone);
   $('#tRem').onclick = () => Sounds.play(s.remindTone);
   $('#sSec').onchange = (e) => { s.remindSec = Number(e.target.value); Sounds.save(); };
+  $('#sMulti').onchange = (e) => { try { localStorage.setItem('hd-multi', e.target.checked ? '1' : '0'); } catch {} $('#multiBtn').style.display = e.target.checked ? '' : 'none'; };
   $('#sVol').oninput = (e) => { s.vol = Number(e.target.value); Sounds.save(); };
   $('#pSave').onclick = async () => {
     try { await api('POST', '/api/me/password', { old: $('#pOld').value, password: $('#pNew').value }); toast('הסיסמה שונתה ✓'); $('#pOld').value = $('#pNew').value = ''; }

@@ -1,15 +1,15 @@
 {
-  "version": 11,
+  "version": 12,
   "files": {
-    "server.js": "9bb2a614f9b5c1945de663766139e7c96dc67b6c2b5dfd38fca5676366df3e15",
+    "server.js": "46f3959bae47a2c75e833e90caae587f4b89c0804be01f1182e98b50b7bb85f2",
     "lib/ai.js": "a86761c5735519efe6d73fff0f2450800a36a5a8ed816ca41ef898fbe53a80c3",
     "lib/greenapi.js": "dcb312ea11e8fcc7dd8c730f95e449a2fdec3d730266a1e3d2a4d2fa0d528730",
     "lib/sheet.js": "837e53085b7ee0da1c4816ea15d6d6bb5dfb8bd90d0b20266bcb231104eda5ed",
     "lib/store.js": "85dad5ad492d356c4ca6329d084103afe8147500a443fbf848101dbaaee5dcaf",
-    "public/app.js": "c6c062d8c09a4edc454226b5541974e335d20546c453b256ac016126455b1b5a",
+    "public/app.js": "bf375fe1940c536fe781a3f0f0f4c54a392065f1acc1b55cab35c1e7860f6c1d",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
-    "public/style.css": "d60662108dde0516c3713b78d6e7aa046b5b6db4ffaeb7b496e1acdea556f167"
+    "public/style.css": "6dd34f841702d88ea1547e38c376da1e83f01e8d34a371b756246b14cf42449d"
   },
-  "notes": "ניתוב לפי איש קשר (דויד → נועה) + מחלקת מכירות"
+  "notes": "קריאה מושהית + תזכורת, תצוגת היום בלבד, כפתור WhatsApp Multi"
 }

@@ -1,10 +1,10 @@
 {
-  "version": 7,
+  "version": 8,
   "files": {
-    "app-main.js": "87b7206be13f15eab3b67bba7da9cff4531030dc16200c8e0a279dea3dfc77a2",
+    "app-main.js": "1b08d6832ddcf5a6fe2600c732f7c23e51b94b1dd229c3ba9bfa53d13a1ac24b",
     "index.html": "4736af1ecc96e38c81ed5da15a8e27f5da403089a37c009da02aa0a278ea9879",
-    "renderer.js": "dcad625c99de2720034cbfcc1cc49968abf4a7768a2681e296f34691bc3ec7ea",
+    "renderer.js": "a85bc8dc8af57df3330b65e1b4c4a058b9b760c05355d65b948476bc5697321f",
     "inject.js": "8f0e9471519ce20774b06d00707fa30d2b78e27950ca68b55b164e1b05ad824a"
   },
-  "notes": "תיקון מנגנון העדכון"
+  "notes": "לשונית מוקד + פתיחה מהמוקד"
 }

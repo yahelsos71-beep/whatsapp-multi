@@ -64,6 +64,15 @@ ipcMain.handle('pick-sound', async () => {
 });
 ipcMain.on('clipboard', (_e, text) => clipboard.writeText(text));
 
+// ---- פתיחה מהמוקד: קישור whatsappmulti://open ----
+// אם התוכנה כבר פתוחה – מביאים את החלון לקדמת המסך במקום לפתוח עוד עותק
+const gotSingle = app.requestSingleInstanceLock();
+if (!gotSingle) { app.quit(); }
+app.on('second-instance', () => {
+  if (mainWin) { if (mainWin.isMinimized()) mainWin.restore(); mainWin.show(); mainWin.focus(); }
+});
+try { if (app.isPackaged) app.setAsDefaultProtocolClient('whatsappmulti'); } catch {}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1350,
@@ -150,6 +159,7 @@ app.on('web-contents-created', (_e, contents) => {
 });
 
 app.whenReady().then(async () => {
+  if (!gotSingle) return;
   // נפתח מתיקייה בלי סריקות, אבל בפעם שעברה עבדנו מתיקייה אחרת עם סריקות? מציעים לעבור אליה
   const LAST = path.join(USER_DIR, 'last-folder.txt');
   let last = null;
