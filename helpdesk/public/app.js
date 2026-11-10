@@ -642,6 +642,7 @@ async function serviceCallDialog(t) {
       <label>כתובת (לא חובה)</label><input id="sc_addr">
       <label>תיאור הפנייה</label><textarea id="sc_desc" rows="6">${esc(d.description)}</textarea>
     </div>
+    <div class="hint" id="sc_assign" style="margin:8px 0 0;font-size:13px"></div>
     <label id="sc_lbl"></label><div class="tcard" style="white-space:pre-line;font-size:14px" id="sc_prev"></div>
     <div class="row"><button class="primary" id="sc_send"></button><button id="cancel">ביטול</button></div>`, true);
   const build = () => {
@@ -654,6 +655,9 @@ async function serviceCallDialog(t) {
     $('#sc_prev').textContent = build();
     $('#sc_lbl').textContent = `כך זה יישלח ל${target.name}:`;
     $('#sc_send').textContent = `📤 שלח ל${target.name}`;
+    $('#sc_assign').innerHTML = target.userName
+      ? `↪️ הקריאה תועבר במוקד ל<b>${esc(target.userName)}</b>`
+      : `⚠️ "${esc(target.name)}" לא מקושר לעובד במוקד – הקריאה תישאר אצל ${esc(d.currentAssignee || 'המטפל הנוכחי')}. (לקישור: ניהול ← כללי ← יעדים לקריאת שירות)`;
   };
   box.querySelectorAll('#sc_to button').forEach((b) => (b.onclick = () => {
     target = d.targets[+b.dataset.i];

@@ -1,15 +1,15 @@
 {
-  "version": 26,
+  "version": 27,
   "files": {
-    "server.js": "c98f4b09a353b452a0d6f23485905c4a9e1b5fc827a1fca430f86d97c314759f",
+    "server.js": "1bed10d45a2af9ff7d89bc435f661114fb168d8e8035efda6e96f247a5b973d3",
     "lib/ai.js": "a86761c5735519efe6d73fff0f2450800a36a5a8ed816ca41ef898fbe53a80c3",
     "lib/greenapi.js": "2b0c65eeaef81459fa52f9b712fc5d524e08cff57fbddd790afbb06ca653f4b3",
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "ac60a12a44b9ce1a66edcc5263eecc41f1a366c91ab49150e06a37b898fee78d",
-    "public/app.js": "c8195b02a3ad0be3948d3c605f118cb990a7f1349f02694ed4ab8dc302117901",
+    "public/app.js": "c639d62a375224f6dbaec6e84969e36ed20ec5d9deca8a3272870f68ce88b94d",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "2ab2631c3b2090b367337f7c0651b554f99788a0b3503cba49d795dd599924a8"
   },
-  "notes": "כפתור חסום קבוצה"
+  "notes": "חיווי הקצאה בקריאת שירות"
 }

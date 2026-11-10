@@ -945,7 +945,8 @@ route('GET', /^\/api\/tickets\/(\d+)\/service-call$/, async (req, res, { user, p
   const recent = ins.filter((m) => m.ts >= today.getTime());
   const msgs = (recent.length ? recent : ins.slice(-8)).map((m) => (m.senderName ? m.senderName + ': ' : '') + (m.text || `[${m.type}]`));
   send(res, 200, {
-    targets: serviceTargets().map((x) => ({ id: x.id, name: x.name, isGroup: !!x.chatId, phone: x.phone || '' })),
+    targets: serviceTargets().map((x) => ({ id: x.id, name: x.name, isGroup: !!x.chatId, phone: x.phone || '', userName: targetUser(x)?.name || '' })),
+    currentAssignee: userById(t.assigneeId)?.name || '',
     customer, company, phone, isGroup: !!t.isGroup,
     description: t.aiSummary ? t.aiSummary + '\n\nמה שהלקוח כתב:\n' + msgs.join('\n') : msgs.join('\n'),
   });
