@@ -36,6 +36,7 @@ function closeModal() { modal.classList.remove('on'); }
 modal.addEventListener('mousedown', (e) => { if (e.target === modal) closeModal(); });
 
 const localPhone = (p) => { p = String(p || ''); if (!p.startsWith('972')) return p ? '+' + p : ''; const d = '0' + p.slice(3); return d.length === 10 ? d.slice(0, 3) + '-' + d.slice(3) : d.length === 9 ? d.slice(0, 2) + '-' + d.slice(2) : d; };
+const normLocal = (p) => { let d = String(p || '').replace(/\D/g, ''); if (d.startsWith('00')) d = d.slice(2); if (d.startsWith('0')) d = '972' + d.slice(1); return d; };
 const initials = (n) => String(n || '?').trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('');
 const avColor = (s) => `hsl(${([...String(s)].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) >>> 0) % 360} 62% 50%)`;
 function fmtTime(ts) {
@@ -456,6 +457,12 @@ function messageHtml(m) {
   } else if (m.type !== 'text') media = `<i>${{ image: '📷 תמונה', video: '🎬 וידאו', audio: '🎤 הקלטה', file: '📎 ' + esc(m.fileName || 'קובץ') }[m.type] || ''}</i><br>`;
   const by = m.dir === 'out' && m.byName ? `<div class="by">${esc(m.byName)}</div>`
     : m.dir === 'in' && m.senderName ? `<div class="by sender">${m.staff ? '👤 ' : ''}${esc(m.senderName)}${m.senderPhone && !m.staff && m.senderName !== localPhone(m.senderPhone) ? ` <span class="sph" dir="ltr" title="לחץ להעתקה" data-copy="${esc(localPhone(m.senderPhone))}">${esc(localPhone(m.senderPhone))}</span>` : ''}</div>` : '';
+  if (m.type === 'contact' && Array.isArray(m.contacts) && m.contacts.length) {
+    media = m.contacts.map((c, i) => `<div class="vcard"><div class="vc-av">👤</div><div class="vc-body"><b>${esc(c.name || 'איש קשר')}</b>
+      ${c.company ? `<span>🏢 ${esc(c.company)}</span>` : ''}${(c.phones || []).map((p) => `<span dir="ltr" class="sph" data-copy="${esc(localPhone(normLocal(p)))}">${esc(localPhone(normLocal(p)))}</span>`).join('')}</div>
+      <button class="vc-save" data-vc="${m.id}|${i}">💾 שמור במערכת</button></div>`).join('');
+    m = { ...m, text: '' };
+  }
   const quote = m.quoted ? `<div class="quote"><b>${esc(m.quoted.from || '')}</b>${esc(m.quoted.text || '')}</div>` : '';
   const rep = m.idMessage && !(S.view && S.view.readOnly) ? `<button class="rep" data-rep="${m.id}" title="להגיב להודעה הזאת">↩</button>` : '';
   return `<div class="msg ${m.dir} ${m.auto ? 'auto' : ''}" data-mid="${m.id}">${rep}${by}${quote}${media}${esc(m.text)}<div class="meta">${fmtTime(m.ts)} ${ticks(m)}</div></div>`;
@@ -522,6 +529,27 @@ async function copyText(text) {
   ta.remove(); return ok;
 }
 
+// שמירת כרטיס איש קשר שנשלח בוואטסאפ
+async function saveVcardDialog(c) {
+  const phones = (c.phones || []).map(normLocal).filter(Boolean);
+  let existing = null;
+  for (const p of phones) {
+    const r = await api('GET', '/api/contacts?limit=5&q=' + encodeURIComponent(p)).catch(() => ({ list: [] }));
+    existing = r.list.find((x) => x.phones.includes(p)); if (existing) break;
+  }
+  openModal(`<h3>💾 ${existing ? 'איש הקשר כבר שמור – עדכון' : 'שמירת איש קשר במערכת'}</h3>
+    ${existing ? `<div class="hint">✓ המספר כבר קיים במערכת בשם "${esc(existing.name || existing.company)}". אפשר לעדכן את הפרטים.</div>` : ''}
+    <div class="grid2"><div><label>שם</label><input id="vn" value="${esc(existing ? existing.name || c.name : c.name)}"></div>
+    <div><label>חברה</label><input id="vco" value="${esc(existing ? existing.company || c.company : c.company)}"></div></div>
+    <label>טלפונים (מופרדים בפסיק)</label><input id="vp" dir="ltr" value="${esc([...new Set([...(existing ? existing.phones : []), ...phones])].map(localPhone).join(', '))}">
+    <div class="row"><button class="primary" id="vsave">💾 שמור</button><button id="cancel">ביטול</button></div>`);
+  $('#cancel').onclick = closeModal;
+  $('#vsave').onclick = async () => {
+    try { await api('POST', '/api/contacts', { id: existing ? existing.id : undefined, name: $('#vn').value, company: $('#vco').value, phones: $('#vp').value }); closeModal(); toast('איש הקשר נשמר במערכת ✓'); }
+    catch (e) { toast(e.message, true); }
+  };
+}
+
 // ---------- תגובה להודעה מסוימת ----------
 function setReply(m) {
   S.replyTo = m;
@@ -533,6 +561,13 @@ function setReply(m) {
   if ($('#txt')) $('#txt').focus({ preventScroll: true });
 }
 document.addEventListener('click', (e) => {
+  const vc = e.target.closest('.vc-save');
+  if (vc && S.view) {
+    const [mid, i] = vc.dataset.vc.split('|');
+    const m = S.view.messages.find((x) => x.id === mid);
+    if (m && m.contacts && m.contacts[+i]) saveVcardDialog(m.contacts[+i]);
+    return;
+  }
   const cp = e.target.closest('[data-copy]');
   if (cp) { copyText(cp.dataset.copy).then((ok) => toast(ok ? '📋 הועתק: ' + cp.dataset.copy : 'לא הצלחתי להעתיק', !ok)); return; }
   const b = e.target.closest('.rep'); if (!b || !S.view) return;

@@ -1,15 +1,15 @@
 {
-  "version": 24,
+  "version": 25,
   "files": {
     "server.js": "03c78e2a8d9de00851d54a01687dce9fce5f4905ee5bf6efacfd5a5658cabb2a",
     "lib/ai.js": "a86761c5735519efe6d73fff0f2450800a36a5a8ed816ca41ef898fbe53a80c3",
-    "lib/greenapi.js": "9bb8c60abc9309936f655aff6714a5e2dde8943b1dad7e973360514ed6fb6e5f",
+    "lib/greenapi.js": "2b0c65eeaef81459fa52f9b712fc5d524e08cff57fbddd790afbb06ca653f4b3",
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "ac60a12a44b9ce1a66edcc5263eecc41f1a366c91ab49150e06a37b898fee78d",
-    "public/app.js": "6c4e6fe19d0107bb81013b3a6584deb1ae496bd677140c64e40edc9916cbbfd5",
+    "public/app.js": "c4af9960ff19994ffd2d3d5724ecb11d9516070a4f29ff7a92650f0e87a757fd",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
-    "public/style.css": "c81397b3cccd62b48e25a367f473746b8cc0c340a27909effc7b42884b2df281"
+    "public/style.css": "f05b39f832c633804b272370838737475baabd17253ec8f3f789379746f23806"
   },
-  "notes": "קריאת שירות מוקצית לעידן + סגירה כשהטכנאי עונה טופל"
+  "notes": "שמירת כרטיס איש קשר בלחיצה"
 }

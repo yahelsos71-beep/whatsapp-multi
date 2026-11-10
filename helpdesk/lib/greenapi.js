@@ -44,6 +44,22 @@ async function sendFile(inst, chatId, buffer, fileName, mime, caption) {
   return call(inst, 'sendFileByUpload', { media: true, form, timeoutMs: 120000 });
 }
 
+// vCard → { name, company, phones[] }
+function parseVcard(c) {
+  const v = String(c.vcard || '');
+  const line = (re) => { const m = re.exec(v); return m ? m[1].trim() : ''; };
+  const unesc = (x) => x.replace(/\\([,;\\])/g, '$1').replace(/\\n/gi, ' ');
+  const name = unesc(line(/^FN[^:\n]*:(.+)$/m)) || c.displayName || unesc(line(/^N[^:\n]*:(.+)$/m).split(';').filter(Boolean).reverse().join(' '));
+  const company = unesc(line(/^ORG[^:\n]*:(.+)$/m).split(';').filter(Boolean).join(' '));
+  const phones = [];
+  for (const m of v.matchAll(/^(?:item\d+\.)?TEL([^:\n]*):(.+)$/gim)) {
+    const waid = /waid=(\d+)/i.exec(m[1]);
+    const num = (waid ? waid[1] : m[2]).replace(/[^\d+]/g, '');
+    if (num && !phones.includes(num)) phones.push(num);
+  }
+  return { name: name || c.displayName || '', company, phones };
+}
+
 // ממיר הודעה של Green API למבנה שלנו
 function parseMessage(md) {
   const t = md && md.typeMessage;
@@ -72,8 +88,12 @@ function parseMessage(md) {
     out.type = 'location';
     out.text = l.nameLocation || l.address || 'מיקום';
     out.url = `https://maps.google.com/?q=${l.latitude},${l.longitude}`;
-  } else if (t === 'contactMessage') {
-    out.text = '👤 איש קשר: ' + (md.contactMessageData?.displayName || '');
+  } else if (t === 'contactMessage' || t === 'contactsArrayMessage') {
+    // כרטיס איש קשר (vCard) – שולפים שם, חברה וטלפונים כדי לאפשר שמירה בלחיצה
+    const list = t === 'contactMessage' ? [md.contactMessageData || {}] : (md.messageData?.contacts || md.contactsArrayMessageData?.contacts || md.contacts || []);
+    out.type = 'contact';
+    out.contacts = list.map(parseVcard);
+    out.text = '👤 ' + out.contacts.map((c) => c.name).filter(Boolean).join(', ');
   } else if (t === 'reactionMessage') {
     out.type = 'reaction';
     out.text = md.extendedTextMessageData?.text || '';
