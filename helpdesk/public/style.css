@@ -273,3 +273,16 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .bar i { background: linear-gradient(270deg, #00a884, #4f6bed); }
 .export-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 14px 0 4px; padding: 10px 12px; background: var(--c-inst-bg); border-radius: 12px; }
 .export-row select { width: auto; }
+
+/* ---------- תגובה להודעה ---------- */
+.msg { position: relative; }
+.msg .rep { position: absolute; top: 4px; left: -34px; width: 28px; height: 28px; padding: 0; border-radius: 50%; font-size: 14px; opacity: 0; background: var(--panel); box-shadow: var(--shadow); transition: opacity .12s; }
+.msg.out .rep { left: auto; right: -34px; }
+.msg:hover .rep { opacity: 1; }
+.quote { background: rgba(0,0,0,.05); border-right: 4px solid var(--green); border-radius: 6px; padding: 4px 8px; margin-bottom: 4px; font-size: 13px; color: var(--muted); max-height: 4.4em; overflow: hidden; }
+.quote b { display: block; color: var(--by); font-size: 12px; }
+:root[data-theme="dark"] .quote { background: rgba(255,255,255,.07); }
+.replybar { display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--panel2); border-top: 1px solid var(--line); }
+.replybar .rb-body { flex: 1; min-width: 0; border-right: 4px solid var(--green); background: var(--chip-bg); border-radius: 8px; padding: 4px 10px; }
+.replybar .rb-body b { display: block; font-size: 12px; color: var(--by); }
+.replybar .rb-body span { display: block; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

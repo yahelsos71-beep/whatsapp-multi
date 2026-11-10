@@ -1,15 +1,15 @@
 {
-  "version": 21,
+  "version": 22,
   "files": {
-    "server.js": "b532c127d60176e23d890d85bd3b4aa2f3477198e71a72f7b06688b53aa13552",
+    "server.js": "250bbc79165287153c038b62a2620e28693c82f2e53ee7bc4667025c24fe4c58",
     "lib/ai.js": "a86761c5735519efe6d73fff0f2450800a36a5a8ed816ca41ef898fbe53a80c3",
-    "lib/greenapi.js": "dcb312ea11e8fcc7dd8c730f95e449a2fdec3d730266a1e3d2a4d2fa0d528730",
+    "lib/greenapi.js": "9bb8c60abc9309936f655aff6714a5e2dde8943b1dad7e973360514ed6fb6e5f",
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "ac60a12a44b9ce1a66edcc5263eecc41f1a366c91ab49150e06a37b898fee78d",
-    "public/app.js": "d5d38cca6032bbf08b47d034218b70f709af00d50b196aed1338669535747573",
+    "public/app.js": "7a9cdd00b5216f83101b7e2e8b101829b63a0859eff56c96e27730d790799d41",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
-    "public/style.css": "143f92ff5be542a915fe195a32d32ecc016a989532ea5f1d1c3d53caa7446100"
+    "public/style.css": "a9a2a2be51325d874879e6d273f3cee0350f7496d5609708515017a1d10d5751"
   },
-  "notes": "עיצוב צבעוני, הערה פנימית, דוח לאקסל"
+  "notes": "תגובה להודעה + טלפון הפונה בקבוצה בקריאת שירות"
 }

@@ -20,7 +20,8 @@ async function call(inst, method, opts = {}) {
 
 const receiveNotification = (inst) => call(inst, 'receiveNotification', { query: '?receiveTimeout=20', timeoutMs: 40000 });
 const deleteNotification = (inst, receiptId) => call(inst, 'deleteNotification', { httpMethod: 'DELETE', suffix: '/' + receiptId });
-const sendMessage = (inst, chatId, message) => call(inst, 'sendMessage', { json: { chatId, message } });
+const sendMessage = (inst, chatId, message, quotedMessageId) =>
+  call(inst, 'sendMessage', { json: { chatId, message, ...(quotedMessageId ? { quotedMessageId } : {}) } });
 const getStateInstance = (inst) => call(inst, 'getStateInstance', { timeoutMs: 15000 });
 // מפעיל את ההתראות שהמערכת צריכה (נכנסות, יוצאות מהטלפון, יוצאות מה-API, סטטוסים)
 const enableNotifications = (inst) => call(inst, 'setSettings', {
@@ -48,6 +49,15 @@ function parseMessage(md) {
   const t = md && md.typeMessage;
   const out = { type: 'text', text: '' };
   if (!t) return out;
+  // הודעה שמצטטת הודעה קודמת (תגובה)
+  const q = md.quotedMessage;
+  if (q) {
+    out.quoted = {
+      id: q.stanzaId || '',
+      text: q.textMessage || q.caption || (q.extendedTextMessage && q.extendedTextMessage.text) || ({ imageMessage: '📷 תמונה', videoMessage: '🎬 וידאו', documentMessage: '📎 קובץ', audioMessage: '🎤 הקלטה' }[q.typeMessage] || ''),
+      from: (q.participant || '').split('@')[0],
+    };
+  }
   if (t === 'textMessage') out.text = md.textMessageData?.textMessage || '';
   else if (t === 'extendedTextMessage' || t === 'quotedMessage') out.text = md.extendedTextMessageData?.text || '';
   else if (['imageMessage', 'videoMessage', 'documentMessage', 'audioMessage', 'stickerMessage'].includes(t)) {

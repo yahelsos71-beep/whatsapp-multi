@@ -456,7 +456,9 @@ function messageHtml(m) {
   } else if (m.type !== 'text') media = `<i>${{ image: '📷 תמונה', video: '🎬 וידאו', audio: '🎤 הקלטה', file: '📎 ' + esc(m.fileName || 'קובץ') }[m.type] || ''}</i><br>`;
   const by = m.dir === 'out' && m.byName ? `<div class="by">${esc(m.byName)}</div>`
     : m.dir === 'in' && m.senderName ? `<div class="by sender">${m.staff ? '👤 ' : ''}${esc(m.senderName)}</div>` : '';
-  return `<div class="msg ${m.dir} ${m.auto ? 'auto' : ''}" data-mid="${m.id}">${by}${media}${esc(m.text)}<div class="meta">${fmtTime(m.ts)} ${ticks(m)}</div></div>`;
+  const quote = m.quoted ? `<div class="quote"><b>${esc(m.quoted.from || '')}</b>${esc(m.quoted.text || '')}</div>` : '';
+  const rep = m.idMessage && !(S.view && S.view.readOnly) ? `<button class="rep" data-rep="${m.id}" title="להגיב להודעה הזאת">↩</button>` : '';
+  return `<div class="msg ${m.dir} ${m.auto ? 'auto' : ''}" data-mid="${m.id}">${rep}${by}${quote}${media}${esc(m.text)}<div class="meta">${fmtTime(m.ts)} ${ticks(m)}</div></div>`;
 }
 
 function appendMessage(m, scroll) {
@@ -473,7 +475,7 @@ function renderComposer() {
   if (t.status === 'closed') { c.innerHTML = '<div class="closed-bar">הקריאה סגורה. כדי לכתוב ללקוח – "פתח מחדש", או שהלקוח יכתוב ותיפתח קריאה חדשה.</div>'; return; }
   if (c.dataset.for === t.id && $('#txt')) return; // לא מוחקים טקסט שבאמצע הקלדה
   c.dataset.for = t.id;
-  c.innerHTML = `<div class="composer">
+  c.innerHTML = `<div class="replybar" id="replybar" style="display:none"><div class="rb-body"><b id="rbFrom"></b><span id="rbText"></span></div><button class="ghost" id="rbX" title="ביטול">✕</button></div><div class="composer">
     <button id="noteBtn" title="הערה פנימית – לא נשלחת ללקוח (למשל: עשינו ריסטרט לראוטר)">🗒</button>
     <button id="tplBtn" title="תבנית הודעה">📝</button>
     <button id="attach" title="שליחת קובץ / תמונה">📎</button>
@@ -494,6 +496,8 @@ function renderComposer() {
     txt.focus({ preventScroll: true });
   };
   $('#noteBtn').onclick = () => setNote(!S.noteMode);
+  $('#rbX').onclick = () => setReply(null);
+  setReply(S.replyTo && S.replyTo.ticketId === t.id ? S.replyTo : null);
   setNote(false);
   $('#tplBtn').onclick = () => templatePicker((text) => {
     const v = S.view && S.view.ticket;
@@ -508,6 +512,22 @@ function renderComposer() {
   txt.focus({ preventScroll: true });
 }
 
+// ---------- תגובה להודעה מסוימת ----------
+function setReply(m) {
+  S.replyTo = m;
+  const bar = $('#replybar'); if (!bar) return;
+  if (!m) { bar.style.display = 'none'; return; }
+  bar.style.display = '';
+  $('#rbFrom').textContent = m.dir === 'in' ? (m.senderName || (S.view && S.view.ticket.customerName) || 'לקוח') : (m.byName || 'אנחנו');
+  $('#rbText').textContent = m.text || ({ image: '📷 תמונה', video: '🎬 וידאו', file: '📎 קובץ', audio: '🎤 הקלטה' }[m.type] || '');
+  if ($('#txt')) $('#txt').focus({ preventScroll: true });
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('.rep'); if (!b || !S.view) return;
+  const m = S.view.messages.find((x) => x.id === b.dataset.rep);
+  if (m) { if (S.noteMode && $('#noteBtn')) $('#noteBtn').click(); setReply({ ...m, ticketId: S.view.ticket.id }); }
+});
+
 async function sendText() {
   const txt = $('#txt'); const text = txt.value.trim();
   if (!text || !S.view) return;
@@ -518,7 +538,9 @@ async function sendText() {
     catch (e) { toast(e.message, true); $('#txt').value = text; }
     return;
   }
-  try { await api('POST', `/api/tickets/${id}/send`, { text }); }
+  const replyTo = S.replyTo && S.replyTo.ticketId === id ? S.replyTo.id : null;
+  setReply(null);
+  try { await api('POST', `/api/tickets/${id}/send`, { text, replyTo }); }
   catch (e) { toast(e.message, true, 6000); if (!$('#txt').value) $('#txt').value = text; }
 }
 

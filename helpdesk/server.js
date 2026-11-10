@@ -91,6 +91,7 @@ function reindexContacts() {
 }
 reindexContacts();
 const contactFor = (phone) => contactByPhone.get(phone) || null;
+const s2name = (t) => displayName(t);
 function displayName(t) {
   const c = !t.isGroup && contactFor(t.phone);
   return c ? (c.name || c.company || t.customerName) : t.customerName;
@@ -339,12 +340,13 @@ async function finishRouting(t, departmentId, reason, summary, aiReply, { silent
 // שליחה
 // =====================================================================
 const sentIds = new Set();
-async function sendText(t, text, user, { auto = false, byName = null, aiBot = false } = {}) {
+async function sendText(t, text, user, { auto = false, byName = null, aiBot = false, quoted = null } = {}) {
   const inst = instById(t.instanceId);
   if (!inst) throw new Error('המספר של הקריאה לא מוגדר');
-  const r = await ga.sendMessage(inst, t.chatId, text);
+  const r = await ga.sendMessage(inst, t.chatId, text, quoted && quoted.id);
   if (r && r.idMessage) sentIds.add(r.idMessage);
-  const msg = addMessage(t, { dir: 'out', type: 'text', text, idMessage: r && r.idMessage, byUserId: user ? user.id : null, byName: user ? user.name : byName || 'מענה אוטומטי', auto, aiBot, status: 'sent' });
+  const msg = addMessage(t, { dir: 'out', type: 'text', text, idMessage: r && r.idMessage, byUserId: user ? user.id : null, byName: user ? user.name : byName || 'מענה אוטומטי', auto, aiBot, status: 'sent',
+    ...(quoted ? { quoted: { id: quoted.id, text: quoted.text || '', from: quoted.from || '' } } : {}) });
   if (!auto) { t.awaiting = false; t.lastOutAt = now(); }
   emitTicket(t);
   return msg;
@@ -379,6 +381,12 @@ async function handleNotification(inst, body) {
   if (isIgnored(inst.id, chatId)) return;
   if (isGroup && ignoredByName(sd.chatName)) return; // קבוצות שמתעלמים מהן לפי שם (פורום מתקינים, מתח נמוך...)
   const m = ga.parseMessage(body.messageData);
+  if (m.quoted) {
+    // מי כתב את ההודעה המצוטטת: אנחנו (לפי ההודעה השמורה) / איש קשר / טלפון
+    const f = m.quoted.id && findMessageByIdMessage(m.quoted.id);
+    if (f) m.quoted.from = f.m.dir === 'out' ? (f.m.byName || 'אנחנו') : (f.m.senderName || displayName(f.t));
+    else if (m.quoted.from) { const c = contactFor(m.quoted.from); m.quoted.from = c && (c.name || c.company) || (m.quoted.from.startsWith('972') ? '0' + m.quoted.from.slice(3) : m.quoted.from); }
+  }
   if (m.type === 'reaction' || m.type === 'deleted') return;
   if (m.type === 'edited') { m.type = 'text'; m.text = '✏️ (נערכה) ' + m.text; }
   const ts = body.timestamp ? body.timestamp * 1000 : now();
@@ -664,7 +672,14 @@ route('POST', /^\/api\/tickets\/(\d+)\/send$/, async (req, res, { user, params }
     note(t, `👤 ${user.name} לקח/ה את השיחה מהעוזר`);
   }
   try {
-    const msg = await sendText(t, text, user);
+    // תגובה להודעה מסוימת: מאתרים את ההודעה בקריאה (או בקריאות קודמות של אותו צ'אט)
+    let quoted = null;
+    if (b.replyTo) {
+      const pool = db.tickets.filter((x) => x.chatId === t.chatId && x.instanceId === t.instanceId).flatMap((x) => store.messages(x.id));
+      const m = pool.find((x) => x.id === b.replyTo);
+      if (m && m.idMessage) quoted = { id: m.idMessage, text: (m.text || '').slice(0, 300) || ({ image: '📷 תמונה', video: '🎬 וידאו', file: '📎 קובץ', audio: '🎤 הקלטה' }[m.type] || ''), from: m.dir === 'in' ? (m.senderName || s2name(t)) : (m.byName || 'אנחנו') };
+    }
+    const msg = await sendText(t, text, user, { quoted });
     const peer = pinnedPeer(t, user.id);
     if (peer && peer.id !== user.id) { const changed = handTo(t, peer); emitTicket(t, { sound: changed ? 'new' : 'msg' }); }
     send(res, 200, msg);
@@ -873,12 +888,23 @@ route('GET', /^\/api\/tickets\/(\d+)\/service-call$/, (req, res, { user, params 
   if (!t) return send(res, 404, { error: 'לא נמצא' });
   const s = summary(t);
   const ins = store.messages(t.id).filter((m) => m.dir === 'in');
+  // בקבוצה: הפונה = מי שכתב לאחרונה (לא הקבוצה עצמה)
+  let customer = s.customerName, company = s.company || '', phone = t.isGroup ? '' : t.phone;
+  if (t.isGroup) {
+    const lastSender = [...ins].reverse().find((m) => m.senderPhone && !m.staff);
+    if (lastSender) {
+      phone = lastSender.senderPhone;
+      const ct = contactFor(phone);
+      customer = ct && ct.name ? ct.name : lastSender.senderName || phone;
+      company = ct && ct.company ? ct.company : t.customerName;
+    }
+  }
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const recent = ins.filter((m) => m.ts >= today.getTime());
   const msgs = (recent.length ? recent : ins.slice(-8)).map((m) => (m.senderName ? m.senderName + ': ' : '') + (m.text || `[${m.type}]`));
   send(res, 200, {
     targets: serviceTargets().map((x) => ({ id: x.id, name: x.name, isGroup: !!x.chatId, phone: x.phone || '' })),
-    customer: s.customerName, company: s.company || '', phone: t.isGroup ? '' : t.phone, isGroup: !!t.isGroup,
+    customer, company, phone, isGroup: !!t.isGroup,
     description: t.aiSummary ? t.aiSummary + '\n\nמה שהלקוח כתב:\n' + msgs.join('\n') : msgs.join('\n'),
   });
 });
