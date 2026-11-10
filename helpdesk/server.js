@@ -885,7 +885,7 @@ route('POST', /^\/api\/tickets\/(\d+)\/ignore$/, (req, res, { user, params }) =>
   if (!isIgnored(t.instanceId, t.chatId)) db.config.ignoredChats.push({ instanceId: t.instanceId, chatId: t.chatId, name: t.customerName, isGroup: !!t.isGroup });
   store.saveConfig();
   if (t.status !== 'closed') { t.status = 'closed'; t.closedAt = now(); t.closedBy = user.id; t.awaiting = false; }
-  note(t, `🔕 ${user.name} סימן/ה להתעלם מ${t.isGroup ? 'הקבוצה' : 'הצ\'אט'} – לא ייפתחו ממנו קריאות`);
+  note(t, `🚫 ${user.name} חסם/ה את ${t.isGroup ? 'הקבוצה' : 'הצ\'אט'} – לא ייכנס יותר למוקד`);
   emitTicket(t);
   send(res, 200, { ok: true });
 }, { auth: 'admin' });

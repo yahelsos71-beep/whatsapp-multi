@@ -374,7 +374,7 @@ function renderChatHead() {
     <button class="ghost" id="waHistBtn" title="ההודעות הקודמות עם ${t.isGroup ? 'הקבוצה' : 'הלקוח'} מוואטסאפ – גם מלפני המוקד">📜 היסטוריה</button>
     ${t.pinnedTo ? `<span class="chip who">📌 קבוע: ${esc(t.pinnedTo)}</span>` : ''}
     ${S.me.role === 'admin' && !ro ? `<button class="ghost" id="pinBtn" title="כל הודעה מ${t.isGroup ? 'הקבוצה' : 'הצ׳אט'} הזה תגיע ישר לעובד שתבחר, בלי AI">📌 קבע לעובד</button>` : ''}
-    ${S.me.role === 'admin' && !ro ? `<button class="ghost" id="ignoreBtn" title="לא לפתוח יותר קריאות מ${t.isGroup ? 'הקבוצה' : 'הצ׳אט'} הזה">🔕 התעלם</button>` : ''}`;
+    ${S.me.role === 'admin' && !ro ? `<button id="ignoreBtn" title="${t.isGroup ? 'הקבוצה' : 'הצ׳אט'} נשאר בוואטסאפ, אבל לא ייכנס יותר למוקד">🚫 ${t.isGroup ? 'חסום קבוצה' : 'חסום'}</button>` : ''}`;
   if ($('#transferBtn')) $('#transferBtn').onclick = transferDialog;
   if ($('#snoozeBtn')) $('#snoozeBtn').onclick = () => snoozeDialog(t);
   if ($('#unsnoozeBtn')) $('#unsnoozeBtn').onclick = async () => { try { await api('POST', `/api/tickets/${t.id}/snooze`, { until: null }); toast('הקריאה חזרה לרשימה ▶'); } catch (e) { toast(e.message, true); } };
@@ -410,11 +410,11 @@ function renderChatHead() {
   };
   if ($('#ignoreBtn')) $('#ignoreBtn').onclick = async (e) => {
     const b = e.currentTarget;
-    if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'בטוח? לא ייפתחו יותר קריאות מכאן – לחץ שוב'; return; }
+    if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = '⚠️ בטוח? לחץ שוב לחסימה'; return; }
     try {
       await api('POST', `/api/tickets/${t.id}/ignore`);
       S.tickets.delete(t.id); S.sel = null; S.view = null; renderList(); renderChat();
-      toast(`🔕 "${t.customerName}" לא יפתח יותר קריאות. אפשר לבטל ב"ניהול ← כללי"`, false, 6000);
+      toast(`🚫 "${t.customerName}" נחסם – נשאר בוואטסאפ, אבל לא ייכנס יותר למוקד. ביטול: ניהול ← כללי`, false, 7000);
     } catch (er) { toast(er.message, true); }
   };
   if ($('#reopenBtn')) $('#reopenBtn').onclick = async () => { try { await api('POST', `/api/tickets/${t.id}/reopen`); openTicket(t.id); } catch (e) { toast(e.message, true); } };
@@ -1223,8 +1223,8 @@ function adminGeneral() {
     <h4>🔕 קבוצות שמתעלמים מהן לפי שם</h4>
     <label>קבוצה ששמה מכיל אחת מהמילים האלה – לא נפתחת ממנה קריאה בכלל (שורה לכל שם)</label>
     <textarea id="gIgnNames" rows="3">${esc((c.ignoreGroupNames || []).join('\n'))}</textarea>
-    <h4>🔕 צ'אטים וקבוצות שמתעלמים מהם</h4>
-    <div id="ignList">${c.ignoredChats.length ? c.ignoredChats.map((x, i) => `<div class="row" style="margin-top:4px"><span style="flex:1">${x.isGroup ? '👥' : '👤'} ${esc(x.name || x.chatId)}</span><button class="ghost" data-unign="${i}">החזר</button></div>`).join('') : '<div class="hint">אין. (כפתור "🔕 התעלם" בראש כל שיחה)</div>'}</div>
+    <h4>🚫 צ'אטים וקבוצות חסומים</h4>
+    <div id="ignList">${c.ignoredChats.length ? c.ignoredChats.map((x, i) => `<div class="row" style="margin-top:4px"><span style="flex:1">${x.isGroup ? '👥' : '👤'} ${esc(x.name || x.chatId)}</span><button class="ghost" data-unign="${i}">✅ בטל חסימה</button></div>`).join('') : '<div class="hint">אין. (כפתור "🚫 חסום" בראש כל שיחה)</div>'}</div>
     <div class="hint">שינוי "מאיפה אפשר להיכנס" או הפורט נכנס לתוקף אחרי הפעלה מחדש של השרת.<br>
     לקוח שכותב "שלום" ואז את הבעיה – ההמתנה נותנת ל-AI את כל ההודעות ביחד, וכך הניתוב מדויק יותר.</div>
     <h4>🛠 יעדים לקריאת שירות</h4>

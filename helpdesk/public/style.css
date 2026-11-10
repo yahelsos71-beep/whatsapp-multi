@@ -297,3 +297,6 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .vcard .vc-body { flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
 .vcard .vc-body b { font-size: 14px; }
 .vcard .vc-save { background: var(--green); color: #fff; padding: 6px 10px; font-size: 13px; }
+
+#ignoreBtn { background: #ffe4e4; color: #b42318; }
+:root[data-theme="dark"] #ignoreBtn { background: #5a1d1d; color: #ffc9c9; }
