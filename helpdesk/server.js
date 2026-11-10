@@ -29,6 +29,23 @@ function checkPassword(user, password) {
   return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(user.hash, 'hex'));
 }
 const publicUser = (u) => u && { id: u.id, name: u.name, username: u.username, role: u.role, active: u.active !== false, phone: u.phone || '' };
+// איפוס סיסמה מקומי: reset-password.bat כותב data/reset-password.json והשרת מחיל אותו
+function applyPasswordReset() {
+  const f = require('path').join(store.DATA_DIR, 'reset-password.json');
+  if (!require('fs').existsSync(f)) return;
+  try {
+    const r = JSON.parse(require('fs').readFileSync(f, 'utf8'));
+    const u = db.users.find((x) => x.username === String(r.username || '').trim().toLowerCase());
+    if (u && String(r.password || '').length >= 4) {
+      Object.assign(u, hashPassword(r.password), { active: true });
+      for (const [k, v] of Object.entries(db.sessions || {})) if (v && v.userId === u.id) delete db.sessions[k];
+      store.saveUsers(); store.saveSessions();
+      console.log('Password reset for', u.username);
+    }
+  } catch (e) { console.error('reset-password', e.message); }
+  try { require('fs').unlinkSync(f); } catch {}
+}
+setInterval(applyPasswordReset, 3000);
 const userById = (id) => db.users.find((u) => u.id === id);
 const admins = () => db.users.filter((u) => u.role === 'admin' && u.active !== false);
 

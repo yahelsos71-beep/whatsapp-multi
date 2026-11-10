@@ -1,7 +1,7 @@
 {
-  "version": 27,
+  "version": 28,
   "files": {
-    "server.js": "1bed10d45a2af9ff7d89bc435f661114fb168d8e8035efda6e96f247a5b973d3",
+    "server.js": "d154b02ebace18309a5050a8a1a3a23c0fd33c9af35913cc02f80a337c43b32a",
     "lib/ai.js": "a86761c5735519efe6d73fff0f2450800a36a5a8ed816ca41ef898fbe53a80c3",
     "lib/greenapi.js": "2b0c65eeaef81459fa52f9b712fc5d524e08cff57fbddd790afbb06ca653f4b3",
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
@@ -11,5 +11,5 @@
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "2ab2631c3b2090b367337f7c0651b554f99788a0b3503cba49d795dd599924a8"
   },
-  "notes": "חיווי הקצאה בקריאת שירות"
+  "notes": "🔑 איפוס סיסמה: reset-password.bat על השרת"
 }
