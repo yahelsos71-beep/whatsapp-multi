@@ -883,7 +883,7 @@ route('POST', /^\/api\/tickets\/new$/, async (req, res, { user }) => {
 
 // ---------- קריאת שירות לטכנאי (עידן) ----------
 const serviceTargets = () => (db.config.serviceTargets || []).filter((x) => x.name && (x.phone || x.chatId));
-route('GET', /^\/api\/tickets\/(\d+)\/service-call$/, (req, res, { user, params }) => {
+route('GET', /^\/api\/tickets\/(\d+)\/service-call$/, async (req, res, { user, params }) => {
   const t = visibleTicket(user, params[0]);
   if (!t) return send(res, 404, { error: 'לא נמצא' });
   const s = summary(t);
@@ -891,7 +891,17 @@ route('GET', /^\/api\/tickets\/(\d+)\/service-call$/, (req, res, { user, params 
   // בקבוצה: הפונה = מי שכתב לאחרונה (לא הקבוצה עצמה)
   let customer = s.customerName, company = s.company || '', phone = t.isGroup ? '' : t.phone;
   if (t.isGroup) {
-    const lastSender = [...ins].reverse().find((m) => m.senderPhone && !m.staff);
+    let lastSender = [...ins].reverse().find((m) => m.senderPhone && !m.staff);
+    if (!lastSender) {
+      // הודעות ישנות בלי טלפון שולח – מנסים מההיסטוריה של וואטסאפ
+      try {
+        const inst = instById(t.instanceId);
+        const hist = inst ? await ga.getChatHistory(inst, t.chatId, 30) : [];
+        const staffPhones = new Set(db.users.map((u) => u.phone).filter(Boolean));
+        const h = (Array.isArray(hist) ? hist : []).find((x) => x.type === 'incoming' && x.senderId && /@c\.us$/.test(x.senderId) && !staffPhones.has(x.senderId.split('@')[0]));
+        if (h) lastSender = { senderPhone: h.senderId.split('@')[0], senderName: h.senderName || '' };
+      } catch {}
+    }
     if (lastSender) {
       phone = lastSender.senderPhone;
       const ct = contactFor(phone);

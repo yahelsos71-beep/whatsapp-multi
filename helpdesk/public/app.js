@@ -455,7 +455,7 @@ function messageHtml(m) {
     else media = `<a href="${esc(m.url)}" target="_blank">📎 ${esc(m.fileName || 'קובץ')}</a><br>`;
   } else if (m.type !== 'text') media = `<i>${{ image: '📷 תמונה', video: '🎬 וידאו', audio: '🎤 הקלטה', file: '📎 ' + esc(m.fileName || 'קובץ') }[m.type] || ''}</i><br>`;
   const by = m.dir === 'out' && m.byName ? `<div class="by">${esc(m.byName)}</div>`
-    : m.dir === 'in' && m.senderName ? `<div class="by sender">${m.staff ? '👤 ' : ''}${esc(m.senderName)}</div>` : '';
+    : m.dir === 'in' && m.senderName ? `<div class="by sender">${m.staff ? '👤 ' : ''}${esc(m.senderName)}${m.senderPhone && !m.staff && m.senderName !== localPhone(m.senderPhone) ? ` <span class="sph" dir="ltr" title="לחץ להעתקה" data-copy="${esc(localPhone(m.senderPhone))}">${esc(localPhone(m.senderPhone))}</span>` : ''}</div>` : '';
   const quote = m.quoted ? `<div class="quote"><b>${esc(m.quoted.from || '')}</b>${esc(m.quoted.text || '')}</div>` : '';
   const rep = m.idMessage && !(S.view && S.view.readOnly) ? `<button class="rep" data-rep="${m.id}" title="להגיב להודעה הזאת">↩</button>` : '';
   return `<div class="msg ${m.dir} ${m.auto ? 'auto' : ''}" data-mid="${m.id}">${rep}${by}${quote}${media}${esc(m.text)}<div class="meta">${fmtTime(m.ts)} ${ticks(m)}</div></div>`;
@@ -512,6 +512,16 @@ function renderComposer() {
   txt.focus({ preventScroll: true });
 }
 
+// העתקה ללוח – עובד גם בכתובת לא מאובטחת (http://10.10.10.250)
+async function copyText(text) {
+  try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; } } catch {}
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  let ok = false; try { ok = document.execCommand('copy'); } catch {}
+  ta.remove(); return ok;
+}
+
 // ---------- תגובה להודעה מסוימת ----------
 function setReply(m) {
   S.replyTo = m;
@@ -523,6 +533,8 @@ function setReply(m) {
   if ($('#txt')) $('#txt').focus({ preventScroll: true });
 }
 document.addEventListener('click', (e) => {
+  const cp = e.target.closest('[data-copy]');
+  if (cp) { copyText(cp.dataset.copy).then((ok) => toast(ok ? '📋 הועתק: ' + cp.dataset.copy : 'לא הצלחתי להעתיק', !ok)); return; }
   const b = e.target.closest('.rep'); if (!b || !S.view) return;
   const m = S.view.messages.find((x) => x.id === b.dataset.rep);
   if (m) { if (S.noteMode && $('#noteBtn')) $('#noteBtn').click(); setReply({ ...m, ticketId: S.view.ticket.id }); }
@@ -657,7 +669,7 @@ function templatesManager() {
   $('#tnew').onclick = () => templateForm(null);
   box.querySelectorAll('.tcard').forEach((c) => {
     const t = list.find((x) => x.id === c.dataset.id);
-    c.querySelector('[data-copy]').onclick = async () => { try { await navigator.clipboard.writeText(t.text); toast('הועתק ✓'); } catch { toast('לא הצלחתי להעתיק', true); } };
+    c.querySelector('[data-copy]').onclick = async (e) => { e.stopPropagation(); toast((await copyText(t.text)) ? 'הועתק ✓' : 'לא הצלחתי להעתיק'); };
     c.querySelector('[data-edit]').onclick = () => templateForm(t);
     const del = c.querySelector('[data-del]');
     del.onclick = async () => {
