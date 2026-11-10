@@ -216,6 +216,7 @@ function build() {
       items.set(p, it);
       const item = it;
       wv.addEventListener('dom-ready', () => {
+        try { wv.setAudioMuted(!!settings.muted); } catch {}
         wv.executeJavaScript(INJECT).catch(() => {});
         setTimeout(() => pushPending(item), 3000);
       });
@@ -550,7 +551,9 @@ document.getElementById('exclBtn').onclick = async () => {
 };
 const muteBtn = document.getElementById('mute');
 const paintMute = () => { muteBtn.textContent = settings.muted ? '🔕 מושתק' : '🔔'; muteBtn.title = settings.muted ? 'הצלצולים כבויים' : 'הצלצולים פעילים'; };
-muteBtn.onclick = () => { settings.muted = !settings.muted; saveSettings(); paintMute(); };
+// 🔕 משתיק גם את הצליל של וואטסאפ ווב עצמו בלשוניות הוואטסאפ (לא את לשונית המוקד ולא את Claude)
+const applyWaAudio = () => { for (const it of waItems()) { try { it.wv.setAudioMuted(!!settings.muted); } catch {} } };
+muteBtn.onclick = () => { settings.muted = !settings.muted; saveSettings(); paintMute(); applyWaAudio(); };
 paintMute();
 document.getElementById('reload').onclick = () => { const it = items.get(active); if (it) it.wv.reload(); };
 
