@@ -355,6 +355,35 @@ async function sendText(t, text, user, { auto = false, byName = null, aiBot = fa
 // =====================================================================
 // קבלת הודעות מ-Green API
 // =====================================================================
+// ---------- הודעות מהטכנאי / מקבוצת השירות ----------
+// "טופל" → סוגר את הקריאה. כל דבר אחר → הערה בקריאה. לא נפתחת קריאה חדשה מהטכנאי
+const DONE_RE = /(טופל|בוצע|סגרתי|נסגר|הסתדר|✅)/;
+async function handleTechMessage(inst, chatId, m, body, sd) {
+  const tgt = (db.config.serviceTargets || []).find((x) => (x.chatId && x.chatId === chatId) || (x.phone && chatId === x.phone + '@c.us'));
+  if (!tgt) return false;
+  const text = m.text || '';
+  const withCalls = db.tickets.filter((t) => (t.serviceCallList || []).some((c) => c.targetId === tgt.id));
+  let t = null;
+  if (m.quoted && m.quoted.id) t = withCalls.find((x) => x.serviceCallList.some((c) => c.idMessage === m.quoted.id));
+  if (!t) { const n = /#(\d{3,})/.exec(text); if (n) t = withCalls.find((x) => x.id === n[1]); }
+  if (!t && !tgt.chatId) t = withCalls.filter((x) => x.status !== 'closed').sort((a, b) => b.serviceCallList.at(-1).ts - a.serviceCallList.at(-1).ts)[0];
+  if (!t) return !tgt.chatId; // טכנאי בלי קריאה מתאימה – לא פותחים קריאה; בקבוצה – זרימה רגילה
+  const who = tgt.chatId ? (sd.senderContactName || sd.senderName || tgt.name) : tgt.name;
+  const tu = targetUser(tgt);
+  if (DONE_RE.test(text) && t.status !== 'closed') {
+    t.status = 'closed'; t.closedAt = now(); t.closedBy = tu ? tu.id : null; t.awaiting = false; t.snoozeUntil = null;
+    t.resolution = `🛠 ${who}: ${text}`;
+    note(t, `✅ ${who} סגר/ה את הקריאה מהוואטסאפ\n📝 מה בוצע: ${text}`);
+    emitTicket(t, { sound: 'msg' });
+    log(`ticket #${t.id} closed by technician ${tgt.name}`);
+    try { const r = await ga.sendMessage(inst, chatId, `👍 קריאה #${t.id} נסגרה. תודה!`, body.idMessage); if (r && r.idMessage) sentIds.add(r.idMessage); } catch {}
+  } else {
+    addMessage(t, { dir: 'note', type: 'text', text: `💬 ${who}: ${text || '[' + m.type + ']'}`, internal: true, byName: who });
+    emitTicket(t, { sound: 'msg' });
+  }
+  return true;
+}
+
 const instState = {}; // instId -> 'authorized' / 'notAuthorized' / 'error: ...'
 function findMessageByIdMessage(idMessage) {
   for (const t of db.tickets.slice(-300).reverse()) {
@@ -402,6 +431,7 @@ async function handleNotification(inst, body) {
     return;
   }
 
+  if (await handleTechMessage(inst, chatId, m, body, sd)) return;
   let t = openTicketFor(inst.id, chatId);
   const isNew = !t;
   const rule = ruleFor(inst.id, chatId);
@@ -882,6 +912,8 @@ route('POST', /^\/api\/tickets\/new$/, async (req, res, { user }) => {
 });
 
 // ---------- קריאת שירות לטכנאי (עידן) ----------
+// העובד במערכת שמשויך ליעד (לפי בחירה בניהול, או עובד באותו שם)
+const targetUser = (x) => (x.userId && userById(x.userId)) || db.users.find((u) => u.active !== false && u.name.trim() === String(x.name || '').trim()) || null;
 const serviceTargets = () => (db.config.serviceTargets || []).filter((x) => x.name && (x.phone || x.chatId));
 route('GET', /^\/api\/tickets\/(\d+)\/service-call$/, async (req, res, { user, params }) => {
   const t = visibleTicket(user, params[0]);
@@ -929,13 +961,24 @@ route('POST', /^\/api\/tickets\/(\d+)\/service-call$/, async (req, res, { user, 
   if (!inst) return send(res, 400, { error: 'אין מספר וואטסאפ לשליחה' });
   const text = String(b.text || '').trim();
   if (!text) return send(res, 400, { error: 'הקריאה ריקה' });
+  let sentId = null;
   try {
     const r = await ga.sendMessage(inst, chatId, text);
-    if (r && r.idMessage) sentIds.add(r.idMessage);
+    if (r && r.idMessage) { sentIds.add(r.idMessage); sentId = r.idMessage; }
   } catch (e) { return send(res, 502, { error: 'השליחה נכשלה: ' + e.message }); }
   note(t, `🛠 ${user.name} שלח/ה קריאת שירות ל${target.name}:\n${text}`);
   t.serviceCalls = (t.serviceCalls || 0) + 1;
-  emitTicket(t);
+  t.serviceCallList = [...(t.serviceCallList || []), { targetId: target.id, idMessage: sentId, ts: now() }];
+  // הקצאה לעובד של היעד (למשל עידן)
+  const tu = targetUser(target);
+  if (tu && t.assigneeId !== tu.id && t.status !== 'closed') {
+    const old = t.assigneeId;
+    t.assigneeId = tu.id;
+    if (t.status === 'routing') { t.status = 'open'; clearRouting(t); }
+    note(t, `↪️ הקריאה הוקצתה ל${tu.name}`);
+    if (old && old !== tu.id && userById(old)?.role !== 'admin') sendTo(old, { type: 'remove', id: t.id });
+  }
+  emitTicket(t, { sound: tu ? 'new' : null });
   send(res, 200, { ok: true, target: target.name });
 });
 // קבוצות שהמוקד מכיר (לבחירת יעד) – מתוך הקריאות
@@ -1088,7 +1131,7 @@ route('POST', /^\/api\/admin\/config$/, async (req, res) => {
   };
   if (Array.isArray(b.serviceTargets)) {
     c.serviceTargets = b.serviceTargets.map((x) => ({
-      id: x.id || store.newId(), name: String(x.name || '').trim(),
+      id: x.id || store.newId(), name: String(x.name || '').trim(), userId: x.userId || null,
       ...(x.chatId ? { chatId: String(x.chatId), instanceId: x.instanceId || null } : { phone: normPhone(x.phone) }),
     })).filter((x) => x.name && (x.phone || x.chatId));
   }

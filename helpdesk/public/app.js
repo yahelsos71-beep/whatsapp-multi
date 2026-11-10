@@ -1193,7 +1193,8 @@ function adminGeneral() {
     <div class="hint">שינוי "מאיפה אפשר להיכנס" או הפורט נכנס לתוקף אחרי הפעלה מחדש של השרת.<br>
     לקוח שכותב "שלום" ואז את הבעיה – ההמתנה נותנת ל-AI את כל ההודעות ביחד, וכך הניתוב מדויק יותר.</div>
     <h4>🛠 יעדים לקריאת שירות</h4>
-    <div class="hint">למי אפשר לשלוח "קריאת שירות" מתוך שיחה – טכנאי (טלפון) או קבוצת וואטסאפ.</div>
+    <div class="hint">למי אפשר לשלוח "קריאת שירות" מתוך שיחה – טכנאי (טלפון) או קבוצת וואטסאפ.<br>
+    "להקצות לעובד" – הקריאה עוברת לעובד הזה במוקד. כשהטכנאי עונה בוואטסאפ <b>"טופל"</b> (בתגובה להודעה, או עם מספר הקריאה) – הקריאה נסגרת לבד.</div>
     <div id="tgList"></div>
     <div class="row"><button id="tgAddP">+ טכנאי (טלפון)</button><button id="tgAddG">+ קבוצה</button></div>
     <h4>⬆ עדכונים</h4>
@@ -1205,7 +1206,7 @@ function adminGeneral() {
     try { const r = await api('POST', '/api/admin/update-check'); $('#updStatus').textContent = r.result; if (/עודכן/.test(r.result)) toast('השרת מתעדכן ועולה מחדש – הדף יתרענן לבד', false, 8000); }
     catch (e) { $('#updStatus').textContent = e.message; }
   };
-  const targets = (c.serviceTargets || []).map((x) => ({ ...x }));
+  const targets = (c.serviceTargets || []).map((x) => ({ ...x, userId: x.userId || (A.users.find((u) => u.active && u.name.trim() === String(x.name || '').trim()) || {}).id || '' }));
   let groups = [];
   const drawTargets = () => {
     $('#tgList').innerHTML = targets.map((x, i) => `<div class="row" style="margin-top:6px">
@@ -1213,6 +1214,7 @@ function adminGeneral() {
       ${x.chatId !== undefined
         ? `<select data-t="${i}" data-tf="chatId" style="flex:2"><option value="">— בחר קבוצה —</option>${groups.map((g) => `<option value="${esc(g.chatId)}" data-inst="${esc(g.instanceId)}" ${g.chatId === x.chatId ? 'selected' : ''}>👥 ${esc(g.name)} (${esc(g.instanceName)})</option>`).join('')}</select>`
         : `<input data-t="${i}" data-tf="phone" dir="ltr" value="${esc(x.phone ? '0' + String(x.phone).slice(3) : '')}" placeholder="05X-XXXXXXX" style="flex:2">`}
+      <select data-t="${i}" data-tf="userId" title="הקריאה תוקצה לעובד הזה" style="flex:1"><option value="">— להקצות לעובד? —</option>${A.users.filter((u) => u.active).map((u) => `<option value="${u.id}" ${u.id === x.userId || (!x.userId && u.name.trim() === String(x.name || '').trim()) ? 'selected' : ''}>👤 ${esc(u.name)}</option>`).join('')}</select>
       <button class="ghost" data-tdel="${i}">🗑️</button></div>`).join('') || '<div class="hint">אין יעדים – הכפתור "🛠 קריאת שירות" לא יופיע.</div>';
     $('#tgList').querySelectorAll('[data-tf]').forEach((el) => (el.oninput = el.onchange = () => {
       const x = targets[el.dataset.t]; x[el.dataset.tf] = el.value;
