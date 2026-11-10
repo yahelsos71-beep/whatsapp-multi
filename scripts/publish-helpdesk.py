@@ -1,7 +1,7 @@
 # מעלה גרסה של המוקד: מספר גרסה +1 ו-hash לכל קובץ שמתעדכן אוטומטית
 import json, hashlib, os, sys
 root = sys.argv[1] if len(sys.argv) > 1 else 'helpdesk'
-files = ['server.js'] + sorted('lib/' + f for f in os.listdir(os.path.join(root, 'lib')) if f.endswith('.js')) \
+files = ['server.js', 'reset-password.js', 'reset-password.bat', 'README-HE.txt'] + sorted('lib/' + f for f in os.listdir(os.path.join(root, 'lib')) if f.endswith('.js')) \
       + sorted('public/' + f for f in os.listdir(os.path.join(root, 'public')))
 vf = os.path.join(root, 'version.json')
 v = json.load(open(vf))
