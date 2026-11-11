@@ -97,6 +97,19 @@ ipcMain.handle('dial', async (_e, { cfg, number }) => {
     : `https://${vals.domain}/app/click_to_call/click_to_call.php?username=${enc('user')}&password=${enc('pass')}` +
       `&src_cid_name=${enc('ext')}&src_cid_number=${enc('ext')}&dest_cid_name=${enc('number')}&dest_cid_number=${enc('number')}` +
       `&src=${enc('ext')}&dest=${enc('number')}&auto_answer=true&rec=false&ringback=us-ring`;
+  // 015 (מרכזיית Enswitch ב-015pbx.net) – כמו התוסף "epbx Click To Call": קודם מצלצל הקו שלך, ואז מחובר למספר
+  if (!(c.template || '').trim() && (!vals.domain || /015pbx\.net/i.test(vals.domain))) {
+    const body = new URLSearchParams({ auth_username: vals.user, auth_password: vals.pass, stype: 'phone', snumber: vals.ext, ctype: '', cnumber: num });
+    try {
+      const r = await net.fetch(process.env.WA_015_URL || 'https://www.015pbx.net/api/json/calls/make/', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString(), signal: AbortSignal.timeout(15000) });
+      const text = await r.text();
+      let j = null; try { j = JSON.parse(text); } catch {}
+      const resp = j && Array.isArray(j.responses) ? j.responses[0] : null;
+      const code = resp ? Number(resp.code) : r.status;
+      if (r.ok && (!resp || (code >= 200 && code < 300))) return { ok: true, status: code };
+      return { ok: false, status: code, text: (resp && (resp.message || resp.error)) || text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200) };
+    } catch (e) { return { ok: false, error: e.message + ' (www.015pbx.net)' }; }
+  }
   if (!/^https?:\/\/[^/]+/.test(url)) return { ok: false, error: 'חסרה כתובת המרכזייה' };
   try {
     const r = await net.fetch(url, { signal: AbortSignal.timeout(15000) });

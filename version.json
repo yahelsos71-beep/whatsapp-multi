@@ -1,10 +1,10 @@
 {
-  "version": 16,
+  "version": 17,
   "files": {
-    "app-main.js": "b965c75a936d0b746cfcf9f522b215babeaa34cd7ced414f2b9c405a41ed437c",
+    "app-main.js": "ab5317dbce27ba41a52eae2a1c3d61b273321c3ecaaed7333e524f2d5e5568d6",
     "index.html": "4736af1ecc96e38c81ed5da15a8e27f5da403089a37c009da02aa0a278ea9879",
-    "renderer.js": "96b555d2b50d76db0284477ce8f97e699b10c084c660500fc69885132855777c",
+    "renderer.js": "28198f580dad99277bc454708383846eb01b94bf22a2b21b0f1a4334c506acbd",
     "inject.js": "8f0e9471519ce20774b06d00707fa30d2b78e27950ca68b55b164e1b05ad824a"
   },
-  "notes": "🔍 בדיקת תוסף החיוג של כרום + פירוט שגיאת חיוג"
+  "notes": "📞 חיוג דרך 015 (015pbx.net) כמו התוסף של כרום"
 }

@@ -504,7 +504,7 @@ function settingsDialog() {
     <div class="row"><input type="text" id="hdUrl" dir="ltr" value="${esc(settings.helpdeskUrl || '')}" placeholder="http://localhost:8080" style="flex:1;margin:0"><button id="hdSave">שמור</button></div>
     <div class="hint">ריק = בלי לשונית מוקד. במחשב אחר ברשת: http://10.10.10.250:8080</div>
     <h4>📞 חיוג בלחיצה כפולה על מספר (מרכזיית 015)</h4>
-    <div class="row"><input type="text" id="dDomain" dir="ltr" placeholder="כתובת המרכזייה, למשל: kc.015.co.il" value="${esc((settings.dial || {}).domain || '')}" style="flex:2;margin:0"><input type="text" id="dExt" dir="ltr" placeholder="שלוחה" value="${esc((settings.dial || {}).ext || '')}" style="flex:1;margin:0"></div>
+    <div class="row"><input type="text" id="dDomain" dir="ltr" placeholder="כתובת מרכזייה – ריק = 015 (015pbx.net)" value="${esc((settings.dial || {}).domain || '')}" style="flex:2;margin:0"><input type="text" id="dExt" dir="ltr" placeholder="קו טלפון (Telephone Line)" value="${esc((settings.dial || {}).ext || '')}" style="flex:1;margin:0"></div>
     <div class="row"><input type="text" id="dUser" dir="ltr" placeholder="שם משתמש במרכזייה" value="${esc((settings.dial || {}).user || '')}" style="flex:1;margin:0"><input type="password" id="dPass" dir="ltr" placeholder="${(settings.dial || {}).pass ? '•••••• (שמורה)' : 'סיסמה'}" style="flex:1;margin:0"></div>
     <details><summary class="hint" style="cursor:pointer">מתקדם – כתובת חיוג מלאה (אם התוסף בכרום משתמש בכתובת אחרת)</summary>
       <input type="text" id="dTpl" dir="ltr" placeholder="https://{domain}/app/click_to_call/click_to_call.php?key=...&src={ext}&dest={number}" value="${esc((settings.dial || {}).template || '')}" style="width:100%"></details>
@@ -566,7 +566,7 @@ function settingsDialog() {
 // 📞 חיוג דרך המרכזייה
 async function dialNumber(num, skipConfirm) {
   const d = settings.dial || {};
-  if (!d.domain && !d.template) { toast('כדי לחייג בלחיצה כפולה – מלא את פרטי המרכזייה ב-⚙ הגדרות ← "חיוג בלחיצה כפולה"', 7000); return; }
+  if (!d.user || !d.ext) { toast('כדי לחייג בלחיצה כפולה – מלא שם משתמש, סיסמה וקו טלפון ב-⚙ הגדרות ← "חיוג בלחיצה כפולה"', 7000); return; }
   if (!skipConfirm && d.confirm !== false && !confirm('לחייג ל-' + num + '?')) return;
   toast('📞 מחייג ל-' + num + '... הטלפון בשלוחה שלך יצלצל – הרם');
   const r = await ipcRenderer.invoke('dial', { cfg: d, number: num });
