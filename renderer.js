@@ -117,6 +117,7 @@ function savePending(it) {
   store[it.partition] = [...it.pending];
   for (const n of Object.keys(it.since)) if (!it.pending.has(n)) delete it.since[n];
   store[it.partition + '#since'] = it.since;
+  store[it.partition + '#cleared'] = it.cleared || {};
   save(it.acc.private ? PENDING_PRIVATE : PENDING_SHARED, store);
 }
 
@@ -162,6 +163,11 @@ function onRows(it, rows) {
     }
     if (r.busy) continue; // מקליד / טיוטה – לא משנים כלום
     const prev = it.rows[r.name];
+    // נוקה ידנית ("נקה הכל") – לא חוזר עד שמגיעה הודעה חדשה (שעה אחרת)
+    if (it.cleared && r.name in it.cleared) {
+      if (!r.out && it.cleared[r.name] === r.time) { it.rows[r.name] = { time: r.time, out: r.out }; continue; }
+      delete it.cleared[r.name]; changed = true;
+    }
     if (r.out) {
       // ההודעה האחרונה בצ'אט היא שלך = ענית → הסימון יורד
       if (it.pending.delete(r.name)) changed = true;
@@ -212,7 +218,7 @@ function build() {
       const tab = document.createElement('div');
       tab.className = 'tab';
       const store = acc.private ? pendingStore.priv : pendingStore.shared;
-      it = { tab, wv, acc, partition: p, unread: 0, rows: {}, pending: new Set(store[p] || []), since: { ...(store[p + '#since'] || {}) } };
+      it = { tab, wv, acc, partition: p, unread: 0, rows: {}, pending: new Set(store[p] || []), since: { ...(store[p + '#since'] || {}) }, cleared: { ...(store[p + '#cleared'] || {}) } };
       items.set(p, it);
       const item = it;
       wv.addEventListener('dom-ready', () => {
@@ -427,8 +433,19 @@ function pendingDialog() {
     <h3>⏳ ממתינים לתשובה שלך</h3>
     ${list.length ? '<ul class="plist"></ul>' : '<p>אין צ\'אטים שממתינים לתשובה 👍</p>'}
     <p class="hint">צ'אט נשאר ברשימה (ועם נקודה ירוקה בוואטסאפ) עד שאתה שולח לו תשובה – גם אם קראת את ההודעה.<br>קבוצות לא נספרות. "🚫 החרג" – הצ'אט לא יסומן יותר לעולם (אפשר לבטל בלחיצה ימנית על הלשונית).</p>
-    <div class="row"><button id="cancel">סגור</button></div>`;
+    <div class="row">${list.length ? '<button id="clearAll" class="warn">🧹 נקה הכל</button>' : ''}<button id="cancel">סגור</button></div>`;
   const ul = box.querySelector('.plist');
+  const ca = box.querySelector('#clearAll');
+  if (ca) ca.onclick = () => {
+    if (!confirm(`לנקות את כל ${list.length} הממתינים לתשובה?\nצ'אט יחזור לרשימה רק כשתגיע ממנו הודעה חדשה.`)) return;
+    for (const it of waItems()) {
+      if (!it.pending.size) continue;
+      it.cleared = it.cleared || {};
+      for (const n of it.pending) it.cleared[n] = (it.rows[n] && it.rows[n].time) || '';
+      it.pending.clear(); savePending(it); pushPending(it);
+    }
+    refreshBadges(); pendingDialog();
+  };
   for (const { it, name } of list) {
     const li = document.createElement('li');
     li.innerHTML = `<span class="dot"></span><span class="n"></span><span class="acc"></span><button title="לא לסמן את הצ'אט הזה לעולם">🚫 החרג</button>`;
