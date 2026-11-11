@@ -1,4 +1,4 @@
-const { app, BrowserWindow, session, Menu, dialog, ipcMain, shell, clipboard, net } = require('electron');
+const { app, BrowserWindow, session, Menu, dialog, ipcMain, shell, clipboard, net, safeStorage } = require('electron');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -76,6 +76,34 @@ ipcMain.handle('pick-sound', async () => {
   return { path: dest, name: path.basename(r.filePaths[0]) };
 });
 ipcMain.on('clipboard', (_e, text) => clipboard.writeText(text));
+// סיסמת המרכזייה נשמרת מוצפנת (רק המשתמש הזה בווינדוס יכול לפענח)
+ipcMain.handle('enc', (_e, plain) => {
+  try { if (safeStorage.isEncryptionAvailable()) return 'enc:' + safeStorage.encryptString(String(plain)).toString('base64'); } catch {}
+  return 'plain:' + Buffer.from(String(plain)).toString('base64');
+});
+const dec = (v) => {
+  v = String(v || '');
+  try { if (v.startsWith('enc:')) return safeStorage.decryptString(Buffer.from(v.slice(4), 'base64')); } catch { return ''; }
+  if (v.startsWith('plain:')) return Buffer.from(v.slice(6), 'base64').toString();
+  return '';
+};
+ipcMain.handle('dial', async (_e, { cfg, number }) => {
+  const num = toLocalNumber(number);
+  const c = cfg || {};
+  const vals = { number: num, ext: c.ext || '', user: c.user || '', pass: dec(c.pass), domain: String(c.domain || '').replace(/^https?:\/\//, '').replace(/\/+$/, '') };
+  const enc = (k) => encodeURIComponent(vals[k]);
+  let url = (c.template || '').trim()
+    ? c.template.replace(/\{(number|ext|user|pass|domain)\}/g, (_m, k) => (k === 'domain' ? vals.domain : enc(k)))
+    : `https://${vals.domain}/app/click_to_call/click_to_call.php?username=${enc('user')}&password=${enc('pass')}` +
+      `&src_cid_name=${enc('ext')}&src_cid_number=${enc('ext')}&dest_cid_name=${enc('number')}&dest_cid_number=${enc('number')}` +
+      `&src=${enc('ext')}&dest=${enc('number')}&auto_answer=true&rec=false&ringback=us-ring`;
+  if (!/^https?:\/\/[^/]+/.test(url)) return { ok: false, error: 'חסרה כתובת המרכזייה' };
+  try {
+    const r = await net.fetch(url, { signal: AbortSignal.timeout(15000) });
+    const text = (await r.text()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+    return { ok: r.ok, status: r.status, text };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
 
 // ---- פתיחה מהמוקד: קישור whatsappmulti://open ----
 // אם התוכנה כבר פתוחה – מביאים את החלון לקדמת המסך במקום לפתוח עוד עותק
@@ -177,8 +205,30 @@ app.whenReady().then(() => {
 });
 
 // קישורים: התחברות ל-Claude/Google נפתחת בחלון בתוך התוכנה, כל השאר בדפדפן
+// ---- 📞 חיוג בלחיצה כפולה על מספר טלפון (מרכזיית 015 / FusionPBX) ----
+const DIAL_JS = `(() => { if (window.__dialHook) return; window.__dialHook = 1;
+  const RE = /(?:\\+?972[\\s-]?|0)(?:[\\s-]?\\d){8,9}(?!\\d)|\\+?\\d(?:[\\s-]?\\d){8,12}(?!\\d)/g;
+  document.addEventListener('dblclick', (e) => {
+    const sel = window.getSelection(); const node = sel && sel.anchorNode; if (!node) return;
+    const text = node.textContent || ''; const off = sel.anchorOffset || 0;
+    let hit = null; RE.lastIndex = 0; let m;
+    while ((m = RE.exec(text))) { if (off >= m.index && off <= m.index + m[0].length) { hit = m[0]; break; } }
+    if (!hit) { const t = sel.toString().trim(); if (/^[\\d+\\s-]{9,}$/.test(t)) hit = t; }
+    if (hit) console.log('__DIAL__:' + hit);
+  }, true);
+})();`;
+const toLocalNumber = (raw) => { let d = String(raw).replace(/\D/g, ''); if (d.startsWith('972')) d = '0' + d.slice(3); return d; };
+let dialPending = 0;
 app.on('web-contents-created', (_e, contents) => {
   if (contents.getType() !== 'webview') return;
+  contents.on('dom-ready', () => { contents.executeJavaScript(DIAL_JS).catch(() => {}); });
+  contents.on('console-message', (_ev, _level, message) => {
+    if (typeof message !== 'string' || !message.startsWith('__DIAL__:')) return;
+    const num = toLocalNumber(message.slice(9));
+    if (num.length < 9 || num.length > 13 || Date.now() - dialPending < 1500) return;
+    dialPending = Date.now();
+    if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('dial-request', num);
+  });
   contents.setWindowOpenHandler(({ url }) => {
     if (/^https:\/\/([a-z0-9-]+\.)*(claude\.ai|anthropic\.com|google\.com|accounts\.google\.com|appleid\.apple\.com)\//i.test(url)) {
       return { action: 'allow', overrideBrowserWindowOptions: { width: 520, height: 720, autoHideMenuBar: true } };

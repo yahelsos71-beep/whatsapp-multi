@@ -503,6 +503,14 @@ function settingsDialog() {
     <h4>🎧 כתובת מוקד הוואטסאפ (לשונית "מוקד")</h4>
     <div class="row"><input type="text" id="hdUrl" dir="ltr" value="${esc(settings.helpdeskUrl || '')}" placeholder="http://localhost:8080" style="flex:1;margin:0"><button id="hdSave">שמור</button></div>
     <div class="hint">ריק = בלי לשונית מוקד. במחשב אחר ברשת: http://10.10.10.250:8080</div>
+    <h4>📞 חיוג בלחיצה כפולה על מספר (מרכזיית 015)</h4>
+    <div class="row"><input type="text" id="dDomain" dir="ltr" placeholder="כתובת המרכזייה, למשל: kc.015.co.il" value="${esc((settings.dial || {}).domain || '')}" style="flex:2;margin:0"><input type="text" id="dExt" dir="ltr" placeholder="שלוחה" value="${esc((settings.dial || {}).ext || '')}" style="flex:1;margin:0"></div>
+    <div class="row"><input type="text" id="dUser" dir="ltr" placeholder="שם משתמש במרכזייה" value="${esc((settings.dial || {}).user || '')}" style="flex:1;margin:0"><input type="password" id="dPass" dir="ltr" placeholder="${(settings.dial || {}).pass ? '•••••• (שמורה)' : 'סיסמה'}" style="flex:1;margin:0"></div>
+    <details><summary class="hint" style="cursor:pointer">מתקדם – כתובת חיוג מלאה (אם התוסף בכרום משתמש בכתובת אחרת)</summary>
+      <input type="text" id="dTpl" dir="ltr" placeholder="https://{domain}/app/click_to_call/click_to_call.php?key=...&src={ext}&dest={number}" value="${esc((settings.dial || {}).template || '')}" style="width:100%"></details>
+    <div class="row"><label style="flex:1"><input type="checkbox" id="dConfirm" ${(settings.dial || {}).confirm !== false ? 'checked' : ''}> לשאול "לחייג?" לפני כל חיוג</label><button id="dSave">שמור</button></div>
+    <div class="row"><input type="text" id="dTestNum" dir="ltr" placeholder="מספר לבדיקה (למשל הנייד שלך)" style="flex:1;margin:0"><button id="dTest">🧪 חיוג בדיקה</button></div>
+    <div class="hint">לחיצה כפולה על מספר בכל לשונית (וואטסאפ, מוקד) → המרכזייה מצלצלת בשלוחה שלך ואז מחייגת למספר.</div>
     <h4>👥 עבודה במקביל</h4>
     <div class="row"><label style="flex:1"><input type="checkbox" id="personalMode" ${P.personal ? 'checked' : ''}> כל משתמש עם חיבורים משלו – כמה משתמשים עובדים באותו זמן</label></div>
     <div class="hint">אחרי ההפעלה סורקים פעם אחת את הוואטסאפים ומתחברים פעם אחת למוקד. השינוי מפעיל את התוכנה מחדש.</div>
@@ -535,8 +543,28 @@ function settingsDialog() {
   box.querySelector('#hdSave').onclick = () => { settings.helpdeskUrl = box.querySelector('#hdUrl').value.trim(); saveSettings(); build(); toast('נשמר ✓'); };
   box.querySelector('#remindSec').onchange = (e) => { settings.remindSec = Number(e.target.value); saveSettings(); };
   box.querySelector('#vol').oninput = (e) => { settings.vol = Number(e.target.value); saveSettings(); };
+  const saveDial = async () => {
+    const d = settings.dial || {};
+    const pass = box.querySelector('#dPass').value;
+    settings.dial = { domain: box.querySelector('#dDomain').value.trim(), ext: box.querySelector('#dExt').value.trim(), user: box.querySelector('#dUser').value.trim(),
+      pass: pass ? await ipcRenderer.invoke('enc', pass) : d.pass || '', template: box.querySelector('#dTpl').value.trim(), confirm: box.querySelector('#dConfirm').checked };
+    saveSettings();
+  };
+  box.querySelector('#dSave').onclick = async () => { await saveDial(); toast('נשמר ✓ – לחיצה כפולה על מספר תחייג'); };
+  box.querySelector('#dTest').onclick = async () => { await saveDial(); const n = box.querySelector('#dTestNum').value.trim(); if (n) dialNumber(n, true); else toast('כתוב מספר לבדיקה'); };
   box.querySelector('#cancel').onclick = close;
 }
+
+// 📞 חיוג דרך המרכזייה
+async function dialNumber(num, skipConfirm) {
+  const d = settings.dial || {};
+  if (!d.domain && !d.template) { toast('כדי לחייג בלחיצה כפולה – מלא את פרטי המרכזייה ב-⚙ הגדרות ← "חיוג בלחיצה כפולה"', 7000); return; }
+  if (!skipConfirm && d.confirm !== false && !confirm('לחייג ל-' + num + '?')) return;
+  toast('📞 מחייג ל-' + num + '... הטלפון בשלוחה שלך יצלצל – הרם');
+  const r = await ipcRenderer.invoke('dial', { cfg: d, number: num });
+  if (!r.ok) toast('⚠️ החיוג נכשל: ' + (r.error || ('שגיאה ' + r.status + (r.text ? ' – ' + r.text : ''))), 9000);
+}
+ipcRenderer.on('dial-request', (_e, num) => dialNumber(num));
 
 // קובץ אבחון לשולחן העבודה (בלי טקסט הודעות ובלי שמות)
 async function saveDebug() {
