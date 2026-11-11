@@ -69,11 +69,14 @@ ipcMain.on('clipboard', (_e, text) => clipboard.writeText(text));
 const gotSingle = app.requestSingleInstanceLock();
 if (!gotSingle) { app.quit(); }
 app.on('second-instance', () => {
-  if (mainWin) { if (mainWin.isMinimized()) mainWin.restore(); mainWin.show(); mainWin.focus(); }
+  // לחיצה נוספת על התוכנה: מביאים את החלון קדימה; אם משום מה אין חלון – פותחים אותו
+  if (mainWin && !mainWin.isDestroyed()) { if (mainWin.isMinimized()) mainWin.restore(); mainWin.show(); mainWin.focus(); }
+  else if (startupDone) createWindow();
 });
+let startupDone = false;
 try { if (app.isPackaged) app.setAsDefaultProtocolClient('whatsappmulti'); } catch {}
 
-function createWindow() {
+function createWindow(load = true) {
   const win = new BrowserWindow({
     width: 1350,
     height: 880,
@@ -81,8 +84,17 @@ function createWindow() {
     webPreferences: { webviewTag: true, contextIsolation: false, nodeIntegration: true, backgroundThrottling: false },
   });
   Menu.setApplicationMenu(null);
-  win.loadFile(path.join(global.APP_DIR || __dirname, 'index.html'));
+  if (load) win.loadFile(path.join(global.APP_DIR || __dirname, 'index.html'));
+  else win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent('<body style="font-family:sans-serif;display:grid;place-items:center;height:90vh;color:#666">WhatsApp Multi…</body>'));
+  win.on('closed', () => { if (mainWin === win) mainWin = null; });
   mainWin = win;
+  return win;
+}
+// הודעה שתמיד מופיעה מעל החלון (לא נעלמת מאחורי חלונות אחרים)
+async function startupDialog(opts) {
+  if (!mainWin || mainWin.isDestroyed()) createWindow(false);
+  mainWin.show(); mainWin.focus();
+  return dialog.showMessageBox(mainWin, opts);
 }
 let mainWin = null;
 
@@ -139,7 +151,12 @@ async function checkUpdate() {
     }
   }
 }
-ipcMain.on('restart-now', () => { app.relaunch(); app.quit(); });
+ipcMain.on('restart-now', () => {
+  // משחררים את המנעול ויוצאים בכוח – כדי שהעותק החדש לא ייתקע על "התוכנה כבר פתוחה"
+  try { const l = readLock(); if (l && l.owner === ME) fs.unlinkSync(LOCK); } catch {}
+  app.relaunch();
+  app.exit(0);
+});
 ipcMain.on('app-version', (e) => { e.returnValue = localVersion(); });
 app.whenReady().then(() => {
   setTimeout(checkUpdate, process.env.WA_UPDATE_URL ? 2000 : 15 * 1000);
@@ -167,7 +184,7 @@ app.whenReady().then(async () => {
   const hasScans = fs.existsSync(path.join(DATA_DIR, 'Partitions'));
   const exeName = path.basename(app.getPath('exe'));
   if (app.isPackaged && !hasScans && last && path.resolve(last) !== path.resolve(exeDir) && fs.existsSync(path.join(last, exeName))) {
-    const r = await dialog.showMessageBox({
+    const r = await startupDialog({
       type: 'warning',
       buttons: ['פתח מהתיקייה הנכונה', 'המשך כאן (יבקש סריקה)'],
       defaultId: 0,
@@ -185,18 +202,20 @@ app.whenReady().then(async () => {
 
   const l = readLock();
   if (lockIsFresh(l)) {
-    const r = await dialog.showMessageBox({
+    const r = await startupDialog({
       type: 'warning',
       buttons: ['סגור', 'פתח בכל זאת'],
       defaultId: 0,
       title: 'WhatsApp Multi',
       message: `התוכנה כבר פתוחה אצל המשתמש "${l.user}".\n\nאפשר לפתוח אותה רק במקום אחד בכל רגע.\nסגור אותה שם קודם.`,
     });
-    if (r.response === 0) return app.quit();
+    if (r.response === 0) return app.exit(0);
   }
   writeLock();
   setInterval(writeLock, 10000);
-  createWindow();
+  startupDone = true;
+  if (mainWin && !mainWin.isDestroyed()) { mainWin.loadFile(path.join(global.APP_DIR || __dirname, 'index.html')); mainWin.show(); mainWin.focus(); }
+  else createWindow();
 });
 app.on('window-all-closed', () => app.quit());
 app.on('will-quit', () => {
