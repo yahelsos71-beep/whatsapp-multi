@@ -130,4 +130,9 @@ function parseHistoryItem(h) {
   };
 }
 
-module.exports = { getGroupData, getChatHistory, parseHistoryItem, receiveNotification, deleteNotification, sendMessage, sendFile, getStateInstance, enableNotifications, parseMessage };
+// הודעות אחרונות (נכנסות/יוצאות) – לבניית רשימת הצ'אטים במסך "וואטסאפ"
+const lastIncoming = (inst, minutes = 4320) => call(inst, 'lastIncomingMessages', { query: '?minutes=' + minutes, timeoutMs: 60000 });
+const lastOutgoing = (inst, minutes = 4320) => call(inst, 'lastOutgoingMessages', { query: '?minutes=' + minutes, timeoutMs: 60000 });
+const getContacts = (inst) => call(inst, 'getContacts', { timeoutMs: 60000 });
+
+module.exports = { lastIncoming, lastOutgoing, getContacts, getGroupData, getChatHistory, parseHistoryItem, receiveNotification, deleteNotification, sendMessage, sendFile, getStateInstance, enableNotifications, parseMessage };

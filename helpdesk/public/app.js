@@ -115,6 +115,7 @@ async function startMain() {
       <span id="insts"></span>
       <span class="spacer"></span>
       <a id="multiBtn" href="whatsappmulti://open" style="display:none"><button tabindex="-1" title="פתיחת התוכנה WhatsApp Multi (הוואטסאפים הרגילים, כולל הפרטי)">📱<span class="lbl"> WhatsApp Multi</span></button></a>
+      ${S.me.waAccess ? '<button id="waBtn" title="כל הצ׳אטים של מספרי המשרד – כמו בוואטסאפ (לא רק קריאות)">💬<span class="lbl"> וואטסאפ</span></button>' : ''}
       <button id="taskBtn" title="הודעה בקבוצה המשותפת – פותחת קריאה אצל הצד השני">📋<span class="lbl"> ${S.me.role === 'admin' ? 'קריאה לעובד' : 'פנייה למנהל'}</span></button>
       <button id="newChat" title="שליחת הודעה ללקוח חדש">✉️<span class="lbl"> שיחה חדשה</span></button>
       <button id="muteBtn"></button>
@@ -123,7 +124,8 @@ async function startMain() {
       <span class="me">${esc(S.me.name)} · v${S.version}</span>
       <button class="ghost" id="logout">יציאה</button>
     </div>
-    <div class="side">
+    <div class="side" id="waSide" style="display:none"></div>
+    <div class="side" id="tSide">
       <div class="tabs" id="tabs"></div>
       <div class="search" style="display:flex;gap:6px"><input id="q" placeholder="🔍 חיפוש לפי שם או טלפון" style="flex:1">
         ${S.me.role === 'admin' ? '<select id="fuser" title="סינון לפי עובד" style="width:auto;max-width:130px"></select>' : ''}</div>
@@ -137,6 +139,7 @@ async function startMain() {
   $('#newChat').onclick = newChatDialog;
   try { if (localStorage.getItem('hd-multi') !== '0') $('#multiBtn').style.display = ''; } catch {}
   $('#taskBtn').onclick = taskDialog;
+  if ($('#waBtn')) $('#waBtn').onclick = () => (S.mode === 'wa' ? leaveWa() : enterWa());
   $('#q').oninput = (e) => { S.q = e.target.value.trim(); renderList(); };
   if ($('#fuser')) $('#fuser').onchange = (e) => { S.fuser = e.target.value; try { localStorage.setItem('hd-fuser', S.fuser); } catch {} renderList(); };
   const paintMute = () => { $('#muteBtn').textContent = Sounds.settings.muted ? '🔕' : '🔔'; $('#muteBtn').title = Sounds.settings.muted ? 'הצלצולים כבויים' : 'הצלצולים פעילים'; };
@@ -182,6 +185,8 @@ function onEvent(ev) {
       Sounds.newMessage();
       notify(ev.sound === 'new' ? 'קריאה חדשה' : 'הודעה חדשה', `${t.customerName}: ${t.lastText || ''}`);
     }
+  } else if (ev.type === 'wa') {
+    waOnEvent(ev);
   } else if (ev.type === 'templates') {
     loadTemplates();
   } else if (ev.type === 'reminder') {
@@ -319,6 +324,7 @@ setInterval(() => {
 
 // ---------- צ'אט ----------
 async function openTicket(id) {
+  if (S.mode === 'wa') leaveWa(true);
   S.sel = id; renderList();
   try { S.view = await api('GET', '/api/tickets/' + id); } catch (e) { toast(e.message, true); return; }
   renderChat();
@@ -1053,11 +1059,12 @@ function adminUsers() {
       <div><label>הטלפון הנייד של העובד (בשביל קבוצות)</label><input id="uphone" dir="ltr" value="${esc(u?.phone ? '0' + u.phone.slice(3) : '')}" placeholder="0521234567"></div>
       <div><label>תפקיד</label><select id="urole"><option value="agent">נציג – רואה רק את הקריאות שלו</option><option value="admin" ${u?.role === 'admin' ? 'selected' : ''}>מנהל – רואה הכל ומנהל</option></select></div></div>
       ${u ? `<label class="check"><input type="checkbox" id="uactive" ${u.active ? 'checked' : ''}> פעיל (אפשר להיכנס ולקבל קריאות)</label>` : ''}
+      <label class="check"><input type="checkbox" id="uwa" ${u?.waAccess ? 'checked' : ''}> 💬 גישה למסך "וואטסאפ" – רואה את כל הצ׳אטים של המספרים ויכול לכתוב בהם (למנהל תמיד יש)</label>
       <div class="row"><button class="primary" id="usave">💾 שמור</button>${u ? '<button id="unew">+ עובד חדש</button>' : ''}</div>`;
     if ($('#unew')) $('#unew').onclick = () => form(null);
     $('#usave').onclick = async () => {
       try {
-        await api('POST', '/api/admin/users', { id: u?.id, name: $('#uname').value, username: $('#uuser').value, password: $('#upass').value, phone: $('#uphone').value, role: $('#urole').value, active: u ? $('#uactive').checked : true });
+        await api('POST', '/api/admin/users', { id: u?.id, name: $('#uname').value, username: $('#uuser').value, password: $('#upass').value, phone: $('#uphone').value, role: $('#urole').value, active: u ? $('#uactive').checked : true, waAccess: $('#uwa').checked });
         A = await api('GET', '/api/admin/config'); S.users = await api('GET', '/api/users'); fillUserFilter();
         toast('נשמר ✓'); draw();
       } catch (e) { toast(e.message, true); }
@@ -1275,3 +1282,190 @@ function adminGeneral() {
 }
 
 boot();
+
+
+// =====================================================================
+// 💬 מסך "וואטסאפ": כל הצ'אטים של מספרי המשרד, כמו בוואטסאפ ווב
+// =====================================================================
+S.wa = { inst: null, chats: [], q: '', sel: null, view: null, replyTo: null, count: 60 };
+// שעה להיום, "אתמול", אחרת תאריך
+function waWhen(ts) {
+  const d = new Date(ts), t = new Date(); t.setHours(0, 0, 0, 0);
+  if (ts >= t.getTime()) return d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+  if (ts >= t.getTime() - 864e5) return 'אתמול';
+  return d.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' });
+}
+const waPreview = { image: '📷 תמונה', video: '🎬 וידאו', file: '📎 קובץ', audio: '🎤 הקלטה', location: '📍 מיקום' };
+function enterWa() {
+  S.mode = 'wa'; S.sel = null; S.view = null; renderList();
+  $('#tSide').style.display = 'none'; $('#waSide').style.display = '';
+  $('#waBtn').classList.add('on'); $('#waBtn').innerHTML = '🎫<span class="lbl"> חזרה לקריאות</span>';
+  try { S.wa.inst = S.wa.inst || localStorage.getItem('hd-wa-inst'); } catch {}
+  if (!S.instances.some((i) => i.id === S.wa.inst)) S.wa.inst = S.instances[0] && S.instances[0].id;
+  renderWaSide(); renderWaChat(); loadWaChats();
+}
+function leaveWa(keepChat) {
+  S.mode = null;
+  $('#waSide').style.display = 'none'; $('#tSide').style.display = '';
+  if ($('#waBtn')) { $('#waBtn').classList.remove('on'); $('#waBtn').innerHTML = '💬<span class="lbl"> וואטסאפ</span>'; }
+  if (!keepChat) renderChat();
+}
+function renderWaSide() {
+  const el = $('#waSide');
+  el.innerHTML = `<div class="tabs">${S.instances.map((i) => `<button class="${i.id === S.wa.inst ? 'on' : ''}" data-inst="${i.id}">📱 ${esc(i.name)}</button>`).join('')}</div>
+    <div class="search"><input id="waQ" placeholder="🔍 חיפוש שם או טלפון (גם צ׳אטים ישנים)" value="${esc(S.wa.q)}"></div>
+    <div class="list" id="waList"><div class="empty">טוען צ׳אטים...</div></div>`;
+  el.querySelectorAll('[data-inst]').forEach((b) => (b.onclick = () => {
+    S.wa.inst = b.dataset.inst; S.wa.sel = null; S.wa.view = null;
+    try { localStorage.setItem('hd-wa-inst', S.wa.inst); } catch {}
+    renderWaSide(); renderWaChat(); loadWaChats();
+  }));
+  let tm;
+  $('#waQ').oninput = (e) => { S.wa.q = e.target.value.trim(); clearTimeout(tm); tm = setTimeout(loadWaChats, 300); };
+}
+async function loadWaChats() {
+  if (!S.wa.inst) { $('#waList').innerHTML = '<div class="empty">אין מספרי וואטסאפ מוגדרים</div>'; return; }
+  try { S.wa.chats = await api('GET', `/api/wa/chats?inst=${encodeURIComponent(S.wa.inst)}&q=${encodeURIComponent(S.wa.q)}`); }
+  catch (e) { $('#waList').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  renderWaList();
+}
+function renderWaList() {
+  const el = $('#waList'); if (!el) return;
+  if (!S.wa.chats.length) { el.innerHTML = `<div class="empty">${S.wa.q ? 'לא נמצא' : 'אין עדיין צ׳אטים – הם יופיעו כאן עם כל הודעה'}</div>`; return; }
+  el.innerHTML = S.wa.chats.map((c) => {
+    const title = c.name || localPhone(c.phone) || c.chatId;
+    return `<div class="item ${c.key === S.wa.sel ? 'sel' : ''}" data-key="${esc(c.key)}">
+      <div class="av" style="background:${avColor(c.phone || c.chatId)}">${c.isGroup ? '👥' : esc(initials(title))}</div>
+      <div class="body"><div class="row1"><span class="name">${esc(title)}${c.name && c.phone ? ` <span class="ph" dir="ltr">${localPhone(c.phone)}</span>` : ''}</span><span class="time">${c.ts ? waWhen(c.ts) : ''}</span></div>
+        <div class="row2"><span class="last">${c.dir === 'out' ? '↩ ' : ''}${c.sender ? esc(c.sender) + ': ' : ''}${esc((c.text || '').slice(0, 100))}</span>${c.dir === 'in' ? '<span class="dot" title="ההודעה האחרונה מהלקוח"></span>' : ''}</div>
+        ${c.ticketId || c.isGroup ? `<div class="row3">${c.isGroup ? '<span class="chip grp">👥 קבוצה</span>' : ''}${c.ticketId ? `<span class="chip who">🎫 #${c.ticketId}${c.ticketAssignee ? ' · ' + esc(c.ticketAssignee) : ''}</span>` : ''}</div>` : ''}</div></div>`;
+  }).join('');
+  el.querySelectorAll('[data-key]').forEach((d) => (d.onclick = () => openWaChat(d.dataset.key)));
+}
+async function openWaChat(key, count = 60) {
+  const c = S.wa.chats.find((x) => x.key === key) || (S.wa.view && S.wa.view.chat.key === key && S.wa.view.chat);
+  if (!c) return;
+  if (S.wa.sel !== key) S.wa.replyTo = null;
+  S.wa.sel = key; S.wa.count = count; renderWaList();
+  S.wa.view = { chat: c, items: null };
+  renderWaChat();
+  try {
+    const r = await api('GET', `/api/wa/history?inst=${encodeURIComponent(c.instanceId)}&chat=${encodeURIComponent(c.chatId)}&count=${count}`);
+    if (S.wa.sel !== key) return;
+    S.wa.view = { chat: { ...c, ...r.chat, name: r.chat.name || c.name }, items: r.items, more: r.more };
+  } catch (e) { if (S.wa.sel === key) S.wa.view.error = e.message; }
+  renderWaChat();
+}
+function renderWaChat() {
+  if (S.mode !== 'wa') return;
+  const el = $('#chat'); if (!el) return;
+  const v = S.wa.view;
+  if (!v) { el.innerHTML = `<div class="welcome"><h2>💬 וואטסאפ</h2><div>כל הצ׳אטים של מספרי המשרד – בחר צ׳אט מהרשימה.</div>
+    <div class="hint">אפשר לקרוא ולכתוב בכל צ׳אט, גם בלי קריאה. אם יש לצ׳אט קריאה פתוחה – ההודעה נרשמת גם בקריאה.</div></div>`; return; }
+  const c = v.chat; const title = c.name || localPhone(c.phone) || c.chatId;
+  const canOpenTicket = c.ticketId && (S.me.role === 'admin' || c.ticketAssignee === S.me.name);
+  el.innerHTML = `<div class="chat-head"><div class="av" style="background:${avColor(c.phone || c.chatId)}">${c.isGroup ? '👥' : esc(initials(title))}</div>
+      <div class="who"><b>${esc(title)}${c.phone ? ` <span class="ph big" dir="ltr" data-copy="${esc(localPhone(c.phone))}" title="לחץ להעתקה">${localPhone(c.phone)}</span>` : ''}</b>
+      <small>📱 ${esc(c.instanceName || '')}${c.isGroup ? ' · 👥 קבוצה' : ''}${c.ticketId ? ` · 🎫 קריאה #${c.ticketId}${c.ticketAssignee ? ' אצל ' + esc(c.ticketAssignee) : ''}` : ''}</small></div>
+      ${canOpenTicket ? `<button id="waTicket">🎫 פתח את הקריאה</button>` : ''}
+      <button class="ghost" id="waReload" title="רענון ההודעות">🔄</button></div>
+    <div class="msgs" id="waMsgs"></div><div id="waComp"></div>`;
+  if ($('#waTicket')) $('#waTicket').onclick = () => openTicket(c.ticketId);
+  $('#waReload').onclick = () => openWaChat(S.wa.sel, S.wa.count);
+  renderWaMsgs();
+  renderWaComposer();
+}
+function waMsgHtml(x) { const g = S.wa.view && S.wa.view.chat.isGroup; return messageHtml({ ...x, id: x.id || '', idMessage: x.id || '', ...(g ? {} : { senderName: '' }) }); }
+function renderWaMsgs() {
+  const box = $('#waMsgs'); if (!box) return;
+  const v = S.wa.view;
+  if (v.error) { box.innerHTML = `<div class="day">⚠️ ${esc(v.error)}</div>`; return; }
+  if (!v.items) { box.innerHTML = '<div class="day">טוען הודעות...</div>'; return; }
+  box.innerHTML = v.more ? '<div class="day" style="cursor:pointer" id="waMore">⬆ טען הודעות קודמות</div>' : '';
+  let lastDay = '';
+  for (const x of v.items) {
+    const day = new Date(x.ts).toLocaleDateString('he-IL');
+    if (day !== lastDay) { box.insertAdjacentHTML('beforeend', `<div class="day">${day}</div>`); lastDay = day; }
+    box.insertAdjacentHTML('beforeend', waMsgHtml(x));
+  }
+  if (!v.items.length) box.insertAdjacentHTML('beforeend', '<div class="day">אין הודעות</div>');
+  if ($('#waMore')) $('#waMore').onclick = () => openWaChat(S.wa.sel, S.wa.count + 100);
+  box.scrollTop = box.scrollHeight;
+}
+function renderWaComposer() {
+  const c = $('#waComp'); if (!c) return;
+  c.innerHTML = `<div class="replybar" id="waReplybar" style="display:none"><div class="rb-body"><b id="waRbFrom"></b><span id="waRbText"></span></div><button class="ghost" id="waRbX" title="ביטול">✕</button></div>
+    <div class="composer"><button id="waTpl" title="תבנית הודעה">📝</button><button id="waAttach" title="שליחת קובץ / תמונה">📎</button><input type="file" id="waFile" hidden>
+    <textarea id="waTxt" placeholder="כתוב הודעה... (Enter לשליחה, Shift+Enter לשורה חדשה)"></textarea><button class="primary" id="waSend" title="שלח">➤</button></div>`;
+  const txt = $('#waTxt');
+  txt.oninput = () => { txt.style.height = 'auto'; txt.style.height = Math.min(160, txt.scrollHeight) + 'px'; };
+  txt.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); waSendText(); } };
+  $('#waSend').onclick = waSendText;
+  $('#waAttach').onclick = () => $('#waFile').click();
+  $('#waFile').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) waSendFile(f); };
+  txt.addEventListener('paste', (e) => { const f = [...(e.clipboardData?.files || [])][0]; if (f) { e.preventDefault(); waSendFile(f); } });
+  $('#waTpl').onclick = () => templatePicker((text) => { const v = S.wa.view && S.wa.view.chat; txt.value = fillTemplate(text, { name: v && v.name ? v.name.split(' · ')[0] : '' }); txt.dispatchEvent(new Event('input')); txt.focus(); });
+  $('#waRbX').onclick = () => waSetReply(null);
+  waSetReply(S.wa.replyTo);
+  txt.focus({ preventScroll: true });
+}
+function waSetReply(x) {
+  S.wa.replyTo = x;
+  const bar = $('#waReplybar'); if (!bar) return;
+  if (!x) { bar.style.display = 'none'; return; }
+  bar.style.display = '';
+  $('#waRbFrom').textContent = x.dir === 'in' ? (x.senderName || (S.wa.view && S.wa.view.chat.name) || 'לקוח') : (x.byName || 'אנחנו');
+  $('#waRbText').textContent = x.text || waPreview[x.type] || '';
+  $('#waTxt') && $('#waTxt').focus({ preventScroll: true });
+}
+document.addEventListener('click', (e) => {
+  if (S.mode !== 'wa' || !S.wa.view || !S.wa.view.items) return;
+  const b = e.target.closest('#waMsgs .rep'); if (!b) return;
+  const x = S.wa.view.items.find((i) => i.id === b.dataset.rep);
+  if (x) waSetReply(x);
+});
+async function waSendText() {
+  const txt = $('#waTxt'); const text = txt.value.trim();
+  const v = S.wa.view; if (!text || !v) return;
+  const q = S.wa.replyTo;
+  txt.value = ''; txt.style.height = '42px'; waSetReply(null);
+  try {
+    const item = await api('POST', '/api/wa/send', { inst: v.chat.instanceId, chat: v.chat.chatId, text,
+      ...(q ? { quotedId: q.id, quotedText: q.text || waPreview[q.type] || '', quotedFrom: q.dir === 'in' ? (q.senderName || v.chat.name || '') : (q.byName || 'אנחנו') } : {}) });
+    waAddItem(v.chat.key, item);
+  } catch (e) { toast(e.message, true, 6000); if (!$('#waTxt').value) $('#waTxt').value = text; }
+}
+async function waSendFile(file) {
+  const v = S.wa.view; if (!v) return;
+  const caption = $('#waTxt') ? $('#waTxt').value.trim() : '';
+  toast('שולח את ' + file.name + '...');
+  try {
+    const item = await api('POST', `/api/wa/upload?inst=${encodeURIComponent(v.chat.instanceId)}&chat=${encodeURIComponent(v.chat.chatId)}`, file, {
+      'Content-Type': file.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name), 'X-Caption': encodeURIComponent(caption) });
+    if ($('#waTxt')) $('#waTxt').value = '';
+    waAddItem(v.chat.key, item); toast('נשלח ✓');
+  } catch (e) { toast(e.message, true, 6000); }
+}
+function waAddItem(key, item) {
+  const v = S.wa.view;
+  if (!v || v.chat.key !== key || !v.items) return;
+  if (item.id && v.items.some((x) => x.id === item.id)) return;
+  v.items.push(item);
+  const box = $('#waMsgs'); if (!box) return;
+  const near = box.scrollHeight - box.scrollTop - box.clientHeight < 150;
+  box.insertAdjacentHTML('beforeend', waMsgHtml(item));
+  if (near || item.dir === 'out') box.scrollTop = box.scrollHeight;
+}
+function waOnEvent(ev) {
+  const c = ev.chat; if (!c) return;
+  if (c.instanceId === S.wa.inst) {
+    const i = S.wa.chats.findIndex((x) => x.key === c.key);
+    if (i >= 0) S.wa.chats.splice(i, 1);
+    if (!S.wa.q || i >= 0) S.wa.chats.unshift(c);
+    if (S.mode === 'wa') renderWaList();
+  }
+  if (S.mode === 'wa' && S.wa.view && S.wa.view.chat.key === c.key) {
+    S.wa.view.chat = { ...S.wa.view.chat, ...c, name: c.name || S.wa.view.chat.name };
+    if (ev.message) waAddItem(c.key, ev.message);
+  }
+}

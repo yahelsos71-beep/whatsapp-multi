@@ -300,3 +300,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 
 #ignoreBtn { background: #ffe4e4; color: #b42318; }
 :root[data-theme="dark"] #ignoreBtn { background: #5a1d1d; color: #ffc9c9; }
+
+/* ---------- מסך "💬 וואטסאפ" ---------- */
+#waBtn.on { background: var(--green); color: #fff; }
+#waSide .tabs { flex-wrap: wrap; }

@@ -28,7 +28,9 @@ function checkPassword(user, password) {
   const { hash } = hashPassword(password, user.salt);
   return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(user.hash, 'hex'));
 }
-const publicUser = (u) => u && { id: u.id, name: u.name, username: u.username, role: u.role, active: u.active !== false, phone: u.phone || '' };
+const publicUser = (u) => u && { id: u.id, name: u.name, username: u.username, role: u.role, active: u.active !== false, phone: u.phone || '', waAccess: canWa(u) };
+// מי רואה את מסך "💬 וואטסאפ" (כל הצ'אטים של המספרים): מנהלים, ועובדים שקיבלו הרשאה
+const canWa = (u) => !!u && (u.role === 'admin' || u.waAccess === true);
 // איפוס סיסמה מקומי: reset-password.bat כותב data/reset-password.json והשרת מחיל אותו
 function applyPasswordReset() {
   const f = require('path').join(store.DATA_DIR, 'reset-password.json');
@@ -239,13 +241,16 @@ function isOpenNow(at = new Date()) {
 }
 const offHoursSent = new Map(); // chatKey -> ts (פעם אחת בכמה שעות לכל לקוח)
 // ---------- הבוט שותק אחרי שעובד ענה ----------
+const quietMark = new Map(); // "inst|chat" -> {at,userId} – עובד כתב מהמסך "וואטסאפ" בלי קריאה פתוחה
 function recentHumanReply(instanceId, chatId) {
+  const qm = quietMark.get(instanceId + '|' + chatId);
   let best = null;
   for (const x of db.tickets) {
     if (x.instanceId !== instanceId || x.chatId !== chatId || !x.lastOutAt) continue;
     if (!best || x.lastOutAt > best.lastOutAt) best = x;
   }
-  if (!best) return null;
+  if (!best) return qm || null;
+  if (qm && qm.at > best.lastOutAt) return qm;
   const last = [...store.messages(best.id)].reverse().find((m) => m.dir === 'out' && !m.auto);
   return { at: best.lastOutAt, userId: last && last.byUserId ? last.byUserId : best.assigneeId };
 }
@@ -410,6 +415,88 @@ function findMessageByIdMessage(idMessage) {
   return null;
 }
 
+// =====================================================================
+// מסך "💬 וואטסאפ": כל הצ'אטים של מספרי המשרד (לא רק קריאות)
+// =====================================================================
+const waKey = (instId, chatId) => instId + '|' + chatId;
+function waName(inst, chatId, fallback) {
+  if (chatId.endsWith('@g.us')) return fallback || 'קבוצה';
+  const phone = chatId.split('@')[0];
+  const c = contactFor(phone);
+  if (c && (c.name || c.company)) return [c.name, c.company].filter(Boolean).join(' · ');
+  return fallback && !/^[\d+\s-]+$/.test(fallback) ? fallback : '';
+}
+function waUpsert(instId, chatId, { name, ts, text, dir, sender }) {
+  const k = waKey(instId, chatId);
+  const cur = db.waChats[k] || { instanceId: instId, chatId, isGroup: chatId.endsWith('@g.us') };
+  if (name) cur.name = name;
+  if (!cur.ts || ts >= cur.ts) { cur.ts = ts; cur.text = text; cur.dir = dir; cur.sender = sender || ''; }
+  db.waChats[k] = cur;
+  return cur;
+}
+const waAudience = () => db.users.filter((u) => u.active !== false && canWa(u)).map((u) => u.id);
+function waTrack(inst, body, type, sd, chatId) {
+  if (!['incomingMessageReceived', 'outgoingMessageReceived', 'outgoingAPIMessageReceived'].includes(type)) return;
+  const m = ga.parseMessage(body.messageData);
+  if (m.type === 'reaction') return;
+  const dir = type === 'incomingMessageReceived' ? 'in' : 'out';
+  const ts = body.timestamp ? body.timestamp * 1000 : now();
+  const isGroup = chatId.endsWith('@g.us');
+  const senderPhone = String(sd.sender || '').split('@')[0];
+  const sender = isGroup && dir === 'in' ? (sd.senderContactName || sd.senderName || senderPhone) : '';
+  const nameHint = isGroup ? sd.chatName : (dir === 'in' ? (sd.senderContactName || sd.senderName || sd.chatName) : sd.chatName);
+  const text = m.type === 'deleted' ? '(הודעה נמחקה)' : m.text || ({ image: '📷 תמונה', video: '🎬 וידאו', file: '📎 קובץ', audio: '🎤 הקלטה', location: '📍 מיקום' }[m.type] || '');
+  const c = waUpsert(inst.id, chatId, { name: waName(inst, chatId, nameHint), ts, text, dir, sender });
+  store.saveWaChats();
+  const item = { ...m, id: body.idMessage, dir, ts, senderName: sender, senderPhone: isGroup && dir === 'in' ? senderPhone : '', byName: dir === 'out' ? (type === 'outgoingMessageReceived' ? 'מהטלפון' : '') : '' };
+  // קצת אחרי – כדי שהקריאה (אם נפתחה עכשיו) כבר תופיע ליד הצ'אט
+  setTimeout(() => { const v = waChatView(c); for (const id of waAudience()) sendTo(id, { type: 'wa', chat: v, message: item }); }, 400);
+}
+function waChatView(c) {
+  const t = openTicketFor(c.instanceId, c.chatId);
+  const inst = instById(c.instanceId);
+  const phone = c.chatId.split('@')[0];
+  return { key: waKey(c.instanceId, c.chatId), instanceId: c.instanceId, instanceName: inst ? inst.name : '', chatId: c.chatId, isGroup: !!c.isGroup,
+    phone: c.isGroup ? '' : phone, name: waName(inst, c.chatId, c.name) || c.name || '', ts: c.ts || 0, text: c.text || '', dir: c.dir || '', sender: c.sender || '',
+    ticketId: t ? t.id : null, ticketAssignee: t && t.assigneeId ? (userById(t.assigneeId)?.name || '') : '' };
+}
+const waSeeded = new Set();
+async function waSeed(inst) {
+  if (waSeeded.has(inst.id)) return;
+  waSeeded.add(inst.id);
+  // מהקריאות שכבר במערכת
+  for (const t of db.tickets) {
+    if (t.instanceId !== inst.id) continue;
+    const ts = Math.max(t.lastInAt || 0, t.lastOutAt || 0, t.createdAt || 0);
+    const k = waKey(inst.id, t.chatId);
+    if (!db.waChats[k] || !db.waChats[k].ts) waUpsert(inst.id, t.chatId, { name: displayName(t), ts, text: t.lastText || '', dir: t.lastOutAt > (t.lastInAt || 0) ? 'out' : 'in' });
+    else if (!db.waChats[k].name) db.waChats[k].name = displayName(t);
+  }
+  // ההודעות האחרונות מוואטסאפ (3 ימים) + שמות אנשי קשר וקבוצות
+  const add = (list, dir) => {
+    for (const h of Array.isArray(list) ? list : []) {
+      if (!h.chatId || /broadcast|newsletter/.test(h.chatId)) continue;
+      const p = ga.parseHistoryItem({ ...h, type: dir === 'out' ? 'outgoing' : 'incoming' });
+      const isGroup = h.chatId.endsWith('@g.us');
+      waUpsert(inst.id, h.chatId, { name: isGroup ? h.chatName : (h.senderContactName || h.senderName || h.chatName), ts: p.ts, text: p.text || ({ image: '📷 תמונה', video: '🎬 וידאו', file: '📎 קובץ', audio: '🎤 הקלטה', location: '📍 מיקום' }[p.type] || ''), dir,
+        sender: isGroup && dir === 'in' ? (h.senderContactName || h.senderName || '') : '' });
+    }
+  };
+  try { add(await ga.lastIncoming(inst), 'in'); } catch (e) { log('lastIncoming', e.message); }
+  try { add(await ga.lastOutgoing(inst), 'out'); } catch (e) { log('lastOutgoing', e.message); }
+  try {
+    for (const c of (await ga.getContacts(inst)) || []) {
+      const k = waKey(inst.id, c.id || '');
+      if (db.waChats[k] && !db.waChats[k].nameLocked && (c.name || c.contactName)) db.waChats[k].name = c.contactName || c.name;
+      if (!c.id || db.waChats[k]) continue;
+      // צ'אטים בלי פעילות אחרונה – נכנסים לחיפוש בלבד
+      if (c.type === 'group' || c.type === 'user') waContacts.set(k, { instanceId: inst.id, chatId: c.id, name: c.contactName || c.name || '', isGroup: c.id.endsWith('@g.us') });
+    }
+  } catch (e) { log('getContacts', e.message); }
+  store.saveWaChats();
+}
+const waContacts = new Map(); // לחיפוש: אנשי קשר/קבוצות בלי פעילות אחרונה
+
 async function handleNotification(inst, body) {
   const type = body && body.typeWebhook;
   if (type === 'stateInstanceChanged') { instState[inst.id] = body.stateInstance; emitAll({ type: 'instances', list: instancesStatus() }); return; }
@@ -422,6 +509,7 @@ async function handleNotification(inst, body) {
   const sd = body.senderData || {};
   const chatId = sd.chatId || '';
   if (!chatId || /broadcast|newsletter/.test(chatId)) return; // סטטוסים וערוצים – לא קריאות
+  try { waTrack(inst, body, type, sd, chatId); } catch (e) { log('waTrack', e.message); }
   const isGroup = chatId.endsWith('@g.us');
   if (isGroup && !db.config.groups.enabled) return;
   if (isIgnored(inst.id, chatId)) return;
@@ -928,6 +1016,84 @@ route('POST', /^\/api\/tickets\/new$/, async (req, res, { user }) => {
   send(res, 200, summary(t));
 });
 
+// ---------- מסך "💬 וואטסאפ" ----------
+function waGuard(user, res) { if (!canWa(user)) { send(res, 403, { error: 'אין לך הרשאה למסך הוואטסאפ – מנהל יכול להוסיף בניהול ← עובדים' }); return false; } return true; }
+route('GET', /^\/api\/wa\/chats$/, async (req, res, { user, query }) => {
+  if (!waGuard(user, res)) return;
+  const inst = instById(query.get('inst'));
+  if (!inst) return send(res, 400, { error: 'בחר מספר' });
+  await waSeed(inst);
+  const q = String(query.get('q') || '').trim().toLowerCase();
+  const qd = q.replace(/\D/g, '').replace(/^0/, '');
+  const match = (c) => !q || (c.name || '').toLowerCase().includes(q) || (qd.length >= 3 && c.chatId.includes(qd));
+  let list = Object.values(db.waChats).filter((c) => c.instanceId === inst.id).map(waChatView).filter(match).sort((a, b) => b.ts - a.ts);
+  if (q) for (const c of waContacts.values()) if (c.instanceId === inst.id && match(c) && !db.waChats[waKey(c.instanceId, c.chatId)]) list.push(waChatView(c));
+  send(res, 200, list.slice(0, q ? 200 : 400));
+});
+route('GET', /^\/api\/wa\/history$/, async (req, res, { user, query }) => {
+  if (!waGuard(user, res)) return;
+  const inst = instById(query.get('inst')); const chatId = String(query.get('chat') || '');
+  if (!inst || !chatId) return send(res, 400, { error: 'חסר צ׳אט' });
+  const count = Math.max(20, Math.min(1000, Number(query.get('count')) || 60));
+  try {
+    const list = await ga.getChatHistory(inst, chatId, count);
+    const items = (Array.isArray(list) ? list : []).map(ga.parseHistoryItem).sort((a, b) => a.ts - b.ts);
+    // מי מהצוות שלח (לפי ההודעות השמורות בקריאות)
+    for (const it of items) if (it.dir === 'out') { const f = findMessageByIdMessage(it.id); if (f && f.m.byName) it.byName = f.m.byName; }
+    send(res, 200, { chat: waChatView(db.waChats[waKey(inst.id, chatId)] || { instanceId: inst.id, chatId, isGroup: chatId.endsWith('@g.us') }), items, more: items.length >= count });
+  } catch (e) { send(res, 502, { error: 'לא הצלחתי למשוך את ההודעות מ-Green API: ' + e.message }); }
+});
+route('POST', /^\/api\/wa\/send$/, async (req, res, { user }) => {
+  if (!waGuard(user, res)) return;
+  const b = await readJson(req);
+  const inst = instById(b.inst); const chatId = String(b.chat || '');
+  const text = String(b.text || '').trim();
+  if (!inst || !chatId || !text) return send(res, 400, { error: 'הודעה ריקה' });
+  const quoted = b.quotedId ? { id: String(b.quotedId), text: String(b.quotedText || '').slice(0, 300), from: String(b.quotedFrom || '') } : null;
+  try {
+    const t = openTicketFor(inst.id, chatId);
+    let idMessage;
+    if (t) {
+      // יש קריאה פתוחה – נרשם גם בקריאה (מי ענה)
+      if (t.status === 'routing') { clearRouting(t); t.status = 'open'; if (!t.assigneeId) t.assigneeId = user.id; note(t, `👤 ${user.name} ענה/תה מהמסך "וואטסאפ"`); }
+      const msg = await sendText(t, text, user, { quoted });
+      idMessage = msg.idMessage;
+    } else {
+      const r = await ga.sendMessage(inst, chatId, text, quoted && quoted.id);
+      idMessage = r && r.idMessage;
+      if (idMessage) sentIds.add(idMessage);
+      quietMark.set(inst.id + '|' + chatId, { at: now(), userId: user.id });
+    }
+    const c = waUpsert(inst.id, chatId, { ts: now(), text, dir: 'out' });
+    store.saveWaChats();
+    const item = { id: idMessage, dir: 'out', ts: now(), type: 'text', text, byName: user.name, status: 'sent', ...(quoted ? { quoted } : {}) };
+    for (const id of waAudience()) sendTo(id, { type: 'wa', chat: waChatView(c), message: item });
+    send(res, 200, item);
+  } catch (e) { send(res, 502, { error: 'השליחה נכשלה: ' + e.message }); }
+});
+route('POST', /^\/api\/wa\/upload$/, async (req, res, { user, query }) => {
+  if (!waGuard(user, res)) return;
+  const inst = instById(query.get('inst')); const chatId = String(query.get('chat') || '');
+  if (!inst || !chatId) return send(res, 400, { error: 'חסר צ׳אט' });
+  const fileName = decodeURIComponent(req.headers['x-file-name'] || 'file');
+  const caption = decodeURIComponent(req.headers['x-caption'] || '');
+  const mime = req.headers['content-type'] || 'application/octet-stream';
+  let buf;
+  try { buf = await readBody(req, 60 * 1024 * 1024); } catch { return send(res, 413, { error: 'הקובץ גדול מדי (עד 60MB)' }); }
+  try {
+    const r = await ga.sendFile(inst, chatId, buf, fileName, mime, caption);
+    if (r && r.idMessage) sentIds.add(r.idMessage);
+    const type = mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : 'file';
+    const t = openTicketFor(inst.id, chatId);
+    if (t) { addMessage(t, { dir: 'out', type, text: caption, fileName, mime, url: r && r.urlFile || '', idMessage: r && r.idMessage, byUserId: user.id, byName: user.name, status: 'sent' }); t.awaiting = false; t.lastOutAt = now(); emitTicket(t); }
+    const c = waUpsert(inst.id, chatId, { ts: now(), text: caption || ({ image: '📷 תמונה', video: '🎬 וידאו', audio: '🎤 הקלטה' }[type] || '📎 ' + fileName), dir: 'out' });
+    store.saveWaChats();
+    const item = { id: r && r.idMessage, dir: 'out', ts: now(), type, text: caption, fileName, url: r && r.urlFile || '', byName: user.name, status: 'sent' };
+    for (const id of waAudience()) sendTo(id, { type: 'wa', chat: waChatView(c), message: item });
+    send(res, 200, item);
+  } catch (e) { send(res, 502, { error: 'השליחה נכשלה: ' + e.message }); }
+});
+
 // ---------- קריאת שירות לטכנאי (עידן) ----------
 // העובד במערכת שמשויך ליעד (לפי בחירה בניהול, או עובד באותו שם)
 const targetUser = (x) => (x.userId && userById(x.userId)) || db.users.find((u) => u.active !== false && u.name.trim() === String(x.name || '').trim()) || null;
@@ -1211,7 +1377,7 @@ route('POST', /^\/api\/admin\/users$/, async (req, res, { user }) => {
     db.users.push(u);
   }
   if (u.id === user.id && b.role !== 'admin') return send(res, 400, { error: 'אי אפשר להוריד לעצמך הרשאת מנהל' });
-  Object.assign(u, { name: String(b.name || username), username, role: b.role === 'admin' ? 'admin' : 'agent', active: b.active !== false, phone: normPhone(b.phone) });
+  Object.assign(u, { name: String(b.name || username), username, role: b.role === 'admin' ? 'admin' : 'agent', active: b.active !== false, phone: normPhone(b.phone), waAccess: !!b.waAccess });
   if (b.password) Object.assign(u, hashPassword(b.password));
   store.saveUsers();
   send(res, 200, publicUser(u));

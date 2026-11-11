@@ -1,18 +1,18 @@
 {
-  "version": 29,
+  "version": 30,
   "files": {
-    "server.js": "d154b02ebace18309a5050a8a1a3a23c0fd33c9af35913cc02f80a337c43b32a",
+    "server.js": "dbcc0b67439ef774ed3774af0834f3057150fa6482fb850b43aa8864ea854eb4",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
     "reset-password.bat": "662bfbec8b94b264fd7b585a365f389415b8ec66bea540e876418e7a3f805187",
     "README-HE.txt": "4c860dca000bec648c5aec0c5cfa25ca515e996f1470b961fc967ce73fd3b0a8",
     "lib/ai.js": "a86761c5735519efe6d73fff0f2450800a36a5a8ed816ca41ef898fbe53a80c3",
-    "lib/greenapi.js": "2b0c65eeaef81459fa52f9b712fc5d524e08cff57fbddd790afbb06ca653f4b3",
+    "lib/greenapi.js": "88d92c26739a02032f8b3afdbb5f0eb62b1bcbb8bdd9e25384c19fff4e6611c0",
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
-    "lib/store.js": "ac60a12a44b9ce1a66edcc5263eecc41f1a366c91ab49150e06a37b898fee78d",
-    "public/app.js": "c639d62a375224f6dbaec6e84969e36ed20ec5d9deca8a3272870f68ce88b94d",
+    "lib/store.js": "2236cc291a82b742b310f23da60c8af27c2dbfbb4d68cfbb3b2cfde374528547",
+    "public/app.js": "1c9c2a4b20b4da9f7137bf7ee6b5cc40f2f3601c80e4f45177c0daa0bcde6009",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
-    "public/style.css": "2ab2631c3b2090b367337f7c0651b554f99788a0b3503cba49d795dd599924a8"
+    "public/style.css": "61b3d33f7c2d951ca5d0ce6bd91119dbbf67b776ea5562feeb476af8bfb172d8"
   },
-  "notes": "🔑 איפוס סיסמה: reset-password.bat על השרת"
+  "notes": "💬 מסך וואטסאפ: כל הצ'אטים של המספרים בדפדפן"
 }

@@ -23,7 +23,7 @@ function writeJson(file, value) {
 }
 function flushAll() {
   for (const f of Object.keys(timers)) clearTimeout(timers[f]);
-  try { writeJsonNow('config.json', db.config); writeJsonNow('users.json', db.users); writeJsonNow('tickets.json', db.tickets); writeJsonNow('sessions.json', db.sessions); writeJsonNow('contacts.json', db.contacts); } catch {}
+  try { writeJsonNow('config.json', db.config); writeJsonNow('users.json', db.users); writeJsonNow('tickets.json', db.tickets); writeJsonNow('sessions.json', db.sessions); writeJsonNow('contacts.json', db.contacts); writeJsonNow('wachats.json', db.waChats); } catch {}
 }
 
 const DEFAULT_CONFIG = {
@@ -59,6 +59,7 @@ const db = {
   tickets: readJson('tickets.json', []),
   sessions: readJson('sessions.json', {}),
   contacts: readJson('contacts.json', []), // { id, company, name, phones: ['9725...'], source: 'import'|'manual' }
+  waChats: readJson('wachats.json', {}), // "instId|chatId" -> { instanceId, chatId, name, ts, text, dir, isGroup } – למסך "וואטסאפ"
 };
 db.config.ai = Object.assign({}, DEFAULT_CONFIG.ai, db.config.ai);
 db.config.autoReply = Object.assign({}, DEFAULT_CONFIG.autoReply, db.config.autoReply);
@@ -121,5 +122,6 @@ module.exports = {
   saveTickets: () => writeJson('tickets.json', db.tickets),
   saveSessions: () => writeJson('sessions.json', db.sessions),
   saveContacts: () => writeJson('contacts.json', db.contacts),
+  saveWaChats: () => writeJson('wachats.json', db.waChats),
   flushAll,
 };
