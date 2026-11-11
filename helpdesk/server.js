@@ -1125,6 +1125,7 @@ async function pbxWebhook(req, res, query) {
 let pbxStatus = { state: 'off', at: 0, text: '' };
 const activeCalls = new Map(); // callId -> phone
 let pbxTimer = null, pbxSamples = 0;
+const pbxLogged = new Set();
 function pbxSchedule(ms) { clearTimeout(pbxTimer); pbxTimer = setTimeout(pbxPoll, ms); }
 async function pbxPoll() {
   const c = db.config.pbx || {};
@@ -1142,7 +1143,12 @@ async function pbxPoll() {
     const seen = new Set();
     for (const call of list) {
       const f = flatten(call);
-      if (pbxSamples < 5) { pbxSamples++; pbxLog.unshift({ at: now(), fields: f, parsed: pbxParse(f), source: '015' }); pbxLog.length = Math.min(pbxLog.length, 30); }
+      const lid = String(f.uniqueid || f.callid || f.id || JSON.stringify(f));
+      if (!pbxLogged.has(lid)) { // כל שיחה חדשה נרשמת פעם אחת – כדי לראות איך 015 מסמנים נכנסת/יוצאת
+        pbxLogged.add(lid); if (pbxLogged.size > 500) pbxLogged.clear();
+        const inc = isIncoming(f);
+        pbxLog.unshift({ at: now(), fields: f, parsed: { ...pbxParse(f), event: inc ? 'נכנסת → חלון' : 'לא נכנסת → בלי חלון' }, source: '015' }); pbxLog.length = Math.min(pbxLog.length, 30);
+      }
       if (!isIncoming(f)) continue; // רק שיחות נכנסות – לא יוצאות, לא פנימיות ולא חיוג מהמחשב
       const id = String(f.uniqueid || f.callid || f.id || (f.snumber || '') + '|' + (f.dnumber || ''));
       const from = normPhone(f.callerid_external || f.scallerid || f.callerid || f.snumber || f.from || '');
