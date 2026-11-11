@@ -102,6 +102,7 @@ function parseMessage(md) {
     out.text = md.editedMessageData?.textMessage || md.extendedTextMessageData?.text || '';
   } else if (t === 'deletedMessage') {
     out.type = 'deleted';
+    out.deletedId = md.deletedMessageData?.stanzaId || md.deletedMessageData?.idMessage || '';
   } else {
     out.text = `[הודעה מסוג ${t}]`;
   }
@@ -133,6 +134,8 @@ function parseHistoryItem(h) {
 // הודעות אחרונות (נכנסות/יוצאות) – לבניית רשימת הצ'אטים במסך "וואטסאפ"
 const lastIncoming = (inst, minutes = 4320) => call(inst, 'lastIncomingMessages', { query: '?minutes=' + minutes, timeoutMs: 60000 });
 const lastOutgoing = (inst, minutes = 4320) => call(inst, 'lastOutgoingMessages', { query: '?minutes=' + minutes, timeoutMs: 60000 });
+// מחיקת הודעה שנשלחה – אצל כולם (וואטסאפ מאפשר בערך יומיים אחרי השליחה)
+const deleteMessage = (inst, chatId, idMessage) => call(inst, 'deleteMessage', { json: { chatId, idMessage, onlySenderDelete: false } });
 const getContacts = (inst) => call(inst, 'getContacts', { timeoutMs: 60000 });
 
-module.exports = { lastIncoming, lastOutgoing, getContacts, getGroupData, getChatHistory, parseHistoryItem, receiveNotification, deleteNotification, sendMessage, sendFile, getStateInstance, enableNotifications, parseMessage };
+module.exports = { deleteMessage, lastIncoming, lastOutgoing, getContacts, getGroupData, getChatHistory, parseHistoryItem, receiveNotification, deleteNotification, sendMessage, sendFile, getStateInstance, enableNotifications, parseMessage };

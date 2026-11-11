@@ -521,7 +521,8 @@ async function handleNotification(inst, body) {
     if (f) m.quoted.from = f.m.dir === 'out' ? (f.m.byName || 'אנחנו') : (f.m.senderName || displayName(f.t));
     else if (m.quoted.from) { const c = contactFor(m.quoted.from); m.quoted.from = c && (c.name || c.company) || (m.quoted.from.startsWith('972') ? '0' + m.quoted.from.slice(3) : m.quoted.from); }
   }
-  if (m.type === 'reaction' || m.type === 'deleted') return;
+  if (m.type === 'deleted') { if (m.deletedId) markDeleted(m.deletedId, null); return; }
+  if (m.type === 'reaction') return;
   if (m.type === 'edited') { m.type = 'text'; m.text = '✏️ (נערכה) ' + m.text; }
   const ts = body.timestamp ? body.timestamp * 1000 : now();
 
@@ -1014,6 +1015,43 @@ route('POST', /^\/api\/tickets\/new$/, async (req, res, { user }) => {
   if (b.text) { try { await sendText(t, String(b.text), user); } catch (e) { return send(res, 502, { error: 'השליחה נכשלה: ' + e.message, ticket: summary(t) }); } }
   emitTicket(t);
   send(res, 200, summary(t));
+});
+
+// ---------- מחיקת הודעה שנשלחה בטעות (אצל כולם) ----------
+const DELETE_WINDOW = 2 * 864e5; // וואטסאפ מאפשר למחוק אצל כולם רק בערך יומיים אחרי השליחה
+function markDeleted(idMessage, user) {
+  const f = findMessageByIdMessage(idMessage);
+  if (!f || f.m.deleted) return f;
+  Object.assign(f.m, { deleted: true, deletedAt: now(), deletedBy: user ? user.name : '' });
+  store.saveMessages(f.t.id);
+  emitToTicket(f.t, { type: 'msgupdate', ticketId: f.t.id, message: f.m });
+  return f;
+}
+async function deleteSent(inst, chatId, idMessage, ts, user) {
+  if (ts && now() - ts > DELETE_WINDOW) throw new Error('וואטסאפ מאפשר למחוק אצל כולם רק עד כיומיים אחרי השליחה');
+  await ga.deleteMessage(inst, chatId, idMessage);
+  markDeleted(idMessage, user);
+  const f = findMessageByIdMessage(idMessage);
+  if (f) note(f.t, `🗑 ${user.name} מחק/ה הודעה שנשלחה${f.m.text ? ': "' + f.m.text.slice(0, 60) + '"' : f.m.fileName ? ': ' + f.m.fileName : ''}`);
+  for (const id of waAudience()) sendTo(id, { type: 'wa-del', key: waKey(inst.id, chatId), id: idMessage, by: user.name });
+}
+route('POST', /^\/api\/tickets\/(\d+)\/messages\/(\w+)\/delete$/, async (req, res, { user, params }) => {
+  const t = myTicket(user, params[0], res); if (!t) return;
+  const m = db.tickets.filter((x) => x.chatId === t.chatId && x.instanceId === t.instanceId).flatMap((x) => store.messages(x.id)).find((x) => x.id === params[1]);
+  if (!m || m.dir !== 'out' || !m.idMessage) return send(res, 400, { error: 'אפשר למחוק רק הודעה שנשלחה ללקוח' });
+  if (m.deleted) return send(res, 200, { ok: true });
+  const inst = instById(t.instanceId);
+  if (!inst) return send(res, 400, { error: 'המספר לא מוגדר' });
+  try { await deleteSent(inst, t.chatId, m.idMessage, m.ts, user); send(res, 200, { ok: true }); }
+  catch (e) { send(res, 502, { error: 'המחיקה נכשלה: ' + e.message }); }
+});
+route('POST', /^\/api\/wa\/delete$/, async (req, res, { user }) => {
+  if (!canWa(user)) return send(res, 403, { error: 'אין הרשאה' });
+  const b = await readJson(req);
+  const inst = instById(b.inst);
+  if (!inst || !b.chat || !b.id) return send(res, 400, { error: 'חסרים פרטים' });
+  try { await deleteSent(inst, String(b.chat), String(b.id), Number(b.ts) || 0, user); send(res, 200, { ok: true }); }
+  catch (e) { send(res, 502, { error: 'המחיקה נכשלה: ' + e.message }); }
 });
 
 // ---------- מסך "💬 וואטסאפ" ----------

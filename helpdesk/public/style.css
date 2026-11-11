@@ -304,3 +304,11 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 /* ---------- מסך "💬 וואטסאפ" ---------- */
 #waBtn.on { background: var(--green); color: #fff; }
 #waSide .tabs { flex-wrap: wrap; }
+
+/* 🗑 מחיקת הודעה שנשלחה */
+.msg .del { position: absolute; top: 4px; right: -66px; width: 28px; height: 28px; padding: 0; border-radius: 50%; font-size: 13px; opacity: 0; background: var(--panel); box-shadow: var(--shadow); transition: opacity .12s; }
+.msg:hover .del, .msg .del.sure { opacity: 1; }
+.msg .del.sure { background: #ffe1e1; }
+.msg.deleted { opacity: .75; }
+.msg.deleted .del-note { font-size: 12px; color: var(--red); font-weight: 600; }
+.msg.deleted .del-orig { text-decoration: line-through; color: var(--muted); }

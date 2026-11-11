@@ -185,6 +185,18 @@ function onEvent(ev) {
       Sounds.newMessage();
       notify(ev.sound === 'new' ? 'קריאה חדשה' : 'הודעה חדשה', `${t.customerName}: ${t.lastText || ''}`);
     }
+  } else if (ev.type === 'msgupdate') {
+    if (S.view && S.view.ticket.id === ev.ticketId) {
+      const i = S.view.messages.findIndex((x) => x.id === ev.message.id);
+      if (i >= 0) S.view.messages[i] = ev.message;
+      const el = document.querySelector(`#msgs [data-mid="${ev.message.id}"]`); if (el) el.outerHTML = messageHtml(ev.message);
+    }
+  } else if (ev.type === 'wa-del') {
+    const v = S.wa && S.wa.view;
+    if (v && v.items && v.chat.key === ev.key) {
+      const x = v.items.find((i) => i.id === ev.id);
+      if (x) { x.deleted = true; x.deletedBy = ev.by; const el = document.querySelector(`#waMsgs [data-mid="${CSS.escape(ev.id)}"]`); if (el) el.outerHTML = waMsgHtml(x); }
+    }
   } else if (ev.type === 'wa') {
     waOnEvent(ev);
   } else if (ev.type === 'templates') {
@@ -470,8 +482,11 @@ function messageHtml(m) {
     m = { ...m, text: '' };
   }
   const quote = m.quoted ? `<div class="quote"><b>${esc(m.quoted.from || '')}</b>${esc(m.quoted.text || '')}</div>` : '';
-  const rep = m.idMessage && !(S.view && S.view.readOnly) ? `<button class="rep" data-rep="${m.id}" title="להגיב להודעה הזאת">↩</button>` : '';
-  return `<div class="msg ${m.dir} ${m.auto ? 'auto' : ''}" data-mid="${m.id}">${rep}${by}${quote}${media}${esc(m.text)}<div class="meta">${fmtTime(m.ts)} ${ticks(m)}</div></div>`;
+  if (m.deleted) return `<div class="msg ${m.dir} deleted" data-mid="${m.id}">${by}<div class="del-note">🗑 נמחקה אצל הלקוח${m.deletedBy ? ' ע״י ' + esc(m.deletedBy) : ''}</div><div class="del-orig">${media}${esc(m.text)}</div><div class="meta">${fmtTime(m.ts)}</div></div>`;
+  const ro = S.view && S.view.readOnly && S.mode !== 'wa';
+  const rep = m.idMessage && !ro ? `<button class="rep" data-rep="${m.id}" title="להגיב להודעה הזאת">↩</button>` : '';
+  const del = m.dir === 'out' && m.idMessage && !ro && Date.now() - m.ts < 2 * 864e5 ? `<button class="del" data-del="${m.id}" title="מחיקת ההודעה אצל כולם (נשלחה בטעות)">🗑</button>` : '';
+  return `<div class="msg ${m.dir} ${m.auto ? 'auto' : ''}" data-mid="${m.id}">${rep}${del}${by}${quote}${media}${esc(m.text)}<div class="meta">${fmtTime(m.ts)} ${ticks(m)}</div></div>`;
 }
 
 function appendMessage(m, scroll) {
@@ -1469,3 +1484,19 @@ function waOnEvent(ev) {
     if (ev.message) waAddItem(c.key, ev.message);
   }
 }
+
+// 🗑 מחיקת הודעה שנשלחה בטעות – אצל כולם
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('.msg .del'); if (!b) return;
+  if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = '⚠️'; b.title = 'לחץ שוב כדי למחוק אצל כולם'; b.classList.add('sure'); setTimeout(() => { if (b.isConnected) { delete b.dataset.sure; b.textContent = '🗑'; b.classList.remove('sure'); } }, 4000); toast('לחץ שוב על ⚠️ כדי למחוק את ההודעה אצל הלקוח'); return; }
+  b.disabled = true;
+  try {
+    if (S.mode === 'wa' && b.closest('#waMsgs')) {
+      const v = S.wa.view; const x = v && v.items.find((i) => i.id === b.dataset.del); if (!x) return;
+      await api('POST', '/api/wa/delete', { inst: v.chat.instanceId, chat: v.chat.chatId, id: x.id, ts: x.ts });
+    } else if (S.view) {
+      await api('POST', `/api/tickets/${S.view.ticket.id}/messages/${b.dataset.del}/delete`);
+    }
+    toast('🗑 ההודעה נמחקה אצל הלקוח');
+  } catch (er) { toast(er.message, true, 6000); b.disabled = false; }
+});
