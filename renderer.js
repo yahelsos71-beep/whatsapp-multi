@@ -510,6 +510,7 @@ function settingsDialog() {
       <input type="text" id="dTpl" dir="ltr" placeholder="https://{domain}/app/click_to_call/click_to_call.php?key=...&src={ext}&dest={number}" value="${esc((settings.dial || {}).template || '')}" style="width:100%"></details>
     <div class="row"><label style="flex:1"><input type="checkbox" id="dConfirm" ${(settings.dial || {}).confirm !== false ? 'checked' : ''}> לשאול "לחייג?" לפני כל חיוג</label><button id="dSave">שמור</button></div>
     <div class="row"><input type="text" id="dTestNum" dir="ltr" placeholder="מספר לבדיקה (למשל הנייד שלך)" style="flex:1;margin:0"><button id="dTest">🧪 חיוג בדיקה</button></div>
+    <div class="row"><button id="dScan" title="מחפש את תוסף ה-Click To Call בכרום וקורא לאיזו כתובת הוא פונה (בלי סיסמאות)">🔍 בדוק את התוסף של כרום</button></div>
     <div class="hint">לחיצה כפולה על מספר בכל לשונית (וואטסאפ, מוקד) → המרכזייה מצלצלת בשלוחה שלך ואז מחייגת למספר.</div>
     <h4>👥 עבודה במקביל</h4>
     <div class="row"><label style="flex:1"><input type="checkbox" id="personalMode" ${P.personal ? 'checked' : ''}> כל משתמש עם חיבורים משלו – כמה משתמשים עובדים באותו זמן</label></div>
@@ -552,6 +553,13 @@ function settingsDialog() {
   };
   box.querySelector('#dSave').onclick = async () => { await saveDial(); toast('נשמר ✓ – לחיצה כפולה על מספר תחייג'); };
   box.querySelector('#dTest').onclick = async () => { await saveDial(); const n = box.querySelector('#dTestNum').value.trim(); if (n) dialNumber(n, true); else toast('כתוב מספר לבדיקה'); };
+  box.querySelector('#dScan').onclick = async () => {
+    const r = await ipcRenderer.invoke('scan-c2c');
+    if (r.error) return toast(r.error, 8000);
+    if (!r.found.length) return toast('לא נמצא בכרום תוסף חיוג', 6000);
+    const x = r.found[0];
+    toast(`נמצא: ${x.name} – הפרטים נשמרו בשולחן העבודה בקובץ click-to-call-extension.txt. שלח אותו ל-Claude`, 12000);
+  };
   box.querySelector('#cancel').onclick = close;
 }
 

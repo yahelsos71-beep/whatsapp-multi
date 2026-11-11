@@ -102,7 +102,48 @@ ipcMain.handle('dial', async (_e, { cfg, number }) => {
     const r = await net.fetch(url, { signal: AbortSignal.timeout(15000) });
     const text = (await r.text()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
     return { ok: r.ok, status: r.status, text };
-  } catch (e) { return { ok: false, error: e.message }; }
+  } catch (e) { return { ok: false, error: e.message + ' (' + url.split('?')[0] + ')' }; }
+});
+// 🔍 קורא את קוד תוסף ה-Click To Call שמותקן בכרום (רק את הקוד – לא סיסמאות) כדי לדעת לאיזו כתובת הוא פונה
+ipcMain.handle('scan-c2c', async () => {
+  const root = path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'User Data');
+  const found = [];
+  let profiles = [];
+  try { profiles = fs.readdirSync(root).filter((d) => d === 'Default' || /^Profile \d+$/.test(d)); } catch { return { error: 'לא נמצאה תיקיית כרום: ' + root }; }
+  const walk = (dir, out, depth = 0) => {
+    if (depth > 4) return;
+    for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, f.name);
+      if (f.isDirectory()) { if (!/node_modules|_locales|images|icons/i.test(f.name)) walk(full, out, depth + 1); }
+      else if (/\.(js|json|html)$/i.test(f.name)) out.push(full);
+    }
+  };
+  for (const prof of profiles) {
+    const extRoot = path.join(root, prof, 'Extensions');
+    let ids = []; try { ids = fs.readdirSync(extRoot); } catch { continue; }
+    for (const id of ids) {
+      let vers = []; try { vers = fs.readdirSync(path.join(extRoot, id)); } catch { continue; }
+      for (const v of vers) {
+        const dir = path.join(extRoot, id, v);
+        let man; try { man = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8')); } catch { continue; }
+        let name = String(man.name || '');
+        if (name.startsWith('__MSG_')) { try { const k = name.slice(6, -2); const loc = JSON.parse(fs.readFileSync(path.join(dir, '_locales', man.default_locale || 'en', 'messages.json'), 'utf8')); name = (loc[k] || loc[k.toLowerCase()] || {}).message || name; } catch {} }
+        if (!/call|dial|חיוג|015|pbx|tel/i.test(name + ' ' + (man.description || ''))) continue;
+        const files = []; walk(dir, files);
+        const urls = new Set(); const lines = [];
+        for (const f of files) {
+          let txt = ''; try { txt = fs.readFileSync(f, 'utf8'); } catch { continue; }
+          for (const m of txt.matchAll(/https?:\/\/[^\s"'`<>)]+/g)) if (!/google|gstatic|w3\.org|mozilla|jquery|chrome\.com|schema\.org|github/i.test(m[0])) urls.add(m[0]);
+          for (const m of txt.matchAll(/.{0,160}(?:fetch\(|\.open\(|axios|XMLHttpRequest|ajax\(|\$\.(?:get|post)\(|click_to_call|originate|api\/).{0,220}/g)) lines.push(path.basename(f) + ': ' + m[0].trim());
+        }
+        found.push({ name, version: v, id, profile: prof, urls: [...urls].slice(0, 40), lines: lines.slice(0, 40) });
+      }
+    }
+  }
+  const out = found.map((x) => `### ${x.name} v${x.version} (${x.id}, ${x.profile})\nURLs:\n${x.urls.join('\n')}\n\nCode:\n${x.lines.join('\n')}`).join('\n\n') || 'No click-to-call extension found';
+  const file = path.join(app.getPath('desktop'), 'click-to-call-extension.txt');
+  try { fs.writeFileSync(file, out); } catch {}
+  return { found, file };
 });
 
 // ---- פתיחה מהמוקד: קישור whatsappmulti://open ----
