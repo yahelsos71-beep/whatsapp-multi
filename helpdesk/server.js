@@ -1062,8 +1062,8 @@ const flatten = (o, out = {}, pre = '') => { for (const [k, v] of Object.entries
 const pick = (f, re) => { for (const [k, v] of Object.entries(f)) if (re.test(k.split('.').pop()) && v !== '' && v != null) return String(v); return ''; };
 function pbxParse(f) {
   return {
-    from: pick(f, /^(caller_?id_?number|caller_?number|callerid|caller|from|from_?number|src|source|ani|cli|phone|phone_?number|number|caller_?id|customer_?number)$/i),
-    to: pick(f, /^(destination_?number|destination|dest|dst|to|to_?number|called|called_?number|extension|ext|did|dnis|line|telephone_?line|agent)$/i),
+    from: pick(f, /^(snumber|scallerid|caller_?id_?number|caller_?number|callerid|caller|from|from_?number|src|source|ani|cli|phone|phone_?number|number|caller_?id|customer_?number)$/i),
+    to: pick(f, /^(cnumber|dnumber|destination_?number|destination|dest|dst|to|to_?number|called|called_?number|extension|ext|did|dnis|line|telephone_?line|agent)$/i),
     name: pick(f, /^(caller_?id_?name|caller_?name|cid_?name|name)$/i),
     event: pick(f, /^(event|event_?name|event_?type|type|status|state|call_?state|call_?status|action|direction)$/i),
     callId: pick(f, /^(uuid|call_?id|callid|call_?uuid|unique_?id|id)$/i),
