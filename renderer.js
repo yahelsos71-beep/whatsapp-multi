@@ -276,6 +276,29 @@ function build() {
       items.set(HELPDESK_PARTITION, h);
       tab.addEventListener('click', () => select(HELPDESK_PARTITION));
       wv.addEventListener('page-title-updated', (e) => { const m = /\((\d+)\)/.exec(e.title); tab.innerHTML = '🎧 מוקד' + (m ? ` <span class="badge on">${m[1]}</span>` : ''); });
+      // המוקד לא נטען: במחשב שאינו השרת "localhost" לא עובד – מנסים את כתובת השרת במשרד,
+      // ואם גם זה לא – מציגים הסבר במקום מסך ריק
+      const FALLBACK = 'http://10.10.10.250:8080';
+      wv.addEventListener('did-fail-load', (e) => {
+        if (!e.isMainFrame || e.errorCode === -3) return;
+        h.failed = true;
+        const cur = h.url || '';
+        if (/\/\/(localhost|127\.0\.0\.1)/i.test(cur) && !h.triedFallback) {
+          h.triedFallback = true; h.url = FALLBACK; wv.src = FALLBACK; return;
+        }
+        const msg = `<body dir="rtl" style="font-family:sans-serif;padding:40px;color:#333;line-height:1.8">
+          <h2>🎧 המוקד לא נפתח</h2><p>לא הצלחתי להתחבר לכתובת: <b dir="ltr">${esc(cur)}</b></p>
+          <ul><li>בדוק שהשרת של המוקד פועל (החלון השחור על השרת).</li>
+          <li>במחשב שאינו השרת, הכתובת צריכה להיות <b dir="ltr">${FALLBACK}</b> – משנים ב-⚙ (בסרגל הכהה) ← "כתובת מוקד הוואטסאפ".</li></ul>
+          <p style="color:#888">שגיאה: ${esc(String(e.errorDescription || e.errorCode))}</p></body>`;
+        wv.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(msg);
+      });
+      wv.addEventListener('did-start-loading', () => { h.failed = false; });
+      wv.addEventListener('did-finish-load', () => {
+        const u = wv.getURL();
+        if (h.failed) return;
+        if (h.triedFallback && u.startsWith(FALLBACK) && settings.helpdeskUrl !== FALLBACK) { settings.helpdeskUrl = FALLBACK; saveSettings(); }
+      });
     }
     tabsEl.insertBefore(h.tab, tabsEl.firstChild);
   }
