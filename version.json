@@ -1,10 +1,10 @@
 {
-  "version": 10,
+  "version": 11,
   "files": {
-    "app-main.js": "80b9b01c4895f73569e6e8ca87a7553967e5c2490f7395a4dd7217547bd69352",
+    "app-main.js": "71d43196df178be58adf450624d2a24f23dcf328d3d8d312667bf29aca65507c",
     "index.html": "4736af1ecc96e38c81ed5da15a8e27f5da403089a37c009da02aa0a278ea9879",
-    "renderer.js": "f657c653db2011d8a353d7653afac2e3f2d532ef0f688a07578b748a4106326d",
+    "renderer.js": "878817a05e9b82a98be319b754c04c0e60e8b691e0bbf6f02ac444510e36c4f1",
     "inject.js": "8f0e9471519ce20774b06d00707fa30d2b78e27950ca68b55b164e1b05ad824a"
   },
-  "notes": "חלון ההתראה בהפעלה תמיד מופיע; תיקון היעלמות אחרי עדכון"
+  "notes": "👥 עבודה במקביל – כל משתמש עם חיבורים משלו"
 }

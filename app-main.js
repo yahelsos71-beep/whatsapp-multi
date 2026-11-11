@@ -15,7 +15,14 @@ fs.mkdirSync(USER_DIR, { recursive: true });
 const exeDir = app.isPackaged ? path.dirname(app.getPath('exe')) : global.BUILTIN_DIR || __dirname;
 const DATA_DIR = process.env.WA_MULTI_DATA || path.join(exeDir, 'data');
 fs.mkdirSync(DATA_DIR, { recursive: true });
-app.setPath('userData', DATA_DIR);
+// מצב "עבודה במקביל": החיבורים (סריקות, כניסה למוקד) נשמרים אצל היוזר עצמו,
+// ולכן כמה משתמשים יכולים לפתוח את התוכנה באותו זמן. רשימת הוואטסאפים וההחרגות – עדיין משותפות.
+const MODE_FILE = path.join(USER_DIR, 'mode.json');
+const PERSONAL = (() => { try { return JSON.parse(fs.readFileSync(MODE_FILE, 'utf8')).personal === true; } catch { return false; } })();
+const SESS_DIR = PERSONAL ? path.join(USER_DIR, 'sessions') : DATA_DIR;
+fs.mkdirSync(SESS_DIR, { recursive: true });
+app.setPath('userData', SESS_DIR);
+const setPersonal = (on) => { try { fs.writeFileSync(MODE_FILE, JSON.stringify({ personal: !!on })); } catch {} };
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
@@ -46,7 +53,13 @@ app.on('session-created', (ses) => {
 });
 
 ipcMain.on('paths', (e) => {
-  e.returnValue = { dataDir: DATA_DIR, userDir: USER_DIR, user: os.userInfo().username, exeDir };
+  e.returnValue = { dataDir: DATA_DIR, userDir: USER_DIR, user: os.userInfo().username, exeDir, personal: PERSONAL };
+});
+ipcMain.on('set-personal', (_e, on) => {
+  setPersonal(on);
+  try { const l = readLock(); if (l && l.owner === ME) fs.unlinkSync(LOCK); } catch {}
+  app.relaunch();
+  app.exit(0);
 });
 ipcMain.handle('clear-partition', (_e, partition) => session.fromPartition(partition).clearStorageData());
 ipcMain.handle('pick-sound', async () => {
@@ -200,25 +213,31 @@ app.whenReady().then(async () => {
   }
   if (hasScans || !last) { try { fs.writeFileSync(LAST, exeDir); } catch {} }
 
-  const l = readLock();
+  const l = PERSONAL ? null : readLock();
   if (lockIsFresh(l)) {
     const r = await startupDialog({
       type: 'warning',
-      buttons: ['סגור', 'פתח בכל זאת'],
+      buttons: ['👥 עבודה במקביל (מומלץ)', 'סגור', 'פתח בכל זאת'],
       defaultId: 0,
+      cancelId: 1,
       title: 'WhatsApp Multi',
-      message: `התוכנה כבר פתוחה אצל המשתמש "${l.user}".\n\nאפשר לפתוח אותה רק במקום אחד בכל רגע.\nסגור אותה שם קודם.`,
+      message: `התוכנה כבר פתוחה אצל המשתמש "${l.user}".`,
+      detail: 'כדי לעבוד במקביל, בחר "עבודה במקביל":\n' +
+        'החיבורים יישמרו אצלך, ובפעם הראשונה תסרוק פעם אחת את הוואטסאפים (בטלפון: מכשירים מקושרים ← קישור מכשיר)\n' +
+        'ותתחבר פעם אחת למוקד עם המשתמש שלך. מאז – כל אחד עובד אצלו, באותו זמן.\n\n' +
+        '"פתח בכל זאת" – רק אם התוכנה לא באמת פתוחה שם.',
     });
-    if (r.response === 0) return app.exit(0);
+    if (r.response === 0) { setPersonal(true); app.relaunch(); return app.exit(0); }
+    if (r.response === 1) return app.exit(0);
   }
-  writeLock();
-  setInterval(writeLock, 10000);
+  if (!PERSONAL) { writeLock(); setInterval(writeLock, 10000); }
   startupDone = true;
   if (mainWin && !mainWin.isDestroyed()) { mainWin.loadFile(path.join(global.APP_DIR || __dirname, 'index.html')); mainWin.show(); mainWin.focus(); }
   else createWindow();
 });
 app.on('window-all-closed', () => app.quit());
 app.on('will-quit', () => {
+  if (PERSONAL) return;
   const l = readLock();
   if (l && l.owner === ME) try { fs.unlinkSync(LOCK); } catch {}
 });

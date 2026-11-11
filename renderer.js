@@ -9,7 +9,7 @@ const P = ipcRenderer.sendSync('paths');
 const SHARED_FILE = path.join(P.dataDir, 'accounts.json'); // חשבונות משותפים
 const PRIVATE_FILE = path.join(P.userDir, 'private.json'); // חשבונות פרטיים – רק היוזר הזה
 const SETTINGS_FILE = path.join(P.userDir, 'settings.json'); // הגדרות צלצול – לכל יוזר
-const PENDING_SHARED = path.join(P.dataDir, 'pending.json');
+const PENDING_SHARED = P.personal ? path.join(P.userDir, 'pending-shared.json') : path.join(P.dataDir, 'pending.json');
 const PENDING_PRIVATE = path.join(P.userDir, 'pending.json');
 const USER_KEY = Buffer.from(P.user.toLowerCase()).toString('hex').slice(0, 40);
 const CLAUDE_PARTITION = `persist:p_${USER_KEY}_claude`;
@@ -33,7 +33,7 @@ const settings = Object.assign(
 );
 const saveSettings = () => save(SETTINGS_FILE, settings);
 
-document.getElementById('user').textContent = P.user + ' · v' + ipcRenderer.sendSync('app-version') + ' · 📁 ' + path.basename(P.exeDir).slice(0, 18);
+document.getElementById('user').textContent = P.user + ' · v' + ipcRenderer.sendSync('app-version') + (P.personal ? ' · 👥 במקביל' : '') + ' · 📁 ' + path.basename(P.exeDir).slice(0, 18);
 document.getElementById('user').title = 'התוכנה רצה מהתיקייה:\n' + P.exeDir;
 
 // עדכון אוטומטי הורד – מציעים להפעיל מחדש
@@ -463,11 +463,19 @@ function settingsDialog() {
     <h4>🎧 כתובת מוקד הוואטסאפ (לשונית "מוקד")</h4>
     <div class="row"><input type="text" id="hdUrl" dir="ltr" value="${esc(settings.helpdeskUrl || '')}" placeholder="http://localhost:8080" style="flex:1;margin:0"><button id="hdSave">שמור</button></div>
     <div class="hint">ריק = בלי לשונית מוקד. במחשב אחר ברשת: http://10.10.10.250:8080</div>
+    <h4>👥 עבודה במקביל</h4>
+    <div class="row"><label style="flex:1"><input type="checkbox" id="personalMode" ${P.personal ? 'checked' : ''}> כל משתמש עם חיבורים משלו – כמה משתמשים עובדים באותו זמן</label></div>
+    <div class="hint">אחרי ההפעלה סורקים פעם אחת את הוואטסאפים ומתחברים פעם אחת למוקד. השינוי מפעיל את התוכנה מחדש.</div>
     <h4>עוצמה</h4>
     <div class="row"><input id="vol" type="range" min="0" max="1" step="0.05" value="${settings.vol}" style="flex:1"></div>
     <div class="row"><button class="primary" id="cancel">סגור</button><button id="dbg">🐞 שמור קובץ אבחון</button></div>`;
   modal.classList.add('on');
   box.querySelector('#dbg').onclick = saveDebug;
+  box.querySelector('#personalMode').onchange = (e) => {
+    const on = e.target.checked;
+    if (!confirm(on ? 'לעבור לעבודה במקביל? התוכנה תיפתח מחדש, ותצטרך לסרוק פעם אחת את הוואטסאפים ולהתחבר למוקד.' : 'לחזור לחיבורים המשותפים? התוכנה תיפתח מחדש (ואז רק משתמש אחד יכול לפתוח אותה בכל רגע).')) { e.target.checked = !on; return; }
+    ipcRenderer.send('set-personal', on);
+  };
   const bindTone = (id, fileKey) => {
     const sel = box.querySelector('#' + id);
     sel.onchange = async () => {
