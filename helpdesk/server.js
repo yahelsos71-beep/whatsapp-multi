@@ -1083,6 +1083,16 @@ function callInfo(phone, p = {}) {
     ticketsCount: tickets.length,
   };
 }
+// שיחה נכנסת בלבד: direction=in (לא in_out / internal / out), ולא שיחה שמתחילה מקו של עובד
+const staffLines = () => db.users.map((u) => u.ext).filter(Boolean);
+function isIncoming(f) {
+  const dirKey = Object.keys(f).find((k) => /^(direction|call_?direction)$/i.test(k.split('.').pop()));
+  if (dirKey) return /^(in|inbound|incoming)$/i.test(String(f[dirKey]).trim());
+  if (/^phone$/i.test(String(f.stype || ''))) return false; // מתחיל מקו טלפון שלנו = יוצאת
+  const src = String(f.snumber || f.caller_id_number || f.from || '').replace(/\D/g, '');
+  if (src && staffLines().some((x) => src.endsWith(x) || x.endsWith(src))) return false;
+  return true;
+}
 async function pbxWebhook(req, res, query) {
   const key = query.get('key') || req.headers['x-api-key'] || '';
   if (!db.config.pbxKey || key !== db.config.pbxKey) return send(res, 403, { error: 'bad key' });
@@ -1098,7 +1108,7 @@ async function pbxWebhook(req, res, query) {
   pbxLog.unshift({ at: now(), fields: f, parsed: p }); pbxLog.length = Math.min(pbxLog.length, 30);
   send(res, 200, { ok: true });
   const phone = normPhone(p.from);
-  if (!phone) return;
+  if (!phone || !isIncoming(f)) return;
   const ended = /hang|end|complet|disconnect|bye|finish|answer|missed|busy/i.test(p.event);
   const answered = /answer/i.test(p.event);
   const ext = String(p.to || '').replace(/\D/g, '');
@@ -1133,8 +1143,7 @@ async function pbxPoll() {
     for (const call of list) {
       const f = flatten(call);
       if (pbxSamples < 5) { pbxSamples++; pbxLog.unshift({ at: now(), fields: f, parsed: pbxParse(f), source: '015' }); pbxLog.length = Math.min(pbxLog.length, 30); }
-      const dir = String(f.direction || '');
-      if (dir && !/^in/i.test(dir)) continue; // רק שיחות נכנסות
+      if (!isIncoming(f)) continue; // רק שיחות נכנסות – לא יוצאות, לא פנימיות ולא חיוג מהמחשב
       const id = String(f.uniqueid || f.callid || f.id || (f.snumber || '') + '|' + (f.dnumber || ''));
       const from = normPhone(f.callerid_external || f.scallerid || f.callerid || f.snumber || f.from || '');
       if (!from || from.length < 9) continue;
