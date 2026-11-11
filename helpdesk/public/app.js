@@ -1553,18 +1553,33 @@ function adminPbx() {
   $('#apane').innerHTML = `<h4>📞 חלון "מי מתקשר"</h4>
     <div class="hint">כשהמרכזייה שולחת הודעה (webhook) על שיחה נכנסת – קופץ חלון עם שם הלקוח, החברה, קריאות פתוחות והטיפול האחרון.<br>
     את השיחה מקבל העובד שהשלוחה/הקו שלו רשומים אצלו (👥 עובדים ← עריכה ← "שלוחה / קו"). אם לא רשום לאף אחד – כולם מקבלים.</div>
+    <h4>🔌 חיבור ישיר למרכזיית 015 (מומלץ – בלי Webhook ובלי הגדרות בראוטר)</h4>
+    <div class="hint">השרת בודק במרכזייה כל 2 שניות אם יש שיחה נכנסת. משתמש וסיסמה של המרכזייה (כמו בתוסף של כרום). נשמרים רק בשרת.</div>
+    <div class="grid2"><div><label>שם משתמש במרכזייה</label><input id="xUser" dir="ltr" value="${esc(A.config.pbx.user)}"></div>
+      <div><label>סיסמה</label><input id="xPass" type="password" dir="ltr" placeholder="${A.config.pbx.pass ? '•••• (שמורה)' : ''}"></div></div>
+    <label class="check"><input type="checkbox" id="xOn" ${A.config.pbx.enabled ? 'checked' : ''}> פעיל – להקפיץ חלון בכל שיחה נכנסת</label>
+    <div class="row"><button class="primary" id="xSave">💾 שמור והתחבר</button><span id="xStat" class="hint" style="flex:1">${esc(A.config.pbxStatus ? A.config.pbxStatus.text : '')}</span></div>
+    <h4>🌐 או: Webhook מהמרכזייה</h4>
     <label>כתובת ה-Webhook להדבקה במרכזייה</label>
     <div class="row"><input id="pUrl" dir="ltr" readonly value="${esc(url)}" style="flex:1;margin:0"><button id="pCopy">📋 העתק</button><button class="ghost" id="pNew" title="מפתח חדש – הכתובת הישנה תפסיק לעבוד">🔑 מפתח חדש</button></div>
     <div class="hint">⚠️ המרכזייה של 015 נמצאת באינטרנט, ולכן היא צריכה להגיע לשרת מבחוץ: במקום <b dir="ltr">${esc(location.hostname)}</b> צריך את הכתובת החיצונית של המשרד (IP קבוע / דומיין),
     ובראוטר להפנות את הפורט ${esc(location.port || '80')} לשרת. אפשר לבקש מאיש המחשוב. שיטות: POST (JSON או טופס) או GET – הכל עובד.</div>
     <div class="row"><input id="pTest" dir="ltr" placeholder="מספר לבדיקה (למשל לקוח קיים)" style="flex:1;margin:0"><button id="pTestBtn">🧪 הקפץ חלון בדיקה</button></div>
     <h4>📥 מה התקבל מהמרכזייה לאחרונה</h4><div id="pLog" class="hint">טוען...</div>`;
+  $('#xSave').onclick = async () => {
+    $('#xStat').textContent = 'מתחבר...';
+    try { const r = await api('POST', '/api/admin/pbx', { enabled: $('#xOn').checked, user: $('#xUser').value, pass: $('#xPass').value || A.config.pbx.pass, host: A.config.pbx.host });
+      $('#xStat').textContent = (r.state === 'error' ? '⚠️ ' : '') + r.text; A = await api('GET', '/api/admin/config'); setTimeout(() => api('GET', '/api/admin/pbx-log').then(drawLog), 2500); }
+    catch (e) { $('#xStat').textContent = e.message; }
+  };
   $('#pCopy').onclick = () => copyText($('#pUrl').value).then((ok) => toast(ok ? 'הכתובת הועתקה ✓' : 'לא הצלחתי להעתיק', !ok));
   $('#pNew').onclick = async () => { try { const r = await api('POST', '/api/admin/pbx-key'); A.config.pbxKey = r.key; adminPbx(); toast('נוצר מפתח חדש – עדכן את הכתובת במרכזייה'); } catch (e) { toast(e.message, true); } };
   $('#pTestBtn').onclick = async () => { try { await api('POST', '/api/admin/pbx-test', { phone: $('#pTest').value }); closeModal(); } catch (e) { toast(e.message, true); } };
-  api('GET', '/api/admin/pbx-log').then((list) => {
+  const drawLog = (list) => {
+    if (!$('#pLog')) return;
     $('#pLog').innerHTML = list.length ? list.map((x) => `<div class="card2" style="margin:6px 0;font-size:12px"><b>${new Date(x.at).toLocaleString('he-IL')}</b> –
       מתקשר: <b dir="ltr">${esc(x.parsed.from || '?')}</b> · קו: <b dir="ltr">${esc(x.parsed.to || '?')}</b> · אירוע: <b>${esc(x.parsed.event || '?')}</b>
       <pre dir="ltr" style="white-space:pre-wrap;margin:4px 0 0">${esc(JSON.stringify(x.fields, null, 1)).slice(0, 1500)}</pre></div>`).join('') : 'עוד לא התקבל כלום מהמרכזייה.';
-  }).catch((e) => { $('#pLog').textContent = e.message; });
+  };
+  api('GET', '/api/admin/pbx-log').then(drawLog).catch((e) => { $('#pLog').textContent = e.message; });
 }

@@ -1,7 +1,7 @@
 {
-  "version": 33,
+  "version": 34,
   "files": {
-    "server.js": "c668a066a48ccfe199dabc432cb983c88df0bfcc3d11a7c818d446bef9d1669a",
+    "server.js": "01ae68180b75d31953031a3d7de3c5f0748cb2ffca2cd45461192791dc6b713a",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
     "reset-password.bat": "662bfbec8b94b264fd7b585a365f389415b8ec66bea540e876418e7a3f805187",
     "README-HE.txt": "4c860dca000bec648c5aec0c5cfa25ca515e996f1470b961fc967ce73fd3b0a8",
@@ -9,10 +9,10 @@
     "lib/greenapi.js": "1c4555a65969d9945429590f0f2da1fe54bb61412b0a3a96f2489d9264f5c866",
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "2236cc291a82b742b310f23da60c8af27c2dbfbb4d68cfbb3b2cfde374528547",
-    "public/app.js": "4cfc09d781d2e545f342cd98ab2d2a62e75505c7593dc841c384f5f02b8797ce",
+    "public/app.js": "d8877a40daabb843c9c2ccb600e84e32adda5b2a38b244fc607d3a4b04174e4e",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "75ca9c933051f7d469f3b9781c1b8123904614658e319c1efbf65b8df7fdfe9b"
   },
-  "notes": "📞 מזהה גם את פורמט 015 (Enswitch) בחלון מי מתקשר"
+  "notes": "📞 חיבור ישיר ל-015: חלון 'מי מתקשר' בכל שיחה נכנסת"
 }

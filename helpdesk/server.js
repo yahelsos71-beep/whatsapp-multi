@@ -688,6 +688,8 @@ function adminConfigView() {
     chatRules: c.chatRules.map((r) => ({ ...r, userName: userById(r.userId)?.name || '' })),
     instances: c.instances.map((i) => ({ ...i, token: mask(i.token) })),
     pbxKey: c.pbxKey || '',
+    pbx: { enabled: !!(c.pbx && c.pbx.enabled), host: (c.pbx && c.pbx.host) || 'www.015pbx.net', user: (c.pbx && c.pbx.user) || '', pass: mask(c.pbx && c.pbx.pass) },
+    pbxStatus,
   };
 }
 
@@ -1102,12 +1104,72 @@ async function pbxWebhook(req, res, query) {
   const ext = String(p.to || '').replace(/\D/g, '');
   const people = db.users.filter((u) => u.active !== false);
   let targets = ext ? people.filter((u) => u.ext && (ext.endsWith(u.ext) || u.ext.endsWith(ext))) : [];
-  if (!targets.length) targets = people.some((u) => u.ext) ? admins() : people;
+  if (!targets.length) targets = people;
   if (ended) { for (const u of targets) sendTo(u.id, { type: 'call-end', phone, callId: p.callId, answered }); return; }
   const call = callInfo(phone, p);
   log(`📞 call from ${phone}${p.to ? ' to ' + p.to : ''} → ${targets.map((u) => u.name).join(', ')}`);
   for (const u of targets) sendTo(u.id, { type: 'call', call });
 }
+// ---------- 📞 חיבור ישיר ל-015 (Enswitch): בודקים כל 2 שניות אילו שיחות נכנסות מצלצלות ----------
+// לא צריך Webhook ולא הפניית פורט – השרת שלנו פונה החוצה למרכזייה
+let pbxStatus = { state: 'off', at: 0, text: '' };
+const activeCalls = new Map(); // callId -> phone
+let pbxTimer = null, pbxSamples = 0;
+function pbxSchedule(ms) { clearTimeout(pbxTimer); pbxTimer = setTimeout(pbxPoll, ms); }
+async function pbxPoll() {
+  const c = db.config.pbx || {};
+  if (!c.enabled || !c.user || !c.pass) { pbxStatus = { state: 'off', at: now(), text: 'כבוי' }; return pbxSchedule(5000); }
+  try {
+    const body = new URLSearchParams({ auth_username: c.user, auth_password: c.pass });
+    const r = await fetch(process.env.HD_015_URL || `https://${String(c.host || 'www.015pbx.net').replace(/^https?:\/\//, '').replace(/\/+$/, '')}/api/json/calls/active/list/`,
+      { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString(), signal: AbortSignal.timeout(8000) });
+    const text = await r.text();
+    let j; try { j = JSON.parse(text); } catch { throw new Error(`תשובה לא צפויה (${r.status}): ${text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120)}`); }
+    const resp = Array.isArray(j.responses) ? j.responses[0] : null;
+    if (resp && Number(resp.code) >= 300) throw new Error(`${resp.code} ${resp.message || ''}`);
+    const list = Array.isArray(j.data) ? j.data : Array.isArray(j) ? j : Array.isArray(j.calls) ? j.calls : [];
+    pbxStatus = { state: 'ok', at: now(), text: `מחובר ✓ (${list.length} שיחות פעילות עכשיו)` };
+    const seen = new Set();
+    for (const call of list) {
+      const f = flatten(call);
+      if (pbxSamples < 5) { pbxSamples++; pbxLog.unshift({ at: now(), fields: f, parsed: pbxParse(f), source: '015' }); pbxLog.length = Math.min(pbxLog.length, 30); }
+      const dir = String(f.direction || '');
+      if (dir && !/^in/i.test(dir)) continue; // רק שיחות נכנסות
+      const id = String(f.uniqueid || f.callid || f.id || (f.snumber || '') + '|' + (f.dnumber || ''));
+      const from = normPhone(f.callerid_external || f.scallerid || f.callerid || f.snumber || f.from || '');
+      if (!from || from.length < 9) continue;
+      seen.add(id);
+      if (activeCalls.has(id)) continue;
+      activeCalls.set(id, from);
+      const to = String(f.dnumber || f.cnumber || f.peer || '');
+      const ext = to.replace(/\D/g, '');
+      const people = db.users.filter((u) => u.active !== false);
+      let targets = people.filter((u) => u.ext && [f.dnumber, f.cnumber, f.peer].some((x) => String(x || '').replace(/\D/g, '').endsWith(u.ext)));
+      if (!targets.length) targets = people;
+      log(`📞 015 call from ${from}${to ? ' to ' + to : ''}`);
+      const info = callInfo(from, { callId: id, to: ext });
+      for (const u of targets) sendTo(u.id, { type: 'call', call: info });
+    }
+    for (const [id, phone] of activeCalls) if (!seen.has(id)) { activeCalls.delete(id); emitAll({ type: 'call-end', phone, callId: id }); }
+    pbxSchedule(2000);
+  } catch (e) {
+    pbxStatus = { state: 'error', at: now(), text: e.message };
+    pbxSchedule(15000);
+  }
+}
+pbxSchedule(3000);
+route('POST', /^\/api\/admin\/pbx$/, async (req, res) => {
+  const b = await readJson(req);
+  const old = db.config.pbx || {};
+  db.config.pbx = { enabled: !!b.enabled, host: String(b.host || 'www.015pbx.net').trim(), user: String(b.user || '').trim(), pass: unmask(b.pass, old.pass) || '' };
+  store.saveConfig(); pbxSamples = 0;
+  pbxStatus = { state: 'wait', at: now(), text: 'מתחבר...' };
+  pbxSchedule(200);
+  await sleep(2500);
+  send(res, 200, pbxStatus);
+}, { auth: 'admin' });
+route('GET', /^\/api\/admin\/pbx-status$/, (req, res) => send(res, 200, pbxStatus), { auth: 'admin' });
+
 route('POST', /^\/api\/pbx\/webhook$/, (req, res, { query }) => pbxWebhook(req, res, query), { auth: 'none' });
 route('GET', /^\/api\/pbx\/webhook$/, (req, res, { query }) => pbxWebhook(req, res, query), { auth: 'none' });
 route('GET', /^\/api\/admin\/pbx-log$/, (req, res) => send(res, 200, pbxLog), { auth: 'admin' });
