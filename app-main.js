@@ -217,18 +217,17 @@ app.whenReady().then(async () => {
   if (lockIsFresh(l)) {
     const r = await startupDialog({
       type: 'warning',
-      buttons: ['👥 עבודה במקביל (מומלץ)', 'סגור', 'פתח בכל זאת'],
+      buttons: ['👥 עבודה במקביל (מומלץ)', 'סגור'],
       defaultId: 0,
       cancelId: 1,
       title: 'WhatsApp Multi',
       message: `התוכנה כבר פתוחה אצל המשתמש "${l.user}".`,
       detail: 'כדי לעבוד במקביל, בחר "עבודה במקביל":\n' +
         'החיבורים יישמרו אצלך, ובפעם הראשונה תסרוק פעם אחת את הוואטסאפים (בטלפון: מכשירים מקושרים ← קישור מכשיר)\n' +
-        'ותתחבר פעם אחת למוקד עם המשתמש שלך. מאז – כל אחד עובד אצלו, באותו זמן.\n\n' +
-        '"פתח בכל זאת" – רק אם התוכנה לא באמת פתוחה שם.',
+        'ותתחבר פעם אחת למוקד עם המשתמש שלך. מאז – כל אחד עובד אצלו, באותו זמן.',
     });
     if (r.response === 0) { setPersonal(true); app.relaunch(); return app.exit(0); }
-    if (r.response === 1) return app.exit(0);
+    return app.exit(0);
   }
   if (!PERSONAL) { writeLock(); setInterval(writeLock, 10000); }
   startupDone = true;

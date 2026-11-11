@@ -1,10 +1,10 @@
 {
-  "version": 11,
+  "version": 12,
   "files": {
-    "app-main.js": "71d43196df178be58adf450624d2a24f23dcf328d3d8d312667bf29aca65507c",
+    "app-main.js": "da2c1f3d77baa023dbc6287921bbd855b5c2b8a7c36d835d86ad0c7af0d231e3",
     "index.html": "4736af1ecc96e38c81ed5da15a8e27f5da403089a37c009da02aa0a278ea9879",
     "renderer.js": "878817a05e9b82a98be319b754c04c0e60e8b691e0bbf6f02ac444510e36c4f1",
     "inject.js": "8f0e9471519ce20774b06d00707fa30d2b78e27950ca68b55b164e1b05ad824a"
   },
-  "notes": "👥 עבודה במקביל – כל משתמש עם חיבורים משלו"
+  "notes": "הוסר 'פתח בכל זאת' שסגר את התוכנה אצל המשתמש השני"
 }
