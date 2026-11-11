@@ -28,7 +28,7 @@ function checkPassword(user, password) {
   const { hash } = hashPassword(password, user.salt);
   return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(user.hash, 'hex'));
 }
-const publicUser = (u) => u && { id: u.id, name: u.name, username: u.username, role: u.role, active: u.active !== false, phone: u.phone || '', waAccess: canWa(u) };
+const publicUser = (u) => u && { id: u.id, name: u.name, username: u.username, role: u.role, active: u.active !== false, phone: u.phone || '', waAccess: canWa(u), ext: u.ext || '' };
 // מי רואה את מסך "💬 וואטסאפ" (כל הצ'אטים של המספרים): מנהלים, ועובדים שקיבלו הרשאה
 const canWa = (u) => !!u && (u.role === 'admin' || u.waAccess === true);
 // איפוס סיסמה מקומי: reset-password.bat כותב data/reset-password.json והשרת מחיל אותו
@@ -687,6 +687,7 @@ function adminConfigView() {
     personRules: c.personRules || [],
     chatRules: c.chatRules.map((r) => ({ ...r, userName: userById(r.userId)?.name || '' })),
     instances: c.instances.map((i) => ({ ...i, token: mask(i.token) })),
+    pbxKey: c.pbxKey || '',
   };
 }
 
@@ -1054,6 +1055,71 @@ route('POST', /^\/api\/wa\/delete$/, async (req, res, { user }) => {
   catch (e) { send(res, 502, { error: 'המחיקה נכשלה: ' + e.message }); }
 });
 
+// ---------- 📞 מרכזייה: webhook על שיחה נכנסת → חלון "מי מתקשר" ----------
+// מקבל כל פורמט (JSON / טופס / כתובת) ומחפש בו את המספר המתקשר, הקו/שלוחה וסוג האירוע
+const pbxLog = []; // 30 האחרונים – לבדיקה במסך הניהול
+const flatten = (o, out = {}, pre = '') => { for (const [k, v] of Object.entries(o || {})) { if (v && typeof v === 'object' && !Array.isArray(v)) flatten(v, out, pre + k + '.'); else out[pre + k] = v; } return out; };
+const pick = (f, re) => { for (const [k, v] of Object.entries(f)) if (re.test(k.split('.').pop()) && v !== '' && v != null) return String(v); return ''; };
+function pbxParse(f) {
+  return {
+    from: pick(f, /^(caller_?id_?number|caller_?number|callerid|caller|from|from_?number|src|source|ani|cli|phone|phone_?number|number|caller_?id|customer_?number)$/i),
+    to: pick(f, /^(destination_?number|destination|dest|dst|to|to_?number|called|called_?number|extension|ext|did|dnis|line|telephone_?line|agent)$/i),
+    name: pick(f, /^(caller_?id_?name|caller_?name|cid_?name|name)$/i),
+    event: pick(f, /^(event|event_?name|event_?type|type|status|state|call_?state|call_?status|action|direction)$/i),
+    callId: pick(f, /^(uuid|call_?id|callid|call_?uuid|unique_?id|id)$/i),
+  };
+}
+function callInfo(phone, p = {}) {
+  const c = contactFor(phone);
+  const tickets = db.tickets.filter((t) => t.phone === phone).sort((a, b) => b.createdAt - a.createdAt);
+  const lastDone = tickets.find((t) => t.resolution);
+  return {
+    phone, callId: p.callId || '', to: p.to || '', name: (c && c.name) || (p.name && !/^[\d+\s-]+$/.test(p.name) ? p.name : '') || (tickets[0] ? displayName(tickets[0]) : ''),
+    company: (c && c.company) || '', known: !!c || tickets.length > 0,
+    open: tickets.filter((t) => t.status !== 'closed').map((t) => ({ id: t.id, assigneeId: t.assigneeId, assignee: userById(t.assigneeId)?.name || '', last: t.lastText || '' })),
+    lastDone: lastDone ? { id: lastDone.id, at: lastDone.closedAt, by: lastDone.closedByName || '', text: lastDone.resolution } : null,
+    ticketsCount: tickets.length,
+  };
+}
+async function pbxWebhook(req, res, query) {
+  const key = query.get('key') || req.headers['x-api-key'] || '';
+  if (!db.config.pbxKey || key !== db.config.pbxKey) return send(res, 403, { error: 'bad key' });
+  let body = {};
+  try {
+    const raw = (await readBody(req, 256 * 1024)).toString('utf8');
+    if (raw.trim().startsWith('{') || raw.trim().startsWith('[')) body = JSON.parse(raw);
+    else if (raw.includes('=')) body = Object.fromEntries(new URLSearchParams(raw));
+  } catch {}
+  const f = flatten({ ...Object.fromEntries([...query].filter(([k]) => k !== 'key')), ...(Array.isArray(body) ? body[0] : body) });
+  for (const k of Object.keys(f)) if (/pass|token|secret|key|auth/i.test(k)) delete f[k];
+  const p = pbxParse(f);
+  pbxLog.unshift({ at: now(), fields: f, parsed: p }); pbxLog.length = Math.min(pbxLog.length, 30);
+  send(res, 200, { ok: true });
+  const phone = normPhone(p.from);
+  if (!phone) return;
+  const ended = /hang|end|complet|disconnect|bye|finish|answer|missed|busy/i.test(p.event);
+  const answered = /answer/i.test(p.event);
+  const ext = String(p.to || '').replace(/\D/g, '');
+  const people = db.users.filter((u) => u.active !== false);
+  let targets = ext ? people.filter((u) => u.ext && (ext.endsWith(u.ext) || u.ext.endsWith(ext))) : [];
+  if (!targets.length) targets = people.some((u) => u.ext) ? admins() : people;
+  if (ended) { for (const u of targets) sendTo(u.id, { type: 'call-end', phone, callId: p.callId, answered }); return; }
+  const call = callInfo(phone, p);
+  log(`📞 call from ${phone}${p.to ? ' to ' + p.to : ''} → ${targets.map((u) => u.name).join(', ')}`);
+  for (const u of targets) sendTo(u.id, { type: 'call', call });
+}
+route('POST', /^\/api\/pbx\/webhook$/, (req, res, { query }) => pbxWebhook(req, res, query), { auth: 'none' });
+route('GET', /^\/api\/pbx\/webhook$/, (req, res, { query }) => pbxWebhook(req, res, query), { auth: 'none' });
+route('GET', /^\/api\/admin\/pbx-log$/, (req, res) => send(res, 200, pbxLog), { auth: 'admin' });
+route('POST', /^\/api\/admin\/pbx-key$/, (req, res) => { db.config.pbxKey = crypto.randomBytes(12).toString('hex'); store.saveConfig(); send(res, 200, { key: db.config.pbxKey }); }, { auth: 'admin' });
+route('POST', /^\/api\/admin\/pbx-test$/, async (req, res, { user }) => {
+  const b = await readJson(req);
+  const call = { caller_id_number: normPhone(b.phone) || '972501234567', destination_number: user.ext || '', event: 'ringing' };
+  pbxLog.unshift({ at: now(), fields: { ...call, test: 'בדיקה מהמסך' }, parsed: pbxParse(call) });
+  sendTo(user.id, { type: 'call', call: callInfo(call.caller_id_number) });
+  send(res, 200, { ok: true });
+}, { auth: 'admin' });
+
 // ---------- מסך "💬 וואטסאפ" ----------
 function waGuard(user, res) { if (!canWa(user)) { send(res, 403, { error: 'אין לך הרשאה למסך הוואטסאפ – מנהל יכול להוסיף בניהול ← עובדים' }); return false; } return true; }
 route('GET', /^\/api\/wa\/chats$/, async (req, res, { user, query }) => {
@@ -1415,7 +1481,7 @@ route('POST', /^\/api\/admin\/users$/, async (req, res, { user }) => {
     db.users.push(u);
   }
   if (u.id === user.id && b.role !== 'admin') return send(res, 400, { error: 'אי אפשר להוריד לעצמך הרשאת מנהל' });
-  Object.assign(u, { name: String(b.name || username), username, role: b.role === 'admin' ? 'admin' : 'agent', active: b.active !== false, phone: normPhone(b.phone), waAccess: !!b.waAccess });
+  Object.assign(u, { name: String(b.name || username), username, role: b.role === 'admin' ? 'admin' : 'agent', active: b.active !== false, phone: normPhone(b.phone), waAccess: !!b.waAccess, ext: String(b.ext || '').replace(/\D/g, '') });
   if (b.password) Object.assign(u, hashPassword(b.password));
   store.saveUsers();
   send(res, 200, publicUser(u));
@@ -1598,6 +1664,8 @@ process.on('unhandledRejection', (e) => log('unhandled', e && (e.stack || e.mess
   store.saveConfig();
   log('migration v11:', noa ? `sales → ${noa.name}` : 'Noa not found – skipped');
 })();
+
+if (!db.config.pbxKey) { db.config.pbxKey = crypto.randomBytes(12).toString('hex'); store.saveConfig(); }
 
 // חד-פעמי (גרסה 20): הקבוצה "KC + VCAT" כיעד לקריאת שירות, אם המוקד כבר מכיר אותה
 (function addVcatTarget() {

@@ -312,3 +312,22 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .msg.deleted { opacity: .75; }
 .msg.deleted .del-note { font-size: 12px; color: var(--red); font-weight: 600; }
 .msg.deleted .del-orig { text-decoration: line-through; color: var(--muted); }
+
+/* 📞 מי מתקשר */
+#calls { position: fixed; bottom: 16px; left: 16px; z-index: 50; display: flex; flex-direction: column; gap: 10px; width: min(380px, calc(100vw - 32px)); }
+.callpop { background: var(--panel); border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.25); padding: 12px 14px; border-top: 5px solid var(--green2); animation: cpIn .25s ease; }
+.callpop.ended { border-top-color: var(--muted); opacity: .85; }
+.cp-head { display: flex; gap: 10px; align-items: flex-start; }
+.cp-ring { font-size: 26px; animation: cpRing 1s infinite; }
+.callpop.ended .cp-ring { animation: none; }
+.cp-who { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cp-who b { font-size: 17px; }
+.cp-who small { color: var(--muted); }
+.cp-x { padding: 2px 8px; }
+.cp-line { font-size: 13px; margin-top: 6px; }
+.cp-line.muted { color: var(--muted); }
+.cp-line a { cursor: pointer; color: var(--green); font-weight: 600; }
+.cp-act { margin-top: 8px; }
+@keyframes cpIn { from { transform: translateY(20px); opacity: 0; } }
+@keyframes cpRing { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-15deg); } 75% { transform: rotate(15deg); } }
+.cp-who > * { align-self: flex-start; }

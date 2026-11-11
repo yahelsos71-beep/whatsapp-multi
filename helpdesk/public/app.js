@@ -185,6 +185,10 @@ function onEvent(ev) {
       Sounds.newMessage();
       notify(ev.sound === 'new' ? 'קריאה חדשה' : 'הודעה חדשה', `${t.customerName}: ${t.lastText || ''}`);
     }
+  } else if (ev.type === 'call') {
+    showCall(ev.call);
+  } else if (ev.type === 'call-end') {
+    endCall(ev);
   } else if (ev.type === 'msgupdate') {
     if (S.view && S.view.ticket.id === ev.ticketId) {
       const i = S.view.messages.findIndex((x) => x.id === ev.message.id);
@@ -1001,12 +1005,12 @@ function mySettingsDialog() {
 let A = null; // {config, users, instances}
 async function adminDialog(tab = 'deps') {
   try { A = await api('GET', '/api/admin/config'); } catch (e) { return toast(e.message, true); }
-  const tabs = [['deps', '🏷️ מחלקות וניתוב'], ['users', '👥 עובדים'], ['contacts', '📇 אנשי קשר'], ['wa', '📱 מספרי וואטסאפ'], ['ai', '🤖 AI ומענה אוטומטי'], ['general', '⚙️ כללי']];
+  const tabs = [['deps', '🏷️ מחלקות וניתוב'], ['users', '👥 עובדים'], ['contacts', '📇 אנשי קשר'], ['wa', '📱 מספרי וואטסאפ'], ['pbx', '📞 מרכזייה'], ['ai', '🤖 AI ומענה אוטומטי'], ['general', '⚙️ כללי']];
   openModal(`<h3>🛠️ ניהול המוקד</h3><div class="stabs">${tabs.map(([k, n]) => `<button data-k="${k}" class="${k === tab ? 'on' : ''}">${n}</button>`).join('')}</div><div id="apane"></div>
     <div class="row"><span style="flex:1"></span><button id="aclose">סגור</button></div>`, true);
   box.querySelectorAll('.stabs button').forEach((b) => (b.onclick = () => adminDialog(b.dataset.k)));
   $('#aclose').onclick = closeModal;
-  ({ deps: adminDeps, users: adminUsers, contacts: adminContacts, wa: adminWa, ai: adminAi, general: adminGeneral })[tab]();
+  ({ deps: adminDeps, users: adminUsers, contacts: adminContacts, wa: adminWa, pbx: adminPbx, ai: adminAi, general: adminGeneral })[tab]();
 }
 const userOptions = (cur) => `<option value="">— בחר עובד —</option>` + A.users.filter((u) => u.active).map((u) => `<option value="${u.id}" ${u.id === cur ? 'selected' : ''}>${esc(u.name)}</option>`).join('');
 async function saveConfig(patch, msg = 'נשמר ✓') {
@@ -1071,6 +1075,7 @@ function adminUsers() {
       <div class="grid2"><div><label>שם</label><input id="uname" value="${esc(u?.name || '')}" placeholder="טל"></div>
       <div><label>שם משתמש (לכניסה, באנגלית)</label><input id="uuser" dir="ltr" value="${esc(u?.username || '')}" placeholder="tal"></div>
       <div><label>${u ? 'סיסמה חדשה (ריק = בלי שינוי)' : 'סיסמה'}</label><input id="upass" type="text" dir="ltr"></div>
+      <div><label>📞 שלוחה / קו במרכזייה (לחלון "מי מתקשר")</label><input id="uext" dir="ltr" value="${esc(u?.ext || '')}" placeholder="למשל 1094103638"></div>
       <div><label>הטלפון הנייד של העובד (בשביל קבוצות)</label><input id="uphone" dir="ltr" value="${esc(u?.phone ? '0' + u.phone.slice(3) : '')}" placeholder="0521234567"></div>
       <div><label>תפקיד</label><select id="urole"><option value="agent">נציג – רואה רק את הקריאות שלו</option><option value="admin" ${u?.role === 'admin' ? 'selected' : ''}>מנהל – רואה הכל ומנהל</option></select></div></div>
       ${u ? `<label class="check"><input type="checkbox" id="uactive" ${u.active ? 'checked' : ''}> פעיל (אפשר להיכנס ולקבל קריאות)</label>` : ''}
@@ -1079,7 +1084,7 @@ function adminUsers() {
     if ($('#unew')) $('#unew').onclick = () => form(null);
     $('#usave').onclick = async () => {
       try {
-        await api('POST', '/api/admin/users', { id: u?.id, name: $('#uname').value, username: $('#uuser').value, password: $('#upass').value, phone: $('#uphone').value, role: $('#urole').value, active: u ? $('#uactive').checked : true, waAccess: $('#uwa').checked });
+        await api('POST', '/api/admin/users', { id: u?.id, name: $('#uname').value, username: $('#uuser').value, password: $('#upass').value, phone: $('#uphone').value, role: $('#urole').value, active: u ? $('#uactive').checked : true, waAccess: $('#uwa').checked, ext: $('#uext').value });
         A = await api('GET', '/api/admin/config'); S.users = await api('GET', '/api/users'); fillUserFilter();
         toast('נשמר ✓'); draw();
       } catch (e) { toast(e.message, true); }
@@ -1500,3 +1505,66 @@ document.addEventListener('click', async (e) => {
     toast('🗑 ההודעה נמחקה אצל הלקוח');
   } catch (er) { toast(er.message, true, 6000); b.disabled = false; }
 });
+
+
+// =====================================================================
+// 📞 "מי מתקשר" – חלון קופץ כשהמרכזייה מדווחת על שיחה נכנסת
+// =====================================================================
+const calls = new Map(); // phone -> element
+function showCall(c) {
+  let wrap = $('#calls');
+  if (!wrap) { wrap = document.createElement('div'); wrap.id = 'calls'; document.body.appendChild(wrap); }
+  if (calls.has(c.phone)) calls.get(c.phone).remove();
+  const el = document.createElement('div');
+  el.className = 'callpop';
+  const title = c.name || localPhone(c.phone);
+  const mine = (o) => S.me.role === 'admin' || o.assigneeId === S.me.id;
+  el.innerHTML = `<div class="cp-head"><span class="cp-ring">📞</span><div class="cp-who"><small>שיחה נכנסת${c.to ? ' · קו ' + esc(c.to) : ''}</small>
+      <b>${esc(title)}</b>${c.company ? `<span>🏢 ${esc(c.company)}</span>` : ''}${c.name ? `<span class="sph" dir="ltr" data-copy="${esc(localPhone(c.phone))}" title="לחץ להעתקה">${esc(localPhone(c.phone))}</span>` : ''}</div>
+      <button class="ghost cp-x" title="סגור">✕</button></div>
+    ${!c.known ? '<div class="cp-line">🆕 לקוח לא מוכר – אין קריאות קודמות</div>' : ''}
+    ${c.open.map((o) => `<div class="cp-line">🎫 קריאה פתוחה #${o.id}${o.assignee ? ' אצל ' + esc(o.assignee) : ''}${o.last ? ` – <i>${esc(o.last.slice(0, 60))}</i>` : ''} ${mine(o) ? `<a data-open="${o.id}">פתח</a>` : ''}</div>`).join('')}
+    ${c.lastDone ? `<div class="cp-line">✅ טיפול אחרון${c.lastDone.at ? ' (' + new Date(c.lastDone.at).toLocaleDateString('he-IL') + (c.lastDone.by ? ', ' + esc(c.lastDone.by) : '') + ')' : ''}: ${esc(c.lastDone.text.slice(0, 120))}</div>` : ''}
+    ${c.ticketsCount ? `<div class="cp-line muted">סה״כ ${c.ticketsCount} קריאות בעבר</div>` : ''}
+    <div class="row cp-act">${S.me.waAccess ? '<button data-act="wa">💬 וואטסאפ</button>' : ''}<button data-act="new">✉️ שלח הודעה</button></div>`;
+  wrap.prepend(el);
+  calls.set(c.phone, el);
+  el.querySelector('.cp-x').onclick = () => { el.remove(); calls.delete(c.phone); };
+  el.querySelectorAll('[data-open]').forEach((a) => (a.onclick = () => openTicket(a.dataset.open)));
+  el.querySelectorAll('[data-act]').forEach((b) => (b.onclick = async () => {
+    if (b.dataset.act === 'new') { newChatDialog(); setTimeout(() => { const ph = document.querySelector('#box input[dir=ltr]'); if (ph && !ph.value) ph.value = localPhone(c.phone).replace(/-/g, ''); }, 50); return; }
+    if (S.mode !== 'wa') enterWa();
+    S.wa.q = c.phone.slice(3); if ($('#waQ')) $('#waQ').value = '0' + S.wa.q; await loadWaChats();
+    const hit = S.wa.chats.find((x) => x.phone === c.phone); if (hit) openWaChat(hit.key);
+  }));
+  Sounds.newMessage();
+  notify('📞 ' + title, (c.company ? c.company + ' · ' : '') + localPhone(c.phone));
+  clearTimeout(el._t); el._t = setTimeout(() => { el.remove(); calls.delete(c.phone); }, 3 * 60000);
+}
+function endCall(ev) {
+  const el = calls.get(ev.phone); if (!el) return;
+  el.classList.add('ended');
+  const h = el.querySelector('.cp-who small'); if (h) h.textContent = ev.answered ? '✅ השיחה נענתה' : '📴 השיחה הסתיימה';
+  clearTimeout(el._t); el._t = setTimeout(() => { el.remove(); calls.delete(ev.phone); }, 45000);
+}
+
+function adminPbx() {
+  const url = `${location.protocol}//${location.hostname}:${location.port || 80}/api/pbx/webhook?key=${A.config.pbxKey}`;
+  $('#apane').innerHTML = `<h4>📞 חלון "מי מתקשר"</h4>
+    <div class="hint">כשהמרכזייה שולחת הודעה (webhook) על שיחה נכנסת – קופץ חלון עם שם הלקוח, החברה, קריאות פתוחות והטיפול האחרון.<br>
+    את השיחה מקבל העובד שהשלוחה/הקו שלו רשומים אצלו (👥 עובדים ← עריכה ← "שלוחה / קו"). אם לא רשום לאף אחד – כולם מקבלים.</div>
+    <label>כתובת ה-Webhook להדבקה במרכזייה</label>
+    <div class="row"><input id="pUrl" dir="ltr" readonly value="${esc(url)}" style="flex:1;margin:0"><button id="pCopy">📋 העתק</button><button class="ghost" id="pNew" title="מפתח חדש – הכתובת הישנה תפסיק לעבוד">🔑 מפתח חדש</button></div>
+    <div class="hint">⚠️ המרכזייה של 015 נמצאת באינטרנט, ולכן היא צריכה להגיע לשרת מבחוץ: במקום <b dir="ltr">${esc(location.hostname)}</b> צריך את הכתובת החיצונית של המשרד (IP קבוע / דומיין),
+    ובראוטר להפנות את הפורט ${esc(location.port || '80')} לשרת. אפשר לבקש מאיש המחשוב. שיטות: POST (JSON או טופס) או GET – הכל עובד.</div>
+    <div class="row"><input id="pTest" dir="ltr" placeholder="מספר לבדיקה (למשל לקוח קיים)" style="flex:1;margin:0"><button id="pTestBtn">🧪 הקפץ חלון בדיקה</button></div>
+    <h4>📥 מה התקבל מהמרכזייה לאחרונה</h4><div id="pLog" class="hint">טוען...</div>`;
+  $('#pCopy').onclick = () => copyText($('#pUrl').value).then((ok) => toast(ok ? 'הכתובת הועתקה ✓' : 'לא הצלחתי להעתיק', !ok));
+  $('#pNew').onclick = async () => { try { const r = await api('POST', '/api/admin/pbx-key'); A.config.pbxKey = r.key; adminPbx(); toast('נוצר מפתח חדש – עדכן את הכתובת במרכזייה'); } catch (e) { toast(e.message, true); } };
+  $('#pTestBtn').onclick = async () => { try { await api('POST', '/api/admin/pbx-test', { phone: $('#pTest').value }); closeModal(); } catch (e) { toast(e.message, true); } };
+  api('GET', '/api/admin/pbx-log').then((list) => {
+    $('#pLog').innerHTML = list.length ? list.map((x) => `<div class="card2" style="margin:6px 0;font-size:12px"><b>${new Date(x.at).toLocaleString('he-IL')}</b> –
+      מתקשר: <b dir="ltr">${esc(x.parsed.from || '?')}</b> · קו: <b dir="ltr">${esc(x.parsed.to || '?')}</b> · אירוע: <b>${esc(x.parsed.event || '?')}</b>
+      <pre dir="ltr" style="white-space:pre-wrap;margin:4px 0 0">${esc(JSON.stringify(x.fields, null, 1)).slice(0, 1500)}</pre></div>`).join('') : 'עוד לא התקבל כלום מהמרכזייה.';
+  }).catch((e) => { $('#pLog').textContent = e.message; });
+}
