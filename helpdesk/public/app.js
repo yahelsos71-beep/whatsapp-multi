@@ -636,7 +636,7 @@ async function sendFile(file) {
 function closeTicket() {
   const t = S.view.ticket;
   openModal(`<h3>✅ סגירת קריאה #${t.id} – ${esc(t.customerName)}</h3>
-    <label>מה בוצע? (חובה – יופיע בפעם הבאה שהלקוח פונה)</label>
+    <label>מה בוצע? (${S.me.quickClose ? 'לא חובה אצלך' : 'חובה'} – יופיע בפעם הבאה שהלקוח פונה)</label>
     <textarea id="resol" rows="4" placeholder="למשל: אופסה הסיסמה למרכזייה והוגדרה מחדש שלוחה 3. הלקוח אישר שעובד."></textarea>
     <div class="row"><button class="primary" id="rclose">✅ סגור קריאה</button><button id="cancel">ביטול</button></div>`);
   $('#resol').focus();
@@ -644,7 +644,7 @@ function closeTicket() {
   $('#rclose').onclick = () => doCloseTicket(t, $('#resol').value.trim());
 }
 async function doCloseTicket(t, resolution) {
-  if (resolution.length < 3) { toast('כתוב בקצרה מה בוצע', true); $('#resol').focus(); return; }
+  if (resolution.length < 3 && !S.me.quickClose) { toast('כתוב בקצרה מה בוצע', true); $('#resol').focus(); return; }
   try {
     await api('POST', `/api/tickets/${t.id}/close`, { resolution });
     closeModal();
@@ -1083,12 +1083,13 @@ function adminUsers() {
       <div><label>הטלפון הנייד של העובד (בשביל קבוצות)</label><input id="uphone" dir="ltr" value="${esc(u?.phone ? '0' + u.phone.slice(3) : '')}" placeholder="0521234567"></div>
       <div><label>תפקיד</label><select id="urole"><option value="agent">נציג – רואה רק את הקריאות שלו</option><option value="admin" ${u?.role === 'admin' ? 'selected' : ''}>מנהל – רואה הכל ומנהל</option></select></div></div>
       ${u ? `<label class="check"><input type="checkbox" id="uactive" ${u.active ? 'checked' : ''}> פעיל (אפשר להיכנס ולקבל קריאות)</label>` : ''}
+      <label class="check"><input type="checkbox" id="uquick" ${u?.quickClose ? 'checked' : ''}> ✅ יכול לסגור קריאה בלי לכתוב "מה בוצע"</label>
       <label class="check"><input type="checkbox" id="uwa" ${u?.waAccess ? 'checked' : ''}> 💬 גישה למסך "וואטסאפ" – רואה את כל הצ׳אטים של המספרים ויכול לכתוב בהם (למנהל תמיד יש)</label>
       <div class="row"><button class="primary" id="usave">💾 שמור</button>${u ? '<button id="unew">+ עובד חדש</button>' : ''}</div>`;
     if ($('#unew')) $('#unew').onclick = () => form(null);
     $('#usave').onclick = async () => {
       try {
-        await api('POST', '/api/admin/users', { id: u?.id, name: $('#uname').value, username: $('#uuser').value, password: $('#upass').value, phone: $('#uphone').value, role: $('#urole').value, active: u ? $('#uactive').checked : true, waAccess: $('#uwa').checked, ext: $('#uext').value });
+        await api('POST', '/api/admin/users', { id: u?.id, name: $('#uname').value, username: $('#uuser').value, password: $('#upass').value, phone: $('#uphone').value, role: $('#urole').value, active: u ? $('#uactive').checked : true, waAccess: $('#uwa').checked, ext: $('#uext').value, quickClose: $('#uquick').checked });
         A = await api('GET', '/api/admin/config'); S.users = await api('GET', '/api/users'); fillUserFilter();
         toast('נשמר ✓'); draw();
       } catch (e) { toast(e.message, true); }

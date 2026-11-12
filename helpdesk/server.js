@@ -28,7 +28,7 @@ function checkPassword(user, password) {
   const { hash } = hashPassword(password, user.salt);
   return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(user.hash, 'hex'));
 }
-const publicUser = (u) => u && { id: u.id, name: u.name, username: u.username, role: u.role, active: u.active !== false, phone: u.phone || '', waAccess: canWa(u), ext: u.ext || '' };
+const publicUser = (u) => u && { id: u.id, name: u.name, username: u.username, role: u.role, active: u.active !== false, phone: u.phone || '', waAccess: canWa(u), ext: u.ext || '', quickClose: !!u.quickClose };
 // מי רואה את מסך "💬 וואטסאפ" (כל הצ'אטים של המספרים): מנהלים, ועובדים שקיבלו הרשאה
 const canWa = (u) => !!u && (u.role === 'admin' || u.waAccess === true);
 // איפוס סיסמה מקומי: reset-password.bat כותב data/reset-password.json והשרת מחיל אותו
@@ -909,10 +909,10 @@ route('POST', /^\/api\/tickets\/(\d+)\/close$/, async (req, res, { user, params 
   const t = myTicket(user, params[0], res); if (!t) return;
   const b = await readJson(req);
   const resolution = String(b.resolution || '').trim();
-  if (resolution.length < 3) return send(res, 400, { error: 'כדי לסגור – כתוב בקצרה מה בוצע' });
+  if (resolution.length < 3 && !user.quickClose) return send(res, 400, { error: 'כדי לסגור – כתוב בקצרה מה בוצע' });
   t.status = 'closed'; t.closedAt = now(); t.closedBy = user.id; t.awaiting = false; t.snoozeUntil = null;
   t.resolution = resolution;
-  note(t, `✅ הקריאה נסגרה על ידי ${user.name}\n📝 מה בוצע: ${resolution}`);
+  note(t, `✅ הקריאה נסגרה על ידי ${user.name}${resolution ? `\n📝 מה בוצע: ${resolution}` : ''}`);
   emitTicket(t);
   send(res, 200, summary(t));
 });
@@ -1584,7 +1584,7 @@ route('POST', /^\/api\/admin\/users$/, async (req, res, { user }) => {
     db.users.push(u);
   }
   if (u.id === user.id && b.role !== 'admin') return send(res, 400, { error: 'אי אפשר להוריד לעצמך הרשאת מנהל' });
-  Object.assign(u, { name: String(b.name || username), username, role: b.role === 'admin' ? 'admin' : 'agent', active: b.active !== false, phone: normPhone(b.phone), waAccess: !!b.waAccess, ext: String(b.ext || '').replace(/\D/g, '') });
+  Object.assign(u, { name: String(b.name || username), username, role: b.role === 'admin' ? 'admin' : 'agent', active: b.active !== false, phone: normPhone(b.phone), waAccess: !!b.waAccess, ext: String(b.ext || '').replace(/\D/g, ''), quickClose: !!b.quickClose });
   if (b.password) Object.assign(u, hashPassword(b.password));
   store.saveUsers();
   send(res, 200, publicUser(u));
@@ -1768,6 +1768,11 @@ process.on('unhandledRejection', (e) => log('unhandled', e && (e.stack || e.mess
   log('migration v11:', noa ? `sales → ${noa.name}` : 'Noa not found – skipped');
 })();
 
+// חד-פעמי: חיים (המנהל) יכול לסגור קריאה בלי לכתוב מה בוצע
+if (!db.config.quickCloseMigrated) {
+  const chaim = db.users.find((u) => u.role === 'admin' && /חיים/.test(u.name));
+  if (chaim) { chaim.quickClose = true; db.config.quickCloseMigrated = true; store.saveUsers(); store.saveConfig(); }
+}
 if (!db.config.pbxKey) { db.config.pbxKey = crypto.randomBytes(12).toString('hex'); store.saveConfig(); }
 
 // חד-פעמי (גרסה 20): הקבוצה "KC + VCAT" כיעד לקריאת שירות, אם המוקד כבר מכיר אותה
