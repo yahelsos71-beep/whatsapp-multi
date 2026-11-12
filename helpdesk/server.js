@@ -1153,6 +1153,7 @@ async function pbxPoll() {
       const id = String(f.uniqueid || f.callid || f.id || (f.snumber || '') + '|' + (f.dnumber || ''));
       const from = normPhone(f.callerid_external || f.scallerid || f.callerid || f.snumber || f.from || '');
       if (!from || from.length < 9) continue;
+      if (now() - (recentDials.get(from) || 0) < 90000) continue; // החיוג שלנו מהמוקד – לא שיחה נכנסת
       seen.add(id);
       if (activeCalls.has(id)) continue;
       activeCalls.set(id, from);
@@ -1173,6 +1174,31 @@ async function pbxPoll() {
   }
 }
 pbxSchedule(3000);
+// ---------- 📞 חיוג מהמוקד דרך 015: קודם מצלצל הקו של העובד, וכשהוא עונה – מחובר ללקוח ----------
+const recentDials = new Map(); // phone -> ts – כדי לא להקפיץ "שיחה נכנסת" על החיוג שלנו
+route('POST', /^\/api\/dial$/, async (req, res, { user }) => {
+  const b = await readJson(req);
+  const phone = normPhone(b.phone);
+  if (!phone) return send(res, 400, { error: 'מספר טלפון לא תקין' });
+  const c = db.config.pbx || {};
+  if (!c.user || !c.pass) return send(res, 400, { error: 'המרכזייה לא מחוברת – מנהל: ניהול ← 📞 מרכזייה ← חיבור ישיר' });
+  if (!user.ext) return send(res, 400, { error: 'לא רשום לך קו טלפון – מנהל: ניהול ← 👥 עובדים ← עריכה ← "שלוחה / קו"' });
+  const local = phone.startsWith('972') ? '0' + phone.slice(3) : phone;
+  recentDials.set(phone, now());
+  try {
+    const body = new URLSearchParams({ auth_username: c.user, auth_password: c.pass, stype: 'phone', snumber: user.ext, ctype: '', cnumber: local, callerid1: local });
+    const r = await fetch(process.env.HD_015_MAKE_URL || `https://${String(c.host || 'www.015pbx.net').replace(/^https?:\/\//, '').replace(/\/+$/, '')}/api/json/calls/make/`,
+      { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString(), signal: AbortSignal.timeout(15000) });
+    const text = await r.text();
+    let j = null; try { j = JSON.parse(text); } catch {}
+    const resp = j && Array.isArray(j.responses) ? j.responses[0] : null;
+    const code = resp ? Number(resp.code) : r.status;
+    if (!r.ok || code >= 300) return send(res, 502, { error: 'החיוג נכשל: ' + ((resp && resp.message) || code) });
+    log(`📞 ${user.name} dials ${local}`);
+    send(res, 200, { ok: true });
+  } catch (e) { send(res, 502, { error: 'החיוג נכשל: ' + e.message }); }
+});
+
 route('POST', /^\/api\/admin\/pbx$/, async (req, res) => {
   const b = await readJson(req);
   const old = db.config.pbx || {};

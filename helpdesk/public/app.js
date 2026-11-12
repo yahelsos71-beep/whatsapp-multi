@@ -392,6 +392,7 @@ function renderChatHead() {
       ? '<button id="reopenBtn">🔄 פתח מחדש</button>'
       : `${t.snoozeUntil ? `<span class="chip who">⏸ מושהית עד ${fmtWhen(t.snoozeUntil)}</span><button id="unsnoozeBtn">▶ החזר עכשיו</button>` : '<button id="snoozeBtn" title="עדיין לא סגרנו – מתכתבים עם הלקוח. הקריאה תעבור ל״מושהות״ ותחזור עם תזכורת">⏸ השהה</button>'}<button id="transferBtn">↪️ העבר שיחה</button><button class="primary" id="closeBtn">✅ סגור קריאה</button>`}
     ${S.targets.length && !ro ? `<button id="svcBtn" title="שליחת קריאת שירות בוואטסאפ">🛠 ${S.targets.length === 1 ? 'קריאה ל' + esc(S.targets[0].name) : 'קריאת שירות'}</button>` : ''}
+    ${!t.isGroup ? `<button class="ghost" id="dialBtn" title="חיוג ללקוח דרך המרכזייה – הטלפון שלך יצלצל קודם">📞 חייג</button>` : ''}
     ${!t.isGroup && !ro ? `<button class="ghost" id="contactBtn" title="שמירת שם וחברה ללקוח הזה">👤 ${t.contact ? 'איש קשר' : 'שמור איש קשר'}</button>` : ''}
     <button class="ghost" id="waHistBtn" title="ההודעות הקודמות עם ${t.isGroup ? 'הקבוצה' : 'הלקוח'} מוואטסאפ – גם מלפני המוקד">📜 היסטוריה</button>
     ${t.pinnedTo ? `<span class="chip who">📌 קבוע: ${esc(t.pinnedTo)}</span>` : ''}
@@ -402,6 +403,7 @@ function renderChatHead() {
   if ($('#unsnoozeBtn')) $('#unsnoozeBtn').onclick = async () => { try { await api('POST', `/api/tickets/${t.id}/snooze`, { until: null }); toast('הקריאה חזרה לרשימה ▶'); } catch (e) { toast(e.message, true); } };
   if ($('#closeBtn')) $('#closeBtn').onclick = closeTicket;
   $('#waHistBtn').onclick = () => waHistoryDialog(t);
+  if ($('#dialBtn')) $('#dialBtn').onclick = () => dialPhone(localPhone(t.phone), t.customerName);
   if ($('#svcBtn')) $('#svcBtn').onclick = () => serviceCallDialog(t);
   if ($('#contactBtn')) $('#contactBtn').onclick = () => {
     const c = t.contact;
@@ -823,7 +825,8 @@ function newChatDialog() {
     <div><label>שם</label><input id="nname"></div></div>
     <div class="row" style="margin:10px 0 4px;justify-content:space-between"><label style="margin:0">הודעה</label><button id="ntpl" type="button">📝 בחר תבנית</button></div>
     <textarea id="ntext" rows="7"></textarea>
-    <div class="row"><button class="primary" id="nsend">שלח ופתח קריאה</button><button id="cancel">ביטול</button></div>`);
+    <div class="row"><button class="primary" id="nsend">שלח ופתח קריאה</button><button id="ndial" title="הטלפון שלך יצלצל, וכשתרים – יחייג ללקוח">📞 חייג</button><button id="cancel">ביטול</button></div>`);
+  $('#ndial').onclick = () => { if (!$('#nphone').value.trim()) return toast('בחר לקוח או כתוב טלפון', true); dialPhone($('#nphone').value, $('#nname').value); };
   $('#cancel').onclick = closeModal;
   const fmt = (p) => (p.startsWith('972') ? '0' + p.slice(3) : p);
   let timer;
@@ -833,8 +836,9 @@ function newChatDialog() {
     const r = await api('GET', '/api/contacts?q=' + encodeURIComponent(q)).catch(() => ({ list: [], total: 0 }));
     if (!r.total) { $('#cres').innerHTML = '<div class="hint">אין עדיין אנשי קשר – המנהל מייבא אותם ב"ניהול ← 📇 אנשי קשר"</div>'; return; }
     $('#cres').innerHTML = r.list.length ? r.list.flatMap((c) => c.phones.map((p) => `<button data-p="${p}" data-n="${esc(c.name || c.company)}">
-      <span style="flex:1">${c.company ? '🏢 ' + esc(c.company) : ''}${c.company && c.name ? ' · ' : ''}${esc(c.name || '')}</span><span dir="ltr" class="chip">${fmt(p)}</span></button>`)).join('')
+      <span style="flex:1">${c.company ? '🏢 ' + esc(c.company) : ''}${c.company && c.name ? ' · ' : ''}${esc(c.name || '')}</span><span dir="ltr" class="chip">${fmt(p)}</span><span class="cdial" data-dial="${p}" title="חייג">📞</span></button>`)).join('')
       : '<div class="hint">לא נמצא</div>';
+    $('#cres').querySelectorAll('.cdial').forEach((d) => (d.onclick = (e) => { e.stopPropagation(); const b = d.closest('button'); dialPhone(fmt(d.dataset.dial), b.dataset.n); }));
     $('#cres').querySelectorAll('button').forEach((b) => (b.onclick = () => {
       $('#nphone').value = fmt(b.dataset.p); $('#nname').value = b.dataset.n; $('#cres').innerHTML = ''; $('#csearch').value = b.dataset.n; $('#ntext').focus({ preventScroll: true });
     }));
@@ -1582,4 +1586,13 @@ function adminPbx() {
       <pre dir="ltr" style="white-space:pre-wrap;margin:4px 0 0">${esc(JSON.stringify(x.fields, null, 1)).slice(0, 1500)}</pre></div>`).join('') : 'עוד לא התקבל כלום מהמרכזייה.';
   };
   api('GET', '/api/admin/pbx-log').then(drawLog).catch((e) => { $('#pLog').textContent = e.message; });
+}
+
+// 📞 חיוג דרך המרכזייה (015): הטלפון של העובד מצלצל, וכשהוא עונה – מחובר ללקוח
+async function dialPhone(phone, name) {
+  const p = String(phone || '').replace(/[^\d+]/g, '');
+  if (!p) return;
+  toast(`📞 מחייג ל${name ? name + ' ' : ''}${p}... הטלפון שלך יצלצל – הרם`, false, 6000);
+  try { await api('POST', '/api/dial', { phone: p }); }
+  catch (e) { toast(e.message, true, 8000); }
 }
