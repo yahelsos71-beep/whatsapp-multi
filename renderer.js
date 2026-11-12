@@ -517,9 +517,10 @@ function settingsDialog() {
     <div class="hint">אחרי ההפעלה סורקים פעם אחת את הוואטסאפים ומתחברים פעם אחת למוקד. השינוי מפעיל את התוכנה מחדש.</div>
     <h4>עוצמה</h4>
     <div class="row"><input id="vol" type="range" min="0" max="1" step="0.05" value="${settings.vol}" style="flex:1"></div>
-    <div class="row"><button class="primary" id="cancel">סגור</button><button id="dbg">🐞 שמור קובץ אבחון</button></div>`;
+    <div class="row"><button class="primary" id="cancel">סגור</button><button id="newsAll">🆕 מה חדש</button><button id="dbg">🐞 שמור קובץ אבחון</button></div>`;
   modal.classList.add('on');
   box.querySelector('#dbg').onclick = saveDebug;
+  box.querySelector('#newsAll').onclick = () => whatsNew(true);
   box.querySelector('#personalMode').onchange = (e) => {
     const on = e.target.checked;
     if (!confirm(on ? 'לעבור לעבודה במקביל? התוכנה תיפתח מחדש, ותצטרך לסרוק פעם אחת את הוואטסאפים ולהתחבר למוקד.' : 'לחזור לחיבורים המשותפים? התוכנה תיפתח מחדש (ואז רק משתמש אחד יכול לפתוח אותה בכל רגע).')) { e.target.checked = !on; return; }
@@ -642,3 +643,21 @@ paintMute();
 document.getElementById('reload').onclick = () => { const it = items.get(active); if (it) it.wv.reload(); };
 
 build();
+
+
+// 🆕 "מה חדש" – אחרי עדכון של התוכנה קופץ פעם אחת, עד שלוחצים "קראתי"
+function whatsNew(all) {
+  const ver = ipcRenderer.sendSync('app-version');
+  const list = ipcRenderer.sendSync('changelog') || [];
+  if (settings.seenVersion === undefined) { settings.seenVersion = ver - 1; saveSettings(); }
+  const show = all ? list : list.filter((e) => e.v > settings.seenVersion && e.v <= ver);
+  if (!show.length) { if (!all && settings.seenVersion < ver) { settings.seenVersion = ver; saveSettings(); } return; }
+  if (!all && modal.classList.contains('on')) { setTimeout(() => whatsNew(false), 5000); return; }
+  box.innerHTML = `<h3>🆕 מה חדש ב-WhatsApp Multi</h3>
+    <div style="max-height:60vh;overflow-y:auto">${show.slice(0, all ? 40 : 15).map((e) => `<div style="margin:8px 0;padding:10px 12px;border-radius:10px;background:rgba(127,127,127,.12)"><b>גרסה ${e.v}</b>
+      <ul style="margin:6px 0 0;padding-inline-start:20px;line-height:1.7">${e.items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join('')}</div>
+    <div class="row"><button class="primary" id="newsOk">✔ קראתי, סגור</button></div>`;
+  modal.classList.add('on');
+  box.querySelector('#newsOk').onclick = () => { close(); if (!all) { settings.seenVersion = ver; saveSettings(); } };
+}
+setTimeout(() => whatsNew(false), 2500);

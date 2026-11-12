@@ -153,6 +153,7 @@ async function startMain() {
   fillUserFilter();
   renderInstances(); renderTabs(); renderList(); renderChat();
   connectEvents();
+  setTimeout(() => whatsNew(false), 800);
   if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
 }
 
@@ -991,7 +992,7 @@ async function taskDialog() {
 function mySettingsDialog() {
   const s = Sounds.settings;
   const opts = (cur) => Object.entries(Sounds.TONES).map(([k, t]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${t.name}</option>`).join('');
-  openModal(`<h3>⚙️ ההגדרות שלי</h3>
+  openModal(`<h3>⚙️ ההגדרות שלי <a id="newsAll" style="font-size:13px;cursor:pointer;float:left">🆕 מה חדש</a></h3>
     <h4>צלצולים</h4>
     <label>צליל להודעה / קריאה חדשה</label><div class="row" style="margin:0"><select id="sNew" style="flex:1">${opts(s.newTone)}</select><button id="tNew">▶</button></div>
     <label>צלצול תזכורת (כשלקוח מחכה לתשובה)</label><div class="row" style="margin:0"><select id="sRem" style="flex:1">${opts(s.remindTone)}</select><button id="tRem">▶</button></div>
@@ -1007,6 +1008,7 @@ function mySettingsDialog() {
   $('#sNew').onchange = (e) => { s.newTone = e.target.value; Sounds.save(); Sounds.play(s.newTone); };
   $('#sRem').onchange = (e) => { s.remindTone = e.target.value; Sounds.save(); Sounds.play(s.remindTone); };
   $('#tNew').onclick = () => Sounds.play(s.newTone);
+  $('#newsAll').onclick = () => whatsNew(true);
   $('#tRem').onclick = () => Sounds.play(s.remindTone);
   $('#sSec').onchange = (e) => { s.remindSec = Number(e.target.value); Sounds.save(); };
   $('#sDark').onchange = (e) => { const d = e.target.checked; if (d) document.documentElement.dataset.theme = 'dark'; else delete document.documentElement.dataset.theme; try { localStorage.setItem('hd-theme', d ? 'dark' : 'light'); } catch {} };
@@ -1655,3 +1657,22 @@ document.addEventListener('click', async (e) => {
   } catch (er) { toast(er.message, true, 6000); }
   b.disabled = false;
 });
+
+// =====================================================================
+// 🆕 "מה חדש" – אחרי כל עדכון קופץ פעם אחת לכל עובד, עד שהוא מסמן "קראתי"
+// =====================================================================
+async function whatsNew(all) {
+  let list = [];
+  try { list = await (await fetch('changelog.json?v=' + S.version, { cache: 'no-store' })).json(); } catch { return; }
+  const seen = S.me.seenVersion || (S.version - 1);
+  const show = all ? list : list.filter((e) => e.v > seen && e.v <= S.version);
+  if (!show.length) { if (all) toast('אין עדכונים להצגה'); return; }
+  if (!all && modal.classList.contains('on')) { setTimeout(() => whatsNew(false), 5000); return; }
+  openModal(`<h3>🆕 מה חדש במוקד</h3>
+    <div class="news">${show.slice(0, all ? 40 : 15).map((e) => `<div class="news-v"><b>גרסה ${e.v}</b><ul>${e.items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join('')}</div>
+    <div class="row"><button class="primary" id="newsOk">✔ קראתי, סגור</button></div>`);
+  $('#newsOk').onclick = async () => {
+    closeModal();
+    if (!all) { S.me.seenVersion = S.version; api('POST', '/api/me/seen', { version: S.version }).catch(() => {}); }
+  };
+}

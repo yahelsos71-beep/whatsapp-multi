@@ -28,7 +28,7 @@ function checkPassword(user, password) {
   const { hash } = hashPassword(password, user.salt);
   return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(user.hash, 'hex'));
 }
-const publicUser = (u) => u && { id: u.id, name: u.name, username: u.username, role: u.role, active: u.active !== false, phone: u.phone || '', waAccess: canWa(u), ext: u.ext || '', quickClose: !!u.quickClose };
+const publicUser = (u) => u && { id: u.id, name: u.name, username: u.username, role: u.role, active: u.active !== false, phone: u.phone || '', waAccess: canWa(u), ext: u.ext || '', quickClose: !!u.quickClose, seenVersion: u.seenVersion || 0 };
 // מי רואה את מסך "💬 וואטסאפ" (כל הצ'אטים של המספרים): מנהלים, ועובדים שקיבלו הרשאה
 const canWa = (u) => !!u && (u.role === 'admin' || u.waAccess === true);
 // איפוס סיסמה מקומי: reset-password.bat כותב data/reset-password.json והשרת מחיל אותו
@@ -723,7 +723,7 @@ route('POST', /^\/api\/setup$/, async (req, res) => {
   if (db.users.length) return send(res, 400, { error: 'כבר הוגדר' });
   const b = await readJson(req);
   if (!b.username || !b.password || String(b.password).length < 4) return send(res, 400, { error: 'שם משתמש וסיסמה (4 תווים לפחות)' });
-  db.users.push({ id: store.newId(), name: b.name || b.username, username: String(b.username).trim().toLowerCase(), role: 'admin', active: true, ...hashPassword(b.password) });
+  db.users.push({ id: store.newId(), name: b.name || b.username, username: String(b.username).trim().toLowerCase(), role: 'admin', active: true, seenVersion: VERSION, ...hashPassword(b.password) });
   store.saveUsers();
   send(res, 200, { ok: true });
 }, { auth: 'none' });
@@ -765,6 +765,13 @@ route('GET', /^\/api\/events$/, (req, res, { user }) => {
 });
 
 // ---------- קריאות ----------
+// "מה חדש": כל עובד מסמן "קראתי" – לא יוצג לו שוב עד הגרסה הבאה
+route('POST', /^\/api\/me\/seen$/, async (req, res, { user }) => {
+  const b = await readJson(req);
+  user.seenVersion = Math.min(VERSION, Number(b.version) || VERSION);
+  store.saveUsers();
+  send(res, 200, { ok: true });
+});
 route('GET', /^\/api\/users$/, (req, res) => send(res, 200, db.users.filter((u) => u.active !== false).map(publicUser)));
 route('GET', /^\/api\/instances$/, (req, res) => send(res, 200, instancesStatus()));
 
@@ -1614,7 +1621,7 @@ route('POST', /^\/api\/admin\/users$/, async (req, res, { user }) => {
   let u = b.id && userById(b.id);
   if (!u) {
     if (!b.password || String(b.password).length < 4) return send(res, 400, { error: 'סיסמה של 4 תווים לפחות' });
-    u = { id: store.newId() };
+    u = { id: store.newId(), seenVersion: VERSION };
     db.users.push(u);
   }
   if (u.id === user.id && b.role !== 'admin') return send(res, 400, { error: 'אי אפשר להוריד לעצמך הרשאת מנהל' });

@@ -253,6 +253,12 @@ ipcMain.on('restart-now', () => {
   app.exit(0);
 });
 ipcMain.on('app-version', (e) => { e.returnValue = localVersion(); });
+ipcMain.on('changelog', (e) => {
+  for (const d of [global.APP_DIR, global.BUILTIN_DIR, __dirname]) {
+    try { if (d) { e.returnValue = JSON.parse(fs.readFileSync(path.join(d, 'changelog.json'), 'utf8')); return; } } catch {}
+  }
+  e.returnValue = [];
+});
 app.whenReady().then(() => {
   setTimeout(checkUpdate, process.env.WA_UPDATE_URL ? 2000 : 15 * 1000);
   setInterval(checkUpdate, 60 * 60 * 1000);

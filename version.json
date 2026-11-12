@@ -1,10 +1,11 @@
 {
-  "version": 19,
+  "version": 20,
   "files": {
-    "app-main.js": "34e27b9749a426f8343e3287cab2b2d40a6ff89ff4d88455bd38de3804c1beb1",
+    "app-main.js": "6b22b8c06d0db585dec4ed459ee6a7b456eafd7e788867bd36e4aa847873c410",
     "index.html": "4736af1ecc96e38c81ed5da15a8e27f5da403089a37c009da02aa0a278ea9879",
-    "renderer.js": "28198f580dad99277bc454708383846eb01b94bf22a2b21b0f1a4334c506acbd",
-    "inject.js": "8f0e9471519ce20774b06d00707fa30d2b78e27950ca68b55b164e1b05ad824a"
+    "renderer.js": "1e6dea4d9bb974d620358b7158f05049b10f4f1463132537ddcb996b2485fc5e",
+    "inject.js": "8f0e9471519ce20774b06d00707fa30d2b78e27950ca68b55b164e1b05ad824a",
+    "changelog.json": "a356932194535d33edd35f63b352f6dcbfc401975c8fe49e675d2a93d3a7dd82"
   },
-  "notes": "📞 חיוג עם מענה אוטומטי בטלפון"
+  "notes": "🆕 אחרי כל עדכון קופץ חלון \"מה חדש\" – לוחצים \"קראתי\" והוא לא יופיע שוב | ⚙️ בהגדרות ← \"🆕 מה חדש\" אפשר לראות את כל העדכונים"
 }
