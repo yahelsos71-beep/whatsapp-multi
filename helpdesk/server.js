@@ -184,8 +184,15 @@ function createTicket(inst, chatId, name, { status = 'routing', assigneeId = nul
   };
   db.tickets.push(t);
   store.saveTickets();
+  // הודעות ששלחנו מהטלפון לצ'אט הזה כשלא הייתה קריאה פתוחה – נכנסות לקריאה החדשה (לפי הסדר)
+  const k = inst.id + '|' + chatId;
+  const pend = (phoneOut.get(k) || []).filter((m) => now() - m.ts < 48 * 3600e3);
+  phoneOut.delete(k);
+  for (const m of pend) { store.messages(t.id).push({ id: store.newId(), ...m }); t.lastOutAt = Math.max(t.lastOutAt, m.ts); }
+  if (pend.length) { store.saveMessages(t.id); if (!t.assigneeId && pend[0].byUserId) t.assigneeId = pend[0].byUserId; }
   return t;
 }
+const phoneOut = new Map(); // "inst|chat" -> הודעות יוצאות מהטלפון בלי קריאה פתוחה (עד 48 שעות, 30 אחרונות)
 
 // =====================================================================
 // אירועים חיים (SSE) לדפדפנים
@@ -530,7 +537,18 @@ async function handleNotification(inst, body) {
     // הודעה יוצאת: נשלחה מהטלפון או מה-API
     if (sentIds.has(body.idMessage) || findMessageByIdMessage(body.idMessage)) return;
     const t = openTicketFor(inst.id, chatId);
-    if (!t) return; // אין קריאה פתוחה – לא פותחים קריאה על הודעה יוצאת
+    if (!t) {
+      // אין קריאה פתוחה: לא פותחים קריאה על הודעה יוצאת, אבל שומרים אותה –
+      // כשהלקוח יענה תיפתח קריאה (בלי בוט, אצל מי שטיפל בו לאחרונה) וההודעה שלנו תופיע בה
+      const k = inst.id + '|' + chatId;
+      const last = db.tickets.filter((x) => x.instanceId === inst.id && x.chatId === chatId).sort((a, b) => b.createdAt - a.createdAt)[0];
+      const owner = last && last.assigneeId && userById(last.assigneeId)?.active !== false ? last.assigneeId : null;
+      const list = phoneOut.get(k) || [];
+      list.push({ ...m, dir: 'out', ts, idMessage: body.idMessage, byName: type === 'outgoingMessageReceived' ? 'מהטלפון' : 'API', status: 'sent', byUserId: owner });
+      phoneOut.set(k, list.slice(-30));
+      quietMark.set(k, { at: ts, userId: owner });
+      return;
+    }
     addMessage(t, { ...m, dir: 'out', ts, idMessage: body.idMessage, byName: type === 'outgoingMessageReceived' ? 'מהטלפון' : 'API' });
     t.awaiting = false; t.lastOutAt = ts;
     emitTicket(t);

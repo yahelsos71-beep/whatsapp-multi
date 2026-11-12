@@ -1,7 +1,7 @@
 {
-  "version": 40,
+  "version": 41,
   "files": {
-    "server.js": "99e23cdf2a55e0b11035e095d07cbce8e9c28ecce899a756e11886354ce817d4",
+    "server.js": "b97b667472dc29a590b0b7fcab4e684a4ba5b4c75c9e89e88a5c7c76f92cc6c7",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
     "reset-password.bat": "662bfbec8b94b264fd7b585a365f389415b8ec66bea540e876418e7a3f805187",
     "README-HE.txt": "4c860dca000bec648c5aec0c5cfa25ca515e996f1470b961fc967ce73fd3b0a8",
@@ -14,5 +14,5 @@
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "6f410d6342361ad0d32af881121cb37d38ac0eff81c7650944e8f6070a70c817"
   },
-  "notes": "👤 שמירת איש קשר מתוך חלון 'מי מתקשר'"
+  "notes": "📱 הודעות שנשלחו מהטלפון נכנסות למוקד גם בלי קריאה פתוחה"
 }
