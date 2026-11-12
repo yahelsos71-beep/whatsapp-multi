@@ -492,7 +492,8 @@ function messageHtml(m) {
   const ro = S.view && S.view.readOnly && S.mode !== 'wa';
   const rep = m.idMessage && !ro ? `<button class="rep" data-rep="${m.id}" title="להגיב להודעה הזאת">↩</button>` : '';
   const del = m.dir === 'out' && m.idMessage && !ro && Date.now() - m.ts < 2 * 864e5 ? `<button class="del" data-del="${m.id}" title="מחיקת ההודעה אצל כולם (נשלחה בטעות)">🗑</button>` : '';
-  return `<div class="msg ${m.dir} ${m.auto ? 'auto' : ''}" data-mid="${m.id}">${rep}${del}${by}${quote}${media}${esc(m.text)}<div class="meta">${fmtTime(m.ts)} ${ticks(m)}</div></div>`;
+  const opts = Array.isArray(m.options) && m.options.length ? `<div class="opts">${m.options.map((o, i) => `<button class="opt ${o.kind}" data-opt="${i}" ${ro ? 'disabled' : ''} title="${o.kind === 'url' ? 'פתיחת הקישור' : o.kind === 'call' ? 'חיוג' : 'לחיצה שולחת את האפשרות הזו כתשובה'}">${o.kind === 'url' ? '🔗 ' : o.kind === 'call' ? '📞 ' : ''}${esc(o.text)}</button>`).join('')}</div>` : '';
+  return `<div class="msg ${m.dir} ${m.auto ? 'auto' : ''}" data-mid="${m.id}">${rep}${del}${by}${quote}${media}${esc(m.text)}${opts}<div class="meta">${fmtTime(m.ts)} ${ticks(m)}</div></div>`;
 }
 
 function appendMessage(m, scroll) {
@@ -1630,3 +1631,27 @@ async function dialPhone(phone, name) {
   try { await api('POST', '/api/dial', { phone: p }); }
   catch (e) { toast(e.message, true, 8000); }
 }
+
+// 🤖 לחיצה על אפשרות בהודעה של בוט: שולחים את האפשרות כתשובה (מצוטטת), פותחים קישור, או מחייגים
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('.msg .opt'); if (!b || b.disabled) return;
+  const box = b.closest('.msg'); const mid = box && box.dataset.mid;
+  const inWa = S.mode === 'wa' && b.closest('#waMsgs');
+  const m = inWa ? S.wa.view && S.wa.view.items.find((x) => x.id === mid) : S.view && S.view.messages.find((x) => x.id === mid);
+  const o = m && m.options && m.options[+b.dataset.opt]; if (!o) return;
+  if (o.kind === 'url') { window.open(o.value, '_blank'); return; }
+  if (o.kind === 'call') { dialPhone(o.value); return; }
+  b.disabled = true;
+  try {
+    if (inWa) {
+      const v = S.wa.view;
+      const item = await api('POST', '/api/wa/send', { inst: v.chat.instanceId, chat: v.chat.chatId, text: o.value, quotedId: m.id, quotedText: (m.text || '').slice(0, 200), quotedFrom: m.senderName || v.chat.name || '' });
+      waAddItem(v.chat.key, item);
+    } else {
+      if (S.view.ticket.status === 'closed') throw new Error('הקריאה סגורה – פתח אותה מחדש כדי לענות');
+      await api('POST', `/api/tickets/${S.view.ticket.id}/send`, { text: o.value, replyTo: m.idMessage ? m.id : null });
+    }
+    toast('👆 נשלח: ' + o.value);
+  } catch (er) { toast(er.message, true, 6000); }
+  b.disabled = false;
+});

@@ -60,6 +60,32 @@ function parseVcard(c) {
   return { name: name || c.displayName || '', company, phones };
 }
 
+// הודעות של בוטים (כפתורים / רשימה / תבנית) → טקסט + אפשרויות ללחיצה
+// options: [{ text, kind: 'reply' | 'url' | 'call', value }]
+function parseInteractive(src) {
+  const o = src || {};
+  const b = o.buttonsMessage || o.templateMessage || o.listMessage || o.interactiveButtons || o.interactiveButtonsMessage || o.interactiveMessage || null;
+  if (!b) return null;
+  const text = [b.titleText || b.title || (b.header && b.header.title) || '', b.contentText || b.text || (b.body && b.body.text) || '', b.footerText || b.footer || ''].filter(Boolean).join('\n');
+  const options = [];
+  for (const x of b.buttons || []) {
+    if (x.urlButton) options.push({ text: x.urlButton.displayText || x.urlButton.url, kind: 'url', value: x.urlButton.url });
+    else if (x.callButton) options.push({ text: x.callButton.displayText || x.callButton.phoneNumber, kind: 'call', value: x.callButton.phoneNumber });
+    else if (x.quickReplyButton) options.push({ text: x.quickReplyButton.displayText, kind: 'reply', value: x.quickReplyButton.displayText });
+    else if (x.type === 'url' || x.url) options.push({ text: x.buttonText || x.url, kind: 'url', value: x.url });
+    else if (x.type === 'call' || x.phoneNumber) options.push({ text: x.buttonText || x.phoneNumber, kind: 'call', value: x.phoneNumber });
+    else { const t = x.buttonText && typeof x.buttonText === 'object' ? x.buttonText.displayText : x.buttonText || x.displayText || x.text; if (t) options.push({ text: t, kind: 'reply', value: t }); }
+  }
+  for (const sec of b.sections || []) for (const r of sec.rows || []) if (r.title) options.push({ text: r.title + (r.description ? ' – ' + r.description : ''), kind: 'reply', value: r.title, group: sec.title || '' });
+  return { text: text || (b.buttonText ? '📋 ' + b.buttonText : ''), options };
+}
+// תשובה של לקוח/בוט שבחר כפתור / שורה
+function parseInteractiveReply(o) {
+  const r = (o && (o.buttonsResponseMessage || o.templateButtonReplyMessage || o.listResponseMessage || o.interactiveButtonsReply || o.interactiveButtonsResponse)) || null;
+  if (!r) return null;
+  return r.selectedButtonText || r.selectedDisplayText || r.title || (r.singleSelectReply && r.singleSelectReply.selectedRowId) || r.selectedButtonId || r.selectedId || '';
+}
+
 // ממיר הודעה של Green API למבנה שלנו
 function parseMessage(md) {
   const t = md && md.typeMessage;
@@ -100,6 +126,12 @@ function parseMessage(md) {
   } else if (t === 'editedMessage') {
     out.type = 'edited';
     out.text = md.editedMessageData?.textMessage || md.extendedTextMessageData?.text || '';
+  } else if (/^(buttonsMessage|templateMessage|listMessage|interactiveButtons|interactiveButtonsMessage|interactiveMessage)$/.test(t)) {
+    const x = parseInteractive(md) || { text: '', options: [] };
+    out.text = x.text || '🤖 הודעה עם אפשרויות';
+    out.options = x.options;
+  } else if (/Response|Reply/.test(t) && parseInteractiveReply(md) !== null) {
+    out.text = '👆 ' + parseInteractiveReply(md);
   } else if (t === 'deletedMessage') {
     out.type = 'deleted';
     out.deletedId = md.deletedMessageData?.stanzaId || md.deletedMessageData?.idMessage || '';
@@ -123,10 +155,15 @@ function parseHistoryItem(h) {
   if (!text && t === 'contactMessage') text = '👤 איש קשר';
   if (!text && t === 'reactionMessage') text = '(תגובה)';
   if (!text && t === 'deletedMessage') text = '(הודעה נמחקה)';
+  const ix = parseInteractive(h);
+  if (ix) text = ix.text || text || '🤖 הודעה עם אפשרויות';
+  const ir = !ix && parseInteractiveReply(h);
+  if (ir) text = '👆 ' + ir;
   if (!text && type === 'text' && t && !/text/i.test(t)) text = `[${t}]`;
   return {
     id: h.idMessage, dir: h.type === 'outgoing' ? 'out' : 'in', ts: (h.timestamp || 0) * 1000, type, text,
     url: h.downloadUrl || (t === 'locationMessage' && h.location ? `https://maps.google.com/?q=${h.location.latitude},${h.location.longitude}` : ''),
+    ...(ix && ix.options.length ? { options: ix.options } : {}),
     fileName: h.fileName || '', senderName: h.type === 'outgoing' ? '' : h.senderName || h.senderContactName || '', status: h.statusMessage || '',
   };
 }
