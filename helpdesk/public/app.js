@@ -1516,10 +1516,10 @@ document.addEventListener('click', async (e) => {
 // 📞 "מי מתקשר" – חלון קופץ כשהמרכזייה מדווחת על שיחה נכנסת
 // =====================================================================
 const calls = new Map(); // phone -> element
-function showCall(c) {
+function showCall(c, quiet) {
   let wrap = $('#calls');
   if (!wrap) { wrap = document.createElement('div'); wrap.id = 'calls'; document.body.appendChild(wrap); }
-  if (calls.has(c.phone)) calls.get(c.phone).remove();
+  if (calls.has(c.phone)) { clearTimeout(calls.get(c.phone)._t); calls.get(c.phone).remove(); }
   const el = document.createElement('div');
   el.className = 'callpop';
   const title = c.name || localPhone(c.phone);
@@ -1531,20 +1531,38 @@ function showCall(c) {
     ${c.open.map((o) => `<div class="cp-line">🎫 קריאה פתוחה #${o.id}${o.assignee ? ' אצל ' + esc(o.assignee) : ''}${o.last ? ` – <i>${esc(o.last.slice(0, 60))}</i>` : ''} ${mine(o) ? `<a data-open="${o.id}">פתח</a>` : ''}</div>`).join('')}
     ${c.lastDone ? `<div class="cp-line">✅ טיפול אחרון${c.lastDone.at ? ' (' + new Date(c.lastDone.at).toLocaleDateString('he-IL') + (c.lastDone.by ? ', ' + esc(c.lastDone.by) : '') + ')' : ''}: ${esc(c.lastDone.text.slice(0, 120))}</div>` : ''}
     ${c.ticketsCount ? `<div class="cp-line muted">סה״כ ${c.ticketsCount} קריאות בעבר</div>` : ''}
-    <div class="row cp-act">${S.me.waAccess ? '<button data-act="wa">💬 וואטסאפ</button>' : ''}<button data-act="new">✉️ שלח הודעה</button></div>`;
+    <div class="row cp-act">${!c.name && !c.company ? '<button data-act="save">👤 שמור איש קשר</button>' : ''}${S.me.waAccess ? '<button data-act="wa">💬 וואטסאפ</button>' : ''}<button data-act="new">✉️ שלח הודעה</button></div>`;
   wrap.prepend(el);
   calls.set(c.phone, el);
   el.querySelector('.cp-x').onclick = () => { el.remove(); calls.delete(c.phone); };
   el.querySelectorAll('[data-open]').forEach((a) => (a.onclick = () => openTicket(a.dataset.open)));
   el.querySelectorAll('[data-act]').forEach((b) => (b.onclick = async () => {
+    if (b.dataset.act === 'save') {
+      openModal(`<h3>👤 שמירת איש קשר</h3>
+        <div class="grid2"><div><label>שם</label><input id="kn" value="${esc(c.name || '')}"></div><div><label>חברה</label><input id="kc" value="${esc(c.company || '')}"></div></div>
+        <label>טלפונים (מופרדים בפסיק)</label><input id="kp" dir="ltr" value="${esc(localPhone(c.phone))}">
+        <div class="hint">השם והחברה יופיעו במוקד אצל כל העובדים – גם בשיחה הבאה מהמספר הזה.</div>
+        <div class="row"><button class="primary" id="ksave">💾 שמור</button><button id="cancel">ביטול</button></div>`);
+      $('#cancel').onclick = closeModal; $('#kn').focus();
+      $('#ksave').onclick = async () => {
+        try {
+          const name = $('#kn').value.trim(), company = $('#kc').value.trim();
+          await api('POST', '/api/contacts', { name, company, phones: $('#kp').value });
+          closeModal(); toast('איש הקשר נשמר ✓');
+          if (el.isConnected) showCall({ ...c, name: name || company, company, known: true }, true);
+        } catch (e) { toast(e.message, true); }
+      };
+      return;
+    }
     if (b.dataset.act === 'new') { newChatDialog(); setTimeout(() => { const ph = document.querySelector('#box input[dir=ltr]'); if (ph && !ph.value) ph.value = localPhone(c.phone).replace(/-/g, ''); }, 50); return; }
     if (S.mode !== 'wa') enterWa();
     S.wa.q = c.phone.slice(3); if ($('#waQ')) $('#waQ').value = '0' + S.wa.q; await loadWaChats();
     const hit = S.wa.chats.find((x) => x.phone === c.phone); if (hit) openWaChat(hit.key);
   }));
+  clearTimeout(el._t); el._t = setTimeout(() => { el.remove(); if (calls.get(c.phone) === el) calls.delete(c.phone); }, 3 * 60000);
+  if (quiet) return;
   Sounds.newMessage();
   notify('📞 ' + title, (c.company ? c.company + ' · ' : '') + localPhone(c.phone));
-  clearTimeout(el._t); el._t = setTimeout(() => { el.remove(); calls.delete(c.phone); }, 3 * 60000);
 }
 function endCall(ev) {
   const el = calls.get(ev.phone); if (!el) return;
