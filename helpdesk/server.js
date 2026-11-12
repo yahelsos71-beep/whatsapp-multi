@@ -1186,7 +1186,7 @@ route('POST', /^\/api\/dial$/, async (req, res, { user }) => {
   const local = phone.startsWith('972') ? '0' + phone.slice(3) : phone;
   recentDials.set(phone, now());
   try {
-    const body = new URLSearchParams({ auth_username: c.user, auth_password: c.pass, stype: 'phone', snumber: user.ext, ctype: '', cnumber: local, callerid1: local });
+    const body = new URLSearchParams({ auth_username: c.user, auth_password: c.pass, stype: 'phone', snumber: user.ext, ctype: '', cnumber: local, callerid1: local, answer1: '1' }); // answer1=1: הטלפון של העובד עונה לבד
     const r = await fetch(process.env.HD_015_MAKE_URL || `https://${String(c.host || 'www.015pbx.net').replace(/^https?:\/\//, '').replace(/\/+$/, '')}/api/json/calls/make/`,
       { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString(), signal: AbortSignal.timeout(15000) });
     const text = await r.text();

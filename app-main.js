@@ -99,7 +99,7 @@ ipcMain.handle('dial', async (_e, { cfg, number }) => {
       `&src=${enc('ext')}&dest=${enc('number')}&auto_answer=true&rec=false&ringback=us-ring`;
   // 015 (מרכזיית Enswitch ב-015pbx.net) – כמו התוסף "epbx Click To Call": קודם מצלצל הקו שלך, ואז מחובר למספר
   if (!(c.template || '').trim() && (!vals.domain || /015pbx\.net/i.test(vals.domain))) {
-    const body = new URLSearchParams({ auth_username: vals.user, auth_password: vals.pass, stype: 'phone', snumber: vals.ext, ctype: '', cnumber: num, callerid1: num });
+    const body = new URLSearchParams({ auth_username: vals.user, auth_password: vals.pass, stype: 'phone', snumber: vals.ext, ctype: '', cnumber: num, callerid1: num, answer1: '1' }); // מענה אוטומטי בטלפון שלך
     try {
       const r = await net.fetch(process.env.WA_015_URL || 'https://www.015pbx.net/api/json/calls/make/', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString(), signal: AbortSignal.timeout(15000) });
       const text = await r.text();

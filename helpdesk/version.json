@@ -1,7 +1,7 @@
 {
-  "version": 37,
+  "version": 38,
   "files": {
-    "server.js": "e34d3f0d1953e7562df3e283ce977aaadaa5e414fe3f9b53c21ccd658f5095c4",
+    "server.js": "fa4a512ef2d4b23c0a5bcc58108149a1556c93ce4c028135a050efb579bdb729",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
     "reset-password.bat": "662bfbec8b94b264fd7b585a365f389415b8ec66bea540e876418e7a3f805187",
     "README-HE.txt": "4c860dca000bec648c5aec0c5cfa25ca515e996f1470b961fc967ce73fd3b0a8",
@@ -14,5 +14,5 @@
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "6f410d6342361ad0d32af881121cb37d38ac0eff81c7650944e8f6070a70c817"
   },
-  "notes": "📞 כפתור חייג בשיחה חדשה ובקריאה (דרך 015)"
+  "notes": "📞 חיוג עם מענה אוטומטי בטלפון"
 }
