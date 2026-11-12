@@ -671,7 +671,12 @@ async function serviceCallDialog(t) {
     </div>
     <div class="hint" id="sc_assign" style="margin:8px 0 0;font-size:13px"></div>
     <label id="sc_lbl"></label><div class="tcard" style="white-space:pre-line;font-size:14px" id="sc_prev"></div>
+    <label class="check" style="margin-top:10px"><input type="checkbox" id="sc_notify" ${d.isGroup || d.ticketStatus === 'closed' ? '' : 'checked'}> 📩 לשלוח ללקוח הודעה שאנחנו מטפלים</label>
+    <textarea id="sc_cmsg" rows="3">${esc(d.customerMsg)}</textarea>
+    ${S.me.role === 'admin' ? '<label class="check" style="font-size:12px"><input type="checkbox" id="sc_csave"> לשמור את הנוסח הזה לפעם הבאה (אפשר להשתמש ב-{name} ו-{id})</label>' : ''}
     <div class="row"><button class="primary" id="sc_send"></button><button id="cancel">ביטול</button></div>`, true);
+  const syncNotify = () => { $('#sc_cmsg').style.display = $('#sc_notify').checked ? '' : 'none'; };
+  $('#sc_notify').onchange = syncNotify; syncNotify();
   const build = () => {
     const name = $('#sc_name').value.trim(), co = $('#sc_co').value.trim(), ph = $('#sc_ph').value.trim(), addr = $('#sc_addr').value.trim();
     return [`🛠 *קריאת שירות* #${t.id}`, `👤 לקוח: ${name}${co ? ` (${co})` : ''}`, ph ? `📞 טלפון: ${ph}` : '', addr ? `📍 כתובת: ${addr}` : '',
@@ -694,7 +699,17 @@ async function serviceCallDialog(t) {
   paint();
   $('#cancel').onclick = closeModal;
   $('#sc_send').onclick = async () => {
-    try { await api('POST', `/api/tickets/${t.id}/service-call`, { targetId: target.id, text: build() }); closeModal(); toast(`🛠 הקריאה נשלחה ל${target.name} ✓`); }
+    const notify = $('#sc_notify').checked, ctext = $('#sc_cmsg').value.trim();
+    const save = $('#sc_csave') && $('#sc_csave').checked;
+    // שמירת נוסח: מחזירים את השם/מספר הקריאה למשתנים
+    let tpl = save ? ctext.split(String(t.id)).join('{id}') : '';
+    const first = String(d.customer || '').trim().split(' ')[0];
+    if (tpl && first && !/^[\d+\s-]+$/.test(first)) tpl = tpl.split(' ' + first).join('{name}');
+    try {
+      const r = await api('POST', `/api/tickets/${t.id}/service-call`, { targetId: target.id, text: build(), notifyCustomer: notify, customerText: ctext, saveCustomerMsg: save, customerTemplate: tpl });
+      closeModal();
+      toast(`🛠 הקריאה נשלחה ל${target.name} ✓${r.customerSent ? ' · 📩 הלקוח קיבל הודעה' : r.customerError ? ' · ⚠️ ההודעה ללקוח לא נשלחה' : ''}`, !!r.customerError, 6000);
+    }
     catch (e) { toast(e.message, true, 7000); }
   };
 }

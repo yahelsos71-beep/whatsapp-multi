@@ -1323,6 +1323,13 @@ route('POST', /^\/api\/wa\/upload$/, async (req, res, { user, query }) => {
 // העובד במערכת שמשויך ליעד (לפי בחירה בניהול, או עובד באותו שם)
 const targetUser = (x) => (x.userId && userById(x.userId)) || db.users.find((u) => u.active !== false && u.name.trim() === String(x.name || '').trim()) || null;
 const serviceTargets = () => (db.config.serviceTargets || []).filter((x) => x.name && (x.phone || x.chatId));
+// הודעה ללקוח כשנפתחת קריאת שירות ("אני מטפלת")
+const SERVICE_CUSTOMER_MSG = 'היי{name} 👋\nפתחתי עבורך קריאת שירות (מס׳ {id}) – אני מטפלת בזה ואעדכן אותך בהקדם 🙏';
+function fillCustomerMsg(t, tpl) {
+  const dn = displayName(t);
+  const nm = !t.isGroup && dn && !/^[\d+\s-]+$/.test(dn) ? ' ' + dn.split(' ')[0] : '';
+  return String(tpl).replace(/\{name\}/g, nm).replace(/\{id\}/g, t.id);
+}
 route('GET', /^\/api\/tickets\/(\d+)\/service-call$/, async (req, res, { user, params }) => {
   const t = visibleTicket(user, params[0]);
   if (!t) return send(res, 404, { error: 'לא נמצא' });
@@ -1355,7 +1362,9 @@ route('GET', /^\/api\/tickets\/(\d+)\/service-call$/, async (req, res, { user, p
   send(res, 200, {
     targets: serviceTargets().map((x) => ({ id: x.id, name: x.name, isGroup: !!x.chatId, phone: x.phone || '', userName: targetUser(x)?.name || '' })),
     currentAssignee: userById(t.assigneeId)?.name || '',
-    customer, company, phone, isGroup: !!t.isGroup,
+    customer, company, phone, isGroup: !!t.isGroup, ticketStatus: t.status,
+    customerMsg: fillCustomerMsg(t, db.config.serviceCustomerMsg || SERVICE_CUSTOMER_MSG),
+    customerMsgRaw: db.config.serviceCustomerMsg || SERVICE_CUSTOMER_MSG,
     description: t.aiSummary ? t.aiSummary + '\n\nמה שהלקוח כתב:\n' + msgs.join('\n') : msgs.join('\n'),
   });
 });
@@ -1387,8 +1396,15 @@ route('POST', /^\/api\/tickets\/(\d+)\/service-call$/, async (req, res, { user, 
     note(t, `↪️ הקריאה הוקצתה ל${tu.name}`);
     if (old && old !== tu.id && userById(old)?.role !== 'admin') sendTo(old, { type: 'remove', id: t.id });
   }
+  // הודעה ללקוח: "אני מטפלת"
+  let customerSent = false, customerError = '';
+  const ctext = String(b.customerText || '').trim();
+  if (b.notifyCustomer && ctext && t.status !== 'closed') {
+    try { await sendText(t, ctext, user); customerSent = true; } catch (e) { customerError = e.message; note(t, '⚠️ ההודעה ללקוח לא נשלחה: ' + e.message); }
+  }
+  if (b.saveCustomerMsg && user.role === 'admin' && b.customerTemplate) { db.config.serviceCustomerMsg = String(b.customerTemplate); store.saveConfig(); }
   emitTicket(t, { sound: tu ? 'new' : null });
-  send(res, 200, { ok: true, target: target.name });
+  send(res, 200, { ok: true, target: target.name, customerSent, customerError });
 });
 // קבוצות שהמוקד מכיר (לבחירת יעד) – מתוך הקריאות
 route('GET', /^\/api\/admin\/known-groups$/, (req, res) => {
