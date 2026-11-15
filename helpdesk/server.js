@@ -708,6 +708,7 @@ function adminConfigView() {
     chatRules: c.chatRules.map((r) => ({ ...r, userName: userById(r.userId)?.name || '' })),
     instances: c.instances.map((i) => ({ ...i, token: mask(i.token) })),
     pbxKey: c.pbxKey || '',
+    pbxIgnore: c.pbxIgnore || [],
     pbx: { enabled: !!(c.pbx && c.pbx.enabled), host: (c.pbx && c.pbx.host) || 'www.015pbx.net', user: (c.pbx && c.pbx.user) || '', pass: mask(c.pbx && c.pbx.pass) },
     pbxStatus,
   };
@@ -1191,6 +1192,20 @@ async function sendCallWaInfo(call, targets) {
 }
 route('GET', /^\/api\/wa\/lookup$/, async (req, res, { query }) => send(res, 200, (await waLookup(query.get('phone'))) || { exists: false }));
 
+// 📵 מספרים (או קווים) שלא מקפיצים חלון "שיחה נכנסת" – נשמרים בהגדרות השרת בלבד
+const pbxIgnored = (...nums) => {
+  const list = db.config.pbxIgnore || [];
+  return nums.some((n) => { const d = String(n || '').replace(/\D/g, ''); if (d.length < 3) return false; const p = normPhone(d) || d; return list.some((x) => x === p || x === d || (x.length >= 7 && (p.endsWith(x.slice(-9)) || d.endsWith(x.slice(-9))))); });
+};
+route('POST', /^\/api\/admin\/pbx-ignore$/, async (req, res) => {
+  const b = await readJson(req);
+  let list = Array.isArray(b.list) ? b.list : String(b.list || '').split(/[\n,;]+/);
+  if (b.add) list = [...(db.config.pbxIgnore || []), b.add];
+  db.config.pbxIgnore = [...new Set(list.map((x) => { const d = String(x).replace(/\D/g, ''); return d.length >= 9 ? normPhone(d) || d : d; }).filter((x) => x && x.length >= 3))];
+  store.saveConfig();
+  send(res, 200, { list: db.config.pbxIgnore });
+}, { auth: 'admin' });
+
 async function pbxWebhook(req, res, query) {
   const key = query.get('key') || req.headers['x-api-key'] || '';
   if (!db.config.pbxKey || key !== db.config.pbxKey) return send(res, 403, { error: 'bad key' });
@@ -1206,7 +1221,7 @@ async function pbxWebhook(req, res, query) {
   pbxLog.unshift({ at: now(), fields: f, parsed: p }); pbxLog.length = Math.min(pbxLog.length, 30);
   send(res, 200, { ok: true });
   const phone = normPhone(p.from);
-  if (!phone || !isIncoming(f)) return;
+  if (!phone || !isIncoming(f) || pbxIgnored(p.from, p.to)) return;
   const ended = /hang|end|complet|disconnect|bye|finish|answer|missed|busy/i.test(p.event);
   const answered = /answer/i.test(p.event);
   const ext = String(p.to || '').replace(/\D/g, '');
@@ -1252,6 +1267,7 @@ async function pbxPoll() {
       const id = String(f.uniqueid || f.callid || f.id || (f.snumber || '') + '|' + (f.dnumber || ''));
       const from = normPhone(f.callerid_external || f.scallerid || f.callerid || f.snumber || f.from || '');
       if (!from || from.length < 9) continue;
+      if (pbxIgnored(from, f.dnumber, f.cnumber)) continue; // 📵 ברשימת "לא להקפיץ"
       if (now() - (recentDials.get(from) || 0) < 90000) continue; // החיוג שלנו מהמוקד – לא שיחה נכנסת
       seen.add(id);
       if (activeCalls.has(id)) continue;

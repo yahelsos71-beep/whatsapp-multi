@@ -1563,7 +1563,7 @@ function showCall(c, quiet) {
     ${c.open.map((o) => `<div class="cp-line">🎫 קריאה פתוחה #${o.id}${o.assignee ? ' אצל ' + esc(o.assignee) : ''}${o.last ? ` – <i>${esc(o.last.slice(0, 60))}</i>` : ''} ${mine(o) ? `<a data-open="${o.id}">פתח</a>` : ''}</div>`).join('')}
     ${c.lastDone ? `<div class="cp-line">✅ טיפול אחרון${c.lastDone.at ? ' (' + new Date(c.lastDone.at).toLocaleDateString('he-IL') + (c.lastDone.by ? ', ' + esc(c.lastDone.by) : '') + ')' : ''}: ${esc(c.lastDone.text.slice(0, 120))}</div>` : ''}
     ${c.ticketsCount ? `<div class="cp-line muted">סה״כ ${c.ticketsCount} קריאות בעבר</div>` : ''}
-    <div class="row cp-act">${!c.name && !c.company ? '<button data-act="save">👤 שמור איש קשר</button>' : ''}${S.me.waAccess ? '<button data-act="wa">💬 וואטסאפ</button>' : ''}<button data-act="new">✉️ שלח הודעה</button></div>`;
+    <div class="row cp-act">${!c.name && !c.company ? '<button data-act="save">👤 שמור איש קשר</button>' : ''}${S.me.waAccess ? '<button data-act="wa">💬 וואטסאפ</button>' : ''}<button data-act="new">✉️ שלח הודעה</button>${S.me.role === 'admin' ? '<button class="ghost" data-act="mute" title="שיחות מהמספר הזה לא יקפיצו יותר חלון">📵 לא להקפיץ</button>' : ''}</div>`;
   wrap.prepend(el);
   calls.set(c.phone, el);
   el._c = c;
@@ -1571,6 +1571,12 @@ function showCall(c, quiet) {
   el.querySelector('.cp-x').onclick = () => { el.remove(); calls.delete(c.phone); };
   el.querySelectorAll('[data-open]').forEach((a) => (a.onclick = () => openTicket(a.dataset.open)));
   el.querySelectorAll('[data-act]').forEach((b) => (b.onclick = async () => {
+    if (b.dataset.act === 'mute') {
+      if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = '⚠️ בטוח? לחץ שוב'; return; }
+      try { await api('POST', '/api/admin/pbx-ignore', { add: c.phone }); el.remove(); calls.delete(c.phone); toast('📵 שיחות מ-' + localPhone(c.phone) + ' לא יקפיצו יותר חלון (ביטול: ניהול ← 📞 מרכזייה)', false, 6000); }
+      catch (er) { toast(er.message, true); }
+      return;
+    }
     if (b.dataset.act === 'save') {
       const w = el._c.wa || {};
       openModal(`<h3>👤 שמירת איש קשר</h3>
@@ -1618,6 +1624,10 @@ function adminPbx() {
       <div><label>סיסמה</label><input id="xPass" type="password" dir="ltr" placeholder="${A.config.pbx.pass ? '•••• (שמורה)' : ''}"></div></div>
     <label class="check"><input type="checkbox" id="xOn" ${A.config.pbx.enabled ? 'checked' : ''}> פעיל – להקפיץ חלון בכל שיחה נכנסת</label>
     <div class="row"><button class="primary" id="xSave">💾 שמור והתחבר</button><span id="xStat" class="hint" style="flex:1">${esc(A.config.pbxStatus ? A.config.pbxStatus.text : '')}</span></div>
+    <h4>📵 מספרים שלא יקפיצו חלון</h4>
+    <div class="hint">מספר בכל שורה (טלפון של מתקשר, או קו/מספר שמחייגים אליו). שיחות מהם/אליהם לא יקפיצו חלון. נשמר רק בשרת.</div>
+    <textarea id="xIgn" dir="ltr" rows="4" placeholder="0521234567">${esc((A.config.pbxIgnore || []).map((p) => (p.startsWith('972') ? '0' + p.slice(3) : p)).join('\n'))}</textarea>
+    <div class="row"><button id="xIgnSave">💾 שמור רשימה</button></div>
     <h4>🌐 או: Webhook מהמרכזייה</h4>
     <label>כתובת ה-Webhook להדבקה במרכזייה</label>
     <div class="row"><input id="pUrl" dir="ltr" readonly value="${esc(url)}" style="flex:1;margin:0"><button id="pCopy">📋 העתק</button><button class="ghost" id="pNew" title="מפתח חדש – הכתובת הישנה תפסיק לעבוד">🔑 מפתח חדש</button></div>
@@ -1631,6 +1641,7 @@ function adminPbx() {
       $('#xStat').textContent = (r.state === 'error' ? '⚠️ ' : '') + r.text; A = await api('GET', '/api/admin/config'); setTimeout(() => api('GET', '/api/admin/pbx-log').then(drawLog), 2500); }
     catch (e) { $('#xStat').textContent = e.message; }
   };
+  $('#xIgnSave').onclick = async () => { try { const r = await api('POST', '/api/admin/pbx-ignore', { list: $('#xIgn').value }); A.config.pbxIgnore = r.list; toast(`נשמר ✓ (${r.list.length} מספרים)`); } catch (e) { toast(e.message, true); } };
   $('#pCopy').onclick = () => copyText($('#pUrl').value).then((ok) => toast(ok ? 'הכתובת הועתקה ✓' : 'לא הצלחתי להעתיק', !ok));
   $('#pNew').onclick = async () => { try { const r = await api('POST', '/api/admin/pbx-key'); A.config.pbxKey = r.key; adminPbx(); toast('נוצר מפתח חדש – עדכן את הכתובת במרכזייה'); } catch (e) { toast(e.message, true); } };
   $('#pTestBtn').onclick = async () => { try { await api('POST', '/api/admin/pbx-test', { phone: $('#pTest').value }); closeModal(); } catch (e) { toast(e.message, true); } };
