@@ -1198,7 +1198,8 @@ function adminContacts() {
 
 function adminWa() {
   const stateOf = (id) => (A.instances.find((x) => x.id === id) || {}).state || '';
-  const stateText = (s) => s === 'authorized' ? '🟢 מחובר' : s === 'notAuthorized' ? '🔴 לא מחובר – סרוק QR באתר Green API' : s.startsWith('error') ? '🔴 ' + s : s === 'unknown' || !s ? '⚪ לא ידוע' : '🟡 ' + s;
+  const dot = (c) => `<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${c};vertical-align:middle;margin-left:5px"></span>`;
+  const stateText = (s) => s === 'authorized' ? dot('#25d366') + 'מחובר' : s === 'notAuthorized' ? dot('#e53935') + 'לא מחובר – סרוק QR באתר Green API' : s.startsWith('error') ? dot('#e53935') + esc(s) : s === 'unknown' || !s ? dot('#9e9e9e') + 'לא ידוע' : dot('#f9a825') + esc(s);
   const card = (i) => `<div class="card2" data-card="${i.id || 'new'}">
     <div class="grid2"><div><label>שם (למשל: משרד, עסקי)</label><input data-f="name" value="${esc(i.name || '')}"></div>
     <div><label>מצב</label><div style="padding-top:8px">${i.id ? stateText(stateOf(i.id)) : '—'}</div></div>

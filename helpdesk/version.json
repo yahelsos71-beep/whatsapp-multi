@@ -1,5 +1,5 @@
 {
-  "version": 47,
+  "version": 48,
   "files": {
     "server.js": "c155cc9cbe56aa42fffc868b647ff9b68813e195ddd125352eae3a2a7065fd7f",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
@@ -9,11 +9,11 @@
     "lib/greenapi.js": "5864704dd2990a262904d61c2e9f61cb76829c761b3f445ad809513c7102fa6d",
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "6d5f73a03d5838d4b08f4bb3d0965afa0586bc7aa26abaa78c01e1448cd35bf5",
-    "public/app.js": "6128eb6dde9e48559529f10d3ff3dc78229a1fdcd5737a05eb4ea7276a36e4eb",
-    "public/changelog.json": "6e9cef714807d839e0e89d7578daab3b291c6875b174d44bd8f4bdf349c395f4",
+    "public/app.js": "b0cfa8a1da52a59076c541a0e8f494920fd7644fe7550237b10346c0831ee16a",
+    "public/changelog.json": "82b3f05a952aee272e9c9b5dbc925801587d557761b03a15d85c72ab315ecfee",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "3bb75d6a02732d5fb892b201a011c19e2f3bb296ce7f48a62a137e7acd558579"
   },
-  "notes": "🔎 למנהל: \"הודעה לא נכנסה למוקד?\" – בודקים לפי שם או טלפון ומקבלים את הסיבה (ניהול ← 📱 מספרי וואטסאפ)"
+  "notes": "🟢 מצב החיבור של כל מספר מוצג בנקודה צבעונית ברורה"
 }
