@@ -765,6 +765,46 @@ route('GET', /^\/api\/events$/, (req, res, { user }) => {
 });
 
 // ---------- קריאות ----------
+// ---------- 💭 צ'אט פנימי בין העובדים ----------
+const staffPair = (m, a, b) => (m.from === a && m.to === b) || (m.from === b && m.to === a);
+function staffUnread(userId) {
+  const out = {};
+  for (const m of db.staffChat) if (m.to === userId && !m.read) out[m.from] = (out[m.from] || 0) + 1;
+  return out;
+}
+route('GET', /^\/api\/staff\/unread$/, (req, res, { user }) => send(res, 200, staffUnread(user.id)));
+route('GET', /^\/api\/staff\/chat$/, (req, res, { user, query }) => {
+  const other = String(query.get('with') || '');
+  if (!userById(other)) return send(res, 400, { error: 'עובד לא קיים' });
+  let changed = false;
+  for (const m of db.staffChat) if (m.to === user.id && m.from === other && !m.read) { m.read = true; changed = true; }
+  if (changed) { store.saveStaffChat(); sendTo(other, { type: 'staffread', by: user.id }); }
+  send(res, 200, db.staffChat.filter((m) => staffPair(m, user.id, other)).slice(-200));
+});
+route('POST', /^\/api\/staff\/chat$/, async (req, res, { user }) => {
+  const b = await readJson(req);
+  const to = userById(b.to);
+  const text = String(b.text || '').trim().slice(0, 4000);
+  if (!to || to.active === false || to.id === user.id) return send(res, 400, { error: 'בחר עובד' });
+  if (!text) return send(res, 400, { error: 'הודעה ריקה' });
+  const t = b.ticketId && ticketById(b.ticketId);
+  const m = { id: store.newId(), from: user.id, to: to.id, text, ts: now(), read: false, ...(t ? { ticketId: t.id, ticketName: displayName(t) } : {}) };
+  db.staffChat.push(m);
+  if (db.staffChat.length > 20000) db.staffChat.splice(0, db.staffChat.length - 20000);
+  store.saveStaffChat();
+  // עובד שמקבל הפניה לקריאה שהוא לא רואה – מנהל משתף אותה; הוא יוכל לפתוח אותה לצפייה
+  sendTo(to.id, { type: 'staffmsg', message: m, fromName: user.name });
+  sendTo(user.id, { type: 'staffmsg', message: m, fromName: user.name });
+  send(res, 200, m);
+});
+route('POST', /^\/api\/staff\/read$/, async (req, res, { user }) => {
+  const b = await readJson(req);
+  let changed = false;
+  for (const m of db.staffChat) if (m.to === user.id && m.from === b.with && !m.read) { m.read = true; changed = true; }
+  if (changed) { store.saveStaffChat(); sendTo(b.with, { type: 'staffread', by: user.id }); }
+  send(res, 200, { ok: true });
+});
+
 // "מה חדש": כל עובד מסמן "קראתי" – לא יוצג לו שוב עד הגרסה הבאה
 route('POST', /^\/api\/me\/seen$/, async (req, res, { user }) => {
   const b = await readJson(req);
@@ -788,7 +828,9 @@ function visibleTicket(user, id) {
   if (canSee(user, t)) return t;
   // היסטוריה: מותר לראות קריאה קודמת של לקוח שיש לך קריאה פתוחה שלו
   const mine = db.tickets.find((x) => x.chatId === t.chatId && x.instanceId === t.instanceId && canSee(user, x));
-  return mine ? t : null;
+  if (mine) return t;
+  // קריאה ששותפה איתו בצ'אט הפנימי – צפייה בלבד
+  return db.staffChat.some((m) => m.to === user.id && m.ticketId === t.id) ? t : null;
 }
 
 route('GET', /^\/api\/tickets\/(\d+)$/, (req, res, { user, params }) => {

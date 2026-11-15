@@ -117,6 +117,7 @@ async function startMain() {
       <a id="multiBtn" href="whatsappmulti://open" style="display:none"><button tabindex="-1" title="פתיחת התוכנה WhatsApp Multi (הוואטסאפים הרגילים, כולל הפרטי)">📱<span class="lbl"> WhatsApp Multi</span></button></a>
       ${S.me.waAccess ? '<button id="waBtn" title="כל הצ׳אטים של מספרי המשרד – כמו בוואטסאפ (לא רק קריאות)">💬<span class="lbl"> וואטסאפ</span></button>' : ''}
       <button id="taskBtn" title="הודעה בקבוצה המשותפת – פותחת קריאה אצל הצד השני">📋<span class="lbl"> ${S.me.role === 'admin' ? 'קריאה לעובד' : 'פנייה למנהל'}</span></button>
+      <button id="staffBtn" title="צ׳אט פנימי עם הצוות">💭<span class="lbl"> צוות</span><span class="badge on" id="staffBadge" style="display:none"></span></button>
       <button id="newChat" title="שליחת הודעה ללקוח חדש">✉️<span class="lbl"> שיחה חדשה</span></button>
       <button id="muteBtn"></button>
       <button id="mySettings" title="צלצולים וסיסמה">⚙️</button>
@@ -139,6 +140,8 @@ async function startMain() {
   $('#newChat').onclick = newChatDialog;
   try { if (localStorage.getItem('hd-multi') !== '0') $('#multiBtn').style.display = ''; } catch {}
   $('#taskBtn').onclick = taskDialog;
+  $('#staffBtn').onclick = () => (S.staff.open ? staffClose() : staffOpen(null));
+  api('GET', '/api/staff/unread').then((u) => { S.staff.unread = u; staffBadge(); }).catch(() => {});
   if ($('#waBtn')) $('#waBtn').onclick = () => (S.mode === 'wa' ? leaveWa() : enterWa());
   $('#q').oninput = (e) => { S.q = e.target.value.trim(); renderList(); };
   if ($('#fuser')) $('#fuser').onchange = (e) => { S.fuser = e.target.value; try { localStorage.setItem('hd-fuser', S.fuser); } catch {} renderList(); };
@@ -186,6 +189,10 @@ function onEvent(ev) {
       Sounds.newMessage();
       notify(ev.sound === 'new' ? 'קריאה חדשה' : 'הודעה חדשה', `${t.customerName}: ${t.lastText || ''}`);
     }
+  } else if (ev.type === 'staffmsg') {
+    staffOnMessage(ev.message, ev.fromName);
+  } else if (ev.type === 'staffread') {
+    if (S.staff.with === ev.by) { S.staff.msgs.forEach((m) => { if (m.from === S.me.id) m.read = true; }); staffRenderMsgs(); }
   } else if (ev.type === 'call') {
     showCall(ev.call);
   } else if (ev.type === 'call-end') {
@@ -295,7 +302,8 @@ function renderList() {
   const list = currentList();
   const now = Date.now();
   const myWaiting = [...S.tickets.values()].filter((t) => t.assigneeId === S.me.id && t.awaiting).length;
-  document.title = (myWaiting ? `(${myWaiting}) ` : '') + 'מוקד וואטסאפ';
+  const titleCount = myWaiting + staffTotal();
+  document.title = (titleCount ? `(${titleCount}) ` : '') + 'מוקד וואטסאפ';
   const act = [...S.tickets.values()].filter((t) => !t.snoozeUntil);
   const counts = { mine: act.filter((t) => t.assigneeId === S.me.id).length, all: act.length, routing: act.filter((t) => t.status === 'routing' || !t.assigneeId).length,
     snoozed: [...S.tickets.values()].filter((t) => t.snoozeUntil && (S.me.role === 'admin' || t.assigneeId === S.me.id)).length };
@@ -1675,4 +1683,95 @@ async function whatsNew(all) {
     closeModal();
     if (!all) { S.me.seenVersion = S.version; api('POST', '/api/me/seen', { version: S.version }).catch(() => {}); }
   };
+}
+
+
+// =====================================================================
+// 💭 צ'אט פנימי בין העובדים – חלונית קטנה בפינה + פופאפ כשמגיעה הודעה
+// =====================================================================
+S.staff = { open: false, with: null, msgs: [], unread: {} };
+const staffTotal = () => Object.values(S.staff.unread || {}).reduce((a, b) => a + b, 0);
+const userName = (id) => (S.users.find((u) => u.id === id) || {}).name || 'עובד';
+function staffBadge() {
+  const n = staffTotal(); const b = $('#staffBadge');
+  if (b) { b.textContent = n; b.style.display = n ? '' : 'none'; }
+  renderList();
+}
+function staffPanel() {
+  let p = $('#staffPanel');
+  if (!p) { p = document.createElement('div'); p.id = 'staffPanel'; document.body.appendChild(p); }
+  return p;
+}
+function staffClose() { S.staff.open = false; S.staff.with = null; const p = $('#staffPanel'); if (p) p.remove(); }
+async function staffOpen(withId) {
+  S.staff.open = true; S.staff.with = withId || null;
+  const p = staffPanel();
+  if (!withId) {
+    const others = S.users.filter((u) => u.id !== S.me.id);
+    p.innerHTML = `<div class="sp-head"><b>💭 צ׳אט צוות</b><span class="spacer"></span><button class="ghost sp-x" title="סגור">✕</button></div>
+      <div class="sp-list">${others.map((u) => `<div class="sp-user" data-u="${u.id}"><div class="av" style="background:${avColor(u.id)}">${esc(initials(u.name))}</div>
+        <b>${esc(u.name)}</b><span class="spacer"></span>${S.staff.unread[u.id] ? `<span class="badge on">${S.staff.unread[u.id]}</span>` : ''}</div>`).join('') || '<div class="empty">אין עובדים נוספים</div>'}</div>`;
+    p.querySelector('.sp-x').onclick = staffClose;
+    p.querySelectorAll('[data-u]').forEach((d) => (d.onclick = () => staffOpen(d.dataset.u)));
+    return;
+  }
+  const t = S.view && !S.view.readOnly ? S.view.ticket : null;
+  p.innerHTML = `<div class="sp-head"><button class="ghost sp-back" title="חזרה">➜</button><b>💭 ${esc(userName(withId))}</b><span class="spacer"></span><button class="ghost sp-x" title="סגור">✕</button></div>
+    <div class="sp-msgs" id="spMsgs"><div class="day">טוען...</div></div>
+    ${t ? `<label class="sp-share"><input type="checkbox" id="spShare"> 📎 לצרף את הקריאה הפתוחה #${t.id} (${esc(t.customerName)})</label>` : ''}
+    <div class="sp-comp"><textarea id="spTxt" rows="1" placeholder="כתוב ל${esc(userName(withId))}... (Enter לשליחה)"></textarea><button class="primary" id="spSend">➤</button></div>`;
+  p.querySelector('.sp-x').onclick = staffClose;
+  p.querySelector('.sp-back').onclick = () => staffOpen(null);
+  const txt = $('#spTxt');
+  txt.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); staffSend(); } };
+  $('#spSend').onclick = staffSend;
+  txt.focus();
+  try { S.staff.msgs = await api('GET', '/api/staff/chat?with=' + encodeURIComponent(withId)); } catch (e) { toast(e.message, true); return; }
+  delete S.staff.unread[withId]; staffBadge();
+  staffRenderMsgs();
+}
+function staffMsgHtml(m) {
+  const mine = m.from === S.me.id;
+  const tk = m.ticketId ? `<a class="sp-tk" data-tk="${esc(m.ticketId)}">🎫 קריאה #${esc(m.ticketId)}${m.ticketName ? ' – ' + esc(m.ticketName) : ''}</a>` : '';
+  return `<div class="sp-m ${mine ? 'out' : 'in'}">${esc(m.text)}${tk}<div class="meta">${fmtTime(m.ts)}${mine ? ` <span class="ticks ${m.read ? 'read' : ''}">${m.read ? '✓✓' : '✓'}</span>` : ''}</div></div>`;
+}
+function staffRenderMsgs() {
+  const box = $('#spMsgs'); if (!box) return;
+  let lastDay = '';
+  box.innerHTML = S.staff.msgs.map((m) => { const d = new Date(m.ts).toLocaleDateString('he-IL'); const sep = d !== lastDay ? `<div class="day">${d}</div>` : ''; lastDay = d; return sep + staffMsgHtml(m); }).join('') || '<div class="day">עוד אין הודעות – כתוב משהו 🙂</div>';
+  box.querySelectorAll('[data-tk]').forEach((a) => (a.onclick = () => openTicket(a.dataset.tk)));
+  box.scrollTop = box.scrollHeight;
+}
+async function staffSend() {
+  const txt = $('#spTxt'); const text = txt.value.trim(); if (!text || !S.staff.with) return;
+  const share = $('#spShare') && $('#spShare').checked && S.view ? S.view.ticket.id : null;
+  txt.value = '';
+  try { await api('POST', '/api/staff/chat', { to: S.staff.with, text, ticketId: share }); if ($('#spShare')) $('#spShare').checked = false; }
+  catch (e) { toast(e.message, true); txt.value = text; }
+}
+function staffOnMessage(m, fromName) {
+  const other = m.from === S.me.id ? m.to : m.from;
+  if (S.staff.open && S.staff.with === other) {
+    if (!S.staff.msgs.some((x) => x.id === m.id)) { S.staff.msgs.push(m); staffRenderMsgs(); }
+    if (m.to === S.me.id) api('POST', '/api/staff/read', { with: other }).catch(() => {});
+    return;
+  }
+  if (m.from === S.me.id) return;
+  S.staff.unread[m.from] = (S.staff.unread[m.from] || 0) + 1; staffBadge();
+  if (S.staff.open && !S.staff.with) staffOpen(null);
+  // פופאפ קטן
+  let wrap = $('#staffPops');
+  if (!wrap) { wrap = document.createElement('div'); wrap.id = 'staffPops'; document.body.appendChild(wrap); }
+  const old = wrap.querySelector(`[data-from="${m.from}"]`); if (old) old.remove();
+  const el = document.createElement('div');
+  el.className = 'staffpop'; el.dataset.from = m.from;
+  el.innerHTML = `<div class="sp-pop-head"><b>💭 ${esc(fromName || userName(m.from))}</b><span class="spacer"></span><button class="ghost sp-x">✕</button></div>
+    <div class="sp-pop-text">${esc(m.text.slice(0, 200))}${m.ticketId ? `<br><small>🎫 קריאה #${esc(m.ticketId)}</small>` : ''}</div>
+    <div class="row"><button class="primary sp-reply">↩ השב</button></div>`;
+  wrap.prepend(el);
+  el.querySelector('.sp-x').onclick = () => el.remove();
+  el.querySelector('.sp-reply').onclick = () => { el.remove(); staffOpen(m.from); };
+  setTimeout(() => el.remove(), 20000);
+  Sounds.newMessage();
+  notify('💭 ' + (fromName || userName(m.from)), m.text.slice(0, 120));
 }
