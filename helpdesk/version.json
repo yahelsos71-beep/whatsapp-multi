@@ -1,19 +1,19 @@
 {
-  "version": 45,
+  "version": 46,
   "files": {
-    "server.js": "7978348a15f25dfca5e3459860f3433bc5f6bbeb3f11eca56d10c917547a015c",
+    "server.js": "c101f8c2b80a8044d6bc2be0cfe319aa31976f261df012c86cbc8f5d5a60d112",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
     "reset-password.bat": "662bfbec8b94b264fd7b585a365f389415b8ec66bea540e876418e7a3f805187",
     "README-HE.txt": "4c860dca000bec648c5aec0c5cfa25ca515e996f1470b961fc967ce73fd3b0a8",
     "lib/ai.js": "a86761c5735519efe6d73fff0f2450800a36a5a8ed816ca41ef898fbe53a80c3",
-    "lib/greenapi.js": "6413d5d99e243a1fd6d74f7030116c662950eb4115473baafb6587ecc8abe64d",
+    "lib/greenapi.js": "7183b3f0c93b0d006d7b06f935eb11e805484f1428eb4ab763245ad3563aa968",
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "6d5f73a03d5838d4b08f4bb3d0965afa0586bc7aa26abaa78c01e1448cd35bf5",
-    "public/app.js": "d91758b947762c1befb201fa738b5dee1d9647dfa755a42772567b6312ed1cab",
-    "public/changelog.json": "2a1ff912e6b6a47ae7fca1b7631d3837402e664c171bc987ecacf182bc743e01",
+    "public/app.js": "4030c8d821665c116f5d1c78346a68cb41e54470d50055f76dc78fedbc08bc90",
+    "public/changelog.json": "5959b639050e13b4d44522bfc6630ba3786f80912390fa5b54383255a5465363",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
-    "public/style.css": "da14fc18f7926d385960b18e13b023462ea29f0742229636f3cc40e0fdd688f0"
+    "public/style.css": "3bb75d6a02732d5fb892b201a011c19e2f3bb296ce7f48a62a137e7acd558579"
   },
-  "notes": "💭 צ'אט פנימי בין העובדים – כפתור \"💭 צוות\" למעלה, ופופאפ קטן כשמישהו כותב לך | 📎 אפשר לצרף לשיחה קריאה פתוחה – העובד השני יכול לפתוח אותה בלחיצה"
+  "notes": "📱 שיחה ממספר לא מוכר: החלון מראה את השם והתמונה מהפרופיל בוואטסאפ (ושם העסק בוואטסאפ עסקי) | 👤 \"שמור איש קשר\" מתמלא לבד לפי הפרטים מוואטסאפ"
 }

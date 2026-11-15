@@ -1160,6 +1160,35 @@ function isIncoming(f) {
   if (src && staffLines().some((x) => src.endsWith(x) || x.endsWith(src))) return false;
   return true;
 }
+// 📱 "מי זה?" לפי וואטסאפ: שם בפרופיל / שם העסק / תמונה – למספר שלא שמור אצלנו (נשמר במטמון שבוע)
+const waInfoCache = new Map();
+async function waLookup(phone) {
+  phone = normPhone(phone); if (!phone) return null;
+  const hit = waInfoCache.get(phone);
+  if (hit && now() - hit.at < 7 * 864e5) return hit.info;
+  const inst = db.config.instances.find((i) => i.enabled !== false && instState[i.id] !== 'notAuthorized') || db.config.instances[0];
+  if (!inst) return null;
+  const chatId = phone + '@c.us';
+  let info = { exists: false };
+  try {
+    const [ci, av] = await Promise.all([ga.getContactInfo(inst, chatId).catch(() => null), ga.getAvatar(inst, chatId).catch(() => null)]);
+    const name = ci && (ci.name || ci.contactName) || '';
+    const exists = !!(ci && (name || ci.isBusiness || ci.description)) || !!(av && av.existsWhatsapp);
+    info = { exists, name: name && !/^[\d+\s-]+$/.test(name) ? name : '', business: !!(ci && ci.isBusiness), category: (ci && ci.category) || '',
+      description: String((ci && ci.description) || '').slice(0, 200), email: (ci && ci.email) || '', avatar: (av && av.urlAvatar) || (ci && ci.avatar) || '' };
+  } catch {}
+  waInfoCache.set(phone, { at: now(), info });
+  if (waInfoCache.size > 3000) waInfoCache.clear();
+  return info;
+}
+async function sendCallWaInfo(call, targets) {
+  if (call.name && call.known) return;
+  const info = await waLookup(call.phone);
+  if (!info || !info.exists) return;
+  for (const u of targets) sendTo(u.id, { type: 'call-info', phone: call.phone, wa: info });
+}
+route('GET', /^\/api\/wa\/lookup$/, async (req, res, { query }) => send(res, 200, (await waLookup(query.get('phone'))) || { exists: false }));
+
 async function pbxWebhook(req, res, query) {
   const key = query.get('key') || req.headers['x-api-key'] || '';
   if (!db.config.pbxKey || key !== db.config.pbxKey) return send(res, 403, { error: 'bad key' });
@@ -1186,6 +1215,7 @@ async function pbxWebhook(req, res, query) {
   const call = callInfo(phone, p);
   log(`📞 call from ${phone}${p.to ? ' to ' + p.to : ''} → ${targets.map((u) => u.name).join(', ')}`);
   for (const u of targets) sendTo(u.id, { type: 'call', call });
+  sendCallWaInfo(call, targets).catch(() => {});
 }
 // ---------- 📞 חיבור ישיר ל-015 (Enswitch): בודקים כל 2 שניות אילו שיחות נכנסות מצלצלות ----------
 // לא צריך Webhook ולא הפניית פורט – השרת שלנו פונה החוצה למרכזייה
@@ -1232,6 +1262,7 @@ async function pbxPoll() {
       log(`📞 015 call from ${from}${to ? ' to ' + to : ''}`);
       const info = callInfo(from, { callId: id, to: ext });
       for (const u of targets) sendTo(u.id, { type: 'call', call: info });
+      sendCallWaInfo(info, targets).catch(() => {});
     }
     for (const [id, phone] of activeCalls) if (!seen.has(id)) { activeCalls.delete(id); emitAll({ type: 'call-end', phone, callId: id }); }
     pbxSchedule(2000);
@@ -1286,7 +1317,9 @@ route('POST', /^\/api\/admin\/pbx-test$/, async (req, res, { user }) => {
   const b = await readJson(req);
   const call = { caller_id_number: normPhone(b.phone) || '972501234567', destination_number: user.ext || '', event: 'ringing' };
   pbxLog.unshift({ at: now(), fields: { ...call, test: 'בדיקה מהמסך' }, parsed: pbxParse(call) });
-  sendTo(user.id, { type: 'call', call: callInfo(call.caller_id_number) });
+  const ci = callInfo(call.caller_id_number);
+  sendTo(user.id, { type: 'call', call: ci });
+  sendCallWaInfo(ci, [user]).catch(() => {});
   send(res, 200, { ok: true });
 }, { auth: 'admin' });
 

@@ -195,6 +195,8 @@ function onEvent(ev) {
     if (S.staff.with === ev.by) { S.staff.msgs.forEach((m) => { if (m.from === S.me.id) m.read = true; }); staffRenderMsgs(); }
   } else if (ev.type === 'call') {
     showCall(ev.call);
+  } else if (ev.type === 'call-info') {
+    callWaInfo(ev.phone, ev.wa);
   } else if (ev.type === 'call-end') {
     endCall(ev);
   } else if (ev.type === 'msgupdate') {
@@ -1560,12 +1562,16 @@ function showCall(c, quiet) {
     <div class="row cp-act">${!c.name && !c.company ? '<button data-act="save">👤 שמור איש קשר</button>' : ''}${S.me.waAccess ? '<button data-act="wa">💬 וואטסאפ</button>' : ''}<button data-act="new">✉️ שלח הודעה</button></div>`;
   wrap.prepend(el);
   calls.set(c.phone, el);
+  el._c = c;
+  if (c.wa) callWaInfo(c.phone, c.wa);
   el.querySelector('.cp-x').onclick = () => { el.remove(); calls.delete(c.phone); };
   el.querySelectorAll('[data-open]').forEach((a) => (a.onclick = () => openTicket(a.dataset.open)));
   el.querySelectorAll('[data-act]').forEach((b) => (b.onclick = async () => {
     if (b.dataset.act === 'save') {
+      const w = el._c.wa || {};
       openModal(`<h3>👤 שמירת איש קשר</h3>
-        <div class="grid2"><div><label>שם</label><input id="kn" value="${esc(c.name || '')}"></div><div><label>חברה</label><input id="kc" value="${esc(c.company || '')}"></div></div>
+        <div class="grid2"><div><label>שם</label><input id="kn" value="${esc(c.name || (!w.business ? w.name || '' : ''))}"></div><div><label>חברה</label><input id="kc" value="${esc(c.company || (w.business ? w.name || '' : ''))}"></div></div>
+        ${w.name ? `<div class="hint">📱 מולא לפי הפרופיל בוואטסאפ – אפשר לתקן</div>` : ''}
         <label>טלפונים (מופרדים בפסיק)</label><input id="kp" dir="ltr" value="${esc(localPhone(c.phone))}">
         <div class="hint">השם והחברה יופיעו במוקד אצל כל העובדים – גם בשיחה הבאה מהמספר הזה.</div>
         <div class="row"><button class="primary" id="ksave">💾 שמור</button><button id="cancel">ביטול</button></div>`);
@@ -1575,7 +1581,7 @@ function showCall(c, quiet) {
           const name = $('#kn').value.trim(), company = $('#kc').value.trim();
           await api('POST', '/api/contacts', { name, company, phones: $('#kp').value });
           closeModal(); toast('איש הקשר נשמר ✓');
-          if (el.isConnected) showCall({ ...c, name: name || company, company, known: true }, true);
+          if (el.isConnected) showCall({ ...c, name: name || company, company, known: true, wa: null }, true);
         } catch (e) { toast(e.message, true); }
       };
       return;
@@ -1774,4 +1780,15 @@ function staffOnMessage(m, fromName) {
   setTimeout(() => el.remove(), 20000);
   Sounds.newMessage();
   notify('💭 ' + (fromName || userName(m.from)), m.text.slice(0, 120));
+}
+
+// 📱 פרטים מוואטסאפ על מספר לא מוכר – נכנסים לחלון השיחה
+function callWaInfo(phone, wa) {
+  const el = calls.get(phone); if (!el || !wa || !wa.exists) return;
+  el._c.wa = wa;
+  let line = el.querySelector('.cp-wa');
+  if (!line) { line = document.createElement('div'); line.className = 'cp-line cp-wa'; el.querySelector('.cp-head').after(line); }
+  line.innerHTML = `${wa.avatar ? `<img src="${esc(wa.avatar)}" alt="" referrerpolicy="no-referrer">` : '<span class="cp-wa-ic">📱</span>'}
+    <div><small>בוואטסאפ${wa.business ? ' עסקי' : ''}:</small> <b>${esc(wa.name || 'ללא שם')}</b>${wa.category ? ` · ${esc(wa.category)}` : ''}
+    ${wa.description ? `<div class="muted" style="font-size:12px">${esc(wa.description.slice(0, 100))}</div>` : ''}</div>`;
 }
