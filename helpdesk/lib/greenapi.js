@@ -174,8 +174,9 @@ const lastOutgoing = (inst, minutes = 4320) => call(inst, 'lastOutgoingMessages'
 // מחיקת הודעה שנשלחה – אצל כולם (וואטסאפ מאפשר בערך יומיים אחרי השליחה)
 const deleteMessage = (inst, chatId, idMessage) => call(inst, 'deleteMessage', { json: { chatId, idMessage, onlySenderDelete: false } });
 // פרטי איש קשר מוואטסאפ: שם בפרופיל, עסק, תיאור, תמונה
+const getSettings = (inst) => call(inst, 'getSettings', { timeoutMs: 15000 });
 const getContactInfo = (inst, chatId) => call(inst, 'getContactInfo', { json: { chatId }, timeoutMs: 15000 });
 const getAvatar = (inst, chatId) => call(inst, 'getAvatar', { json: { chatId }, timeoutMs: 15000 });
 const getContacts = (inst) => call(inst, 'getContacts', { timeoutMs: 60000 });
 
-module.exports = { getContactInfo, getAvatar, deleteMessage, lastIncoming, lastOutgoing, getContacts, getGroupData, getChatHistory, parseHistoryItem, receiveNotification, deleteNotification, sendMessage, sendFile, getStateInstance, enableNotifications, parseMessage };
+module.exports = { getSettings, getContactInfo, getAvatar, deleteMessage, lastIncoming, lastOutgoing, getContacts, getGroupData, getChatHistory, parseHistoryItem, receiveNotification, deleteNotification, sendMessage, sendFile, getStateInstance, enableNotifications, parseMessage };

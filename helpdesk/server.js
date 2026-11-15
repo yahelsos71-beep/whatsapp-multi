@@ -504,8 +504,10 @@ async function waSeed(inst) {
 }
 const waContacts = new Map(); // לחיפוש: אנשי קשר/קבוצות בלי פעילות אחרונה
 
+const instLastNotif = {}; // instId -> {at, type} – מתי הגיעה הודעה אחרונה מ-Green API
 async function handleNotification(inst, body) {
   const type = body && body.typeWebhook;
+  instLastNotif[inst.id] = { at: now(), type };
   if (type === 'stateInstanceChanged') { instState[inst.id] = body.stateInstance; emitAll({ type: 'instances', list: instancesStatus() }); return; }
   if (type === 'outgoingMessageStatus') {
     const f = findMessageByIdMessage(body.idMessage);
@@ -1321,6 +1323,46 @@ route('POST', /^\/api\/admin\/pbx-test$/, async (req, res, { user }) => {
   sendTo(user.id, { type: 'call', call: ci });
   sendCallWaInfo(ci, [user]).catch(() => {});
   send(res, 200, { ok: true });
+}, { auth: 'admin' });
+
+// ---------- 🔎 "למה הצ'אט לא נכנס?" – בדיקה לפי טלפון או שם ----------
+route('GET', /^\/api\/admin\/diagnose$/, async (req, res, { query }) => {
+  const q = String(query.get('q') || '').trim();
+  if (!q) return send(res, 400, { error: 'כתוב טלפון או שם' });
+  const phone = normPhone(q);
+  const ql = q.toLowerCase();
+  const out = [];
+  for (const inst of db.config.instances) {
+    const r = { instance: inst.name, enabled: inst.enabled !== false, state: instState[inst.id] || 'unknown', lastNotif: instLastNotif[inst.id] || null, chats: [] };
+    try { const st = await ga.getSettings(inst); r.webhookUrl = st.webhookUrl || ''; r.incomingWebhook = st.incomingWebhook; } catch (e) { r.settingsError = e.message.slice(0, 100); }
+    // צ'אטים שמתאימים: לפי טלפון, או לפי שם (צ'אטים שהמוקד ראה + אנשי קשר)
+    const ids = new Set();
+    if (phone && phone.length >= 9) ids.add(phone + '@c.us');
+    for (const c of Object.values(db.waChats)) if (c.instanceId === inst.id && ((c.name || '').toLowerCase().includes(ql) || (phone && c.chatId.startsWith(phone)))) ids.add(c.chatId);
+    for (const c of db.contacts) if ([c.name, c.company].some((x) => x && x.toLowerCase().includes(ql))) for (const p of c.phones) ids.add(p + '@c.us');
+    for (const t of db.tickets) if (t.instanceId === inst.id && displayName(t).toLowerCase().includes(ql)) ids.add(t.chatId);
+    for (const chatId of [...ids].slice(0, 6)) {
+      const w = db.waChats[waKey(inst.id, chatId)];
+      const ts = db.tickets.filter((t) => t.instanceId === inst.id && t.chatId === chatId).sort((a, b) => b.createdAt - a.createdAt);
+      const open = ts.find((t) => t.status !== 'closed');
+      let green = null;
+      try { const h = await ga.getChatHistory(inst, chatId, 3); green = (Array.isArray(h) ? h : []).map(ga.parseHistoryItem).sort((a, b) => b.ts - a.ts).slice(0, 3).map((x) => ({ ts: x.ts, dir: x.dir, text: (x.text || '').slice(0, 60) })); } catch (e) { green = { error: e.message.slice(0, 80) }; }
+      const senderPhone = chatId.split('@')[0];
+      r.chats.push({
+        chatId, name: (w && w.name) || (ts[0] && displayName(ts[0])) || waName(inst, chatId, '') || '',
+        ignored: isIgnored(inst.id, chatId), ignoredByName: chatId.endsWith('@g.us') && ignoredByName(w && w.name),
+        pinnedTo: (ruleFor(inst.id, chatId) && userById(ruleFor(inst.id, chatId).userId)?.name) || '',
+        staff: (staffByPhone(senderPhone) || {}).name || '',
+        tech: serviceTargets().some((x) => normPhone(x.phone) === senderPhone || x.chatId === chatId),
+        seen: w ? { ts: w.ts, dir: w.dir, text: (w.text || '').slice(0, 60) } : null,
+        open: open ? { id: open.id, status: open.status, assignee: userById(open.assigneeId)?.name || '', snoozed: !!open.snoozeUntil } : null,
+        last: ts[0] && ts[0] !== open ? { id: ts[0].id, status: ts[0].status, closedAt: ts[0].closedAt || 0 } : null,
+        green,
+      });
+    }
+    out.push(r);
+  }
+  send(res, 200, out);
 }, { auth: 'admin' });
 
 // ---------- מסך "💬 וואטסאפ" ----------

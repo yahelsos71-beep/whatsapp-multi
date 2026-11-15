@@ -1208,7 +1208,10 @@ function adminWa() {
     <div><label>mediaUrl</label><input data-f="mediaUrl" dir="ltr" value="${esc(i.mediaUrl || 'https://media.green-api.com')}"></div></div>
     <label class="check"><input type="checkbox" data-f="enabled" ${i.enabled !== false ? 'checked' : ''}> פעיל</label>
     <div class="row"><button class="primary" data-save>💾 שמור ובדוק חיבור</button>${i.id ? '<button class="ghost" data-del>🗑️ מחק</button>' : ''}</div></div>`;
-  $('#apane').innerHTML = `<div class="hint">את הפרטים מעתיקים מהאתר של Green API (console.green-api.com) ← בחירת ה-instance.
+  $('#apane').innerHTML = `<div class="card2" style="margin-bottom:12px"><b>🔎 הודעה לא נכנסה למוקד? בדיקה</b>
+      <div class="row"><input id="dgQ" placeholder="טלפון או שם (למשל: אלעד / 0521234567)" style="flex:1;margin:0"><button id="dgBtn">🔎 בדוק</button></div>
+      <div id="dgOut"></div></div>
+    <div class="hint">את הפרטים מעתיקים מהאתר של Green API (console.green-api.com) ← בחירת ה-instance.
     השמירה גם מפעילה ב-Green API את ההתראות שהמוקד צריך. הסריקה של ה-QR נעשית באתר של Green API – פעם אחת לכל מספר.</div>
     ${A.config.instances.map(card).join('')}${card({})}`;
   $('#apane').querySelectorAll('[data-card]').forEach((c) => {
@@ -1792,3 +1795,39 @@ function callWaInfo(phone, wa) {
     <div><small>בוואטסאפ${wa.business ? ' עסקי' : ''}:</small> <b>${esc(wa.name || 'ללא שם')}</b>${wa.category ? ` · ${esc(wa.category)}` : ''}
     ${wa.description ? `<div class="muted" style="font-size:12px">${esc(wa.description.slice(0, 100))}</div>` : ''}</div>`;
 }
+
+// 🔎 בדיקה: למה צ'אט לא נכנס למוקד
+document.addEventListener('click', async (e) => {
+  if (!e.target.closest('#dgBtn')) return;
+  const q = $('#dgQ').value.trim(); if (!q) return;
+  $('#dgOut').innerHTML = '<div class="hint">בודק מול Green API...</div>';
+  let res; try { res = await api('GET', '/api/admin/diagnose?q=' + encodeURIComponent(q)); } catch (er) { $('#dgOut').innerHTML = `<div class="hint">⚠️ ${esc(er.message)}</div>`; return; }
+  const when = (ts) => (ts ? new Date(ts).toLocaleString('he-IL', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
+  $('#dgOut').innerHTML = res.map((r) => {
+    const inst = [];
+    if (!r.enabled) inst.push('⚪ המספר כבוי במוקד');
+    if (r.state !== 'authorized') inst.push(`🔴 המספר לא מחובר (${esc(r.state)}) – צריך לסרוק QR באתר Green API`);
+    if (r.webhookUrl) inst.push(`⚠️ באתר Green API מוגדרת כתובת Webhook (<span dir="ltr">${esc(r.webhookUrl)}</span>) – ההודעות הולכות לשם ולא למוקד. לתיקון: "💾 שמור ובדוק חיבור" במספר הזה למטה`);
+    if (r.incomingWebhook && r.incomingWebhook !== 'yes') inst.push('⚠️ קבלת הודעות נכנסות כבויה ב-Green API. לתיקון: "💾 שמור ובדוק חיבור" למטה');
+    if (r.settingsError) inst.push('⚠️ לא הצלחתי לקרוא הגדרות מ-Green API: ' + esc(r.settingsError));
+    const chats = r.chats.map((c) => {
+      const L = [];
+      const g = Array.isArray(c.green) ? c.green : [];
+      const lastIn = g.find((x) => x.dir === 'in');
+      if (c.ignored) L.push('🚫 הצ׳אט <b>חסום</b> – לא נכנס למוקד. ביטול: ניהול ← כללי ← חסומים');
+      if (c.ignoredByName) L.push('🔕 קבוצה שמתעלמים ממנה לפי שם (ניהול ← כללי)');
+      if (c.staff) L.push(`👤 זה המספר של העובד ${esc(c.staff)} – הודעות ממנו לא פותחות קריאה`);
+      if (c.tech) L.push('🛠 זה יעד קריאת שירות (טכנאי) – הודעות ממנו נכנסות כהערה בקריאה, לא כקריאה חדשה');
+      if (c.open) L.push(`✅ יש קריאה פתוחה <a data-open="${c.open.id}">#${c.open.id}</a>${c.open.assignee ? ' אצל <b>' + esc(c.open.assignee) + '</b>' : ' (בניתוב)'}${c.open.snoozed ? ' – <b>מושהית</b> (בלשונית "מושהות")' : ''}`);
+      else if (c.last) L.push(`📁 הקריאה האחרונה #${c.last.id} סגורה (${when(c.last.closedAt)})`);
+      if (lastIn && (!c.seen || lastIn.ts > c.seen.ts + 60000)) L.push(`❌ בוואטסאפ יש הודעה מ-${when(lastIn.ts)} ("${esc(lastIn.text)}") ש<b>לא הגיעה למוקד</b> – בדוק את החיבור של המספר למעלה`);
+      else if (c.seen) L.push(`📥 הודעה אחרונה שהמוקד קיבל: ${when(c.seen.ts)} ${c.seen.dir === 'in' ? 'מהלקוח' : 'מאיתנו'} – "${esc(c.seen.text)}"`);
+      else if (!g.length) L.push('— אין התכתבות עם המספר הזה במספר הזה');
+      if (c.green && c.green.error) L.push('⚠️ לא הצלחתי למשוך היסטוריה: ' + esc(c.green.error));
+      return `<div style="margin:6px 0;padding:8px;border-radius:8px;background:var(--bg)"><b>${esc(c.name || c.chatId.split('@')[0])}</b> <span dir="ltr" class="chip">${esc(c.chatId.split('@')[0])}</span><br>${L.join('<br>')}</div>`;
+    }).join('');
+    return `<div style="margin-top:10px"><b>📱 ${esc(r.instance)}</b> ${r.lastNotif ? `<span class="hint">· הודעה אחרונה מ-Green API: ${when(r.lastNotif.at)}</span>` : '<span class="hint">· עוד לא הגיעו הודעות מאז שהשרת עלה</span>'}
+      ${inst.length ? '<div>' + inst.join('<br>') + '</div>' : ''}${chats || '<div class="hint">לא נמצא צ׳אט מתאים במספר הזה</div>'}</div>`;
+  }).join('');
+  $('#dgOut').querySelectorAll('[data-open]').forEach((a) => (a.onclick = () => { closeModal(); openTicket(a.dataset.open); }));
+});
