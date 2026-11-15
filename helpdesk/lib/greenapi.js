@@ -4,7 +4,14 @@ const base = (inst, media) =>
 const url = (inst, method, { media = false, suffix = '', query = '' } = {}) =>
   `${base(inst, media)}/waInstance${inst.idInstance}/${method}/${inst.token}${suffix}${query}`;
 
+// 🧪 מצב ניסיון (HD_TEST_MODE=1): לא שולחים כלום באמת ולא משנים הגדרות ב-Green API – רק קוראים
+const TEST_MODE = !!process.env.HD_TEST_MODE;
+const WRITE_METHODS = new Set(['sendMessage', 'sendFileByUpload', 'deleteMessage', 'setSettings', 'deleteNotification', 'receiveNotification']);
 async function call(inst, method, opts = {}) {
+  if (TEST_MODE && WRITE_METHODS.has(method)) {
+    if (method === 'receiveNotification') return null;
+    return { idMessage: 'TEST-' + Date.now(), urlFile: '', saveSettings: true, test: true };
+  }
   const init = { method: opts.httpMethod || 'GET', signal: AbortSignal.timeout(opts.timeoutMs || 30000) };
   if (opts.json !== undefined) {
     init.method = opts.httpMethod || 'POST';

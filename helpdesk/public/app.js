@@ -69,6 +69,7 @@ async function boot() {
   let st;
   try { st = await api('GET', '/api/state'); } catch { app.innerHTML = '<div class="welcome"><h2>אין חיבור לשרת</h2>מנסה שוב...</div>'; return setTimeout(boot, 3000); }
   S.version = st.version; S.company = st.company; S.targets = st.targets || [];
+  S.testMode = !!st.testMode;
   if (st.setupNeeded) return renderSetup();
   if (!st.user) return renderLogin();
   S.me = st.user;
@@ -157,6 +158,7 @@ async function startMain() {
   renderInstances(); renderTabs(); renderList(); renderChat();
   connectEvents();
   setTimeout(() => whatsNew(false), 800);
+  if (S.testMode && !$('#testBanner')) document.body.insertAdjacentHTML('beforeend', '<div id="testBanner">🧪 מצב ניסיון – השרת הזה לא מקבל ולא שולח הודעות באמת</div>');
   if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
 }
 

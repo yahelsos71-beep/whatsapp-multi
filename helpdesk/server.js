@@ -620,7 +620,9 @@ async function handleNotification(inst, body) {
 }
 
 const pollers = new Map(); // instId -> { stop }
+const TEST_MODE = !!process.env.HD_TEST_MODE; // 🧪 מצב ניסיון: לא מושכים הודעות ולא שולחים – כדי לא להפריע לשרת האמיתי
 function startPollers() {
+  if (TEST_MODE) return;
   const active = new Set();
   for (const inst of db.config.instances) {
     if (inst.enabled === false || !inst.idInstance || !inst.token) continue;
@@ -720,7 +722,7 @@ const route = (method, pattern, handler, { auth = 'user' } = {}) => routes.push(
 // ---------- התקנה ראשונה / התחברות ----------
 route('GET', /^\/api\/state$/, (req, res, { user }) =>
   send(res, 200, { setupNeeded: db.users.length === 0, user: publicUser(user), version: VERSION, company: db.config.companyName,
-    targets: user ? serviceTargets().map((x) => ({ id: x.id, name: x.name })) : [] }), { auth: 'none' });
+    targets: user ? serviceTargets().map((x) => ({ id: x.id, name: x.name })) : [], testMode: TEST_MODE }), { auth: 'none' });
 
 route('POST', /^\/api\/setup$/, async (req, res) => {
   if (db.users.length) return send(res, 400, { error: 'כבר הוגדר' });
@@ -1242,6 +1244,7 @@ let pbxTimer = null, pbxSamples = 0;
 const pbxLogged = new Set();
 function pbxSchedule(ms) { clearTimeout(pbxTimer); pbxTimer = setTimeout(pbxPoll, ms); }
 async function pbxPoll() {
+  if (TEST_MODE) { pbxStatus = { state: 'off', at: now(), text: '🧪 מצב ניסיון – לא מחובר למרכזייה' }; return; }
   const c = db.config.pbx || {};
   if (!c.enabled || !c.user || !c.pass) { pbxStatus = { state: 'off', at: now(), text: 'כבוי' }; return pbxSchedule(5000); }
   try {
