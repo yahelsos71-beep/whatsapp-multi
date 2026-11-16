@@ -64,7 +64,15 @@ function waitText(ms) {
 // =====================================================================
 // כניסה
 // =====================================================================
-try { if (localStorage.getItem('hd-theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch {}
+// ערכות תצוגה: tech (ברירת מחדל – טכנולוגי) / light (בהיר) / dark (כהה)
+function applyTheme(t) {
+  const el = document.documentElement;
+  delete el.dataset.theme; delete el.dataset.skin;
+  if (t === 'dark' || t === 'tech') el.dataset.theme = 'dark';
+  if (t === 'tech') el.dataset.skin = 'tech';
+}
+const currentTheme = () => { try { return localStorage.getItem('hd-theme') || 'tech'; } catch { return 'tech'; } };
+applyTheme(currentTheme());
 async function boot() {
   let st;
   try { st = await api('GET', '/api/state'); } catch { app.innerHTML = '<div class="welcome"><h2>אין חיבור לשרת</h2>מנסה שוב...</div>'; return setTimeout(boot, 3000); }
@@ -1017,7 +1025,7 @@ function mySettingsDialog() {
     <label>כל כמה זמן לצלצל תזכורת</label><select id="sSec">${[[15, '15 שניות'], [30, 'חצי דקה'], [60, 'דקה'], [120, '2 דקות'], [300, '5 דקות']].map(([v, n]) => `<option value="${v}" ${v === s.remindSec ? 'selected' : ''}>${n}</option>`).join('')}</select>
     <label>עוצמה</label><input id="sVol" type="range" min="0" max="1" step="0.05" value="${s.vol}">
     <h4>תצוגה</h4>
-    <label class="check"><input type="checkbox" id="sDark" ${document.documentElement.dataset.theme === 'dark' ? 'checked' : ''}> 🌙 מצב כהה</label>
+    <div class="seg" id="sTheme">${[['tech', '✨ טכנולוגי'], ['light', '☀️ בהיר'], ['dark', '🌙 כהה']].map(([k, n]) => `<button data-t="${k}" class="${currentTheme() === k ? 'on' : ''}">${n}</button>`).join('')}</div>
     <h4>תוכנת WhatsApp Multi</h4>
     <label class="check"><input type="checkbox" id="sMulti" ${(() => { try { return localStorage.getItem('hd-multi') !== '0'; } catch { return true; } })() ? 'checked' : ''}> להציג למעלה כפתור "📱 WhatsApp Multi" (רק במחשב שהתוכנה מותקנת בו)</label>
     <h4>שינוי סיסמה</h4>
@@ -1029,7 +1037,10 @@ function mySettingsDialog() {
   $('#newsAll').onclick = () => whatsNew(true);
   $('#tRem').onclick = () => Sounds.play(s.remindTone);
   $('#sSec').onchange = (e) => { s.remindSec = Number(e.target.value); Sounds.save(); };
-  $('#sDark').onchange = (e) => { const d = e.target.checked; if (d) document.documentElement.dataset.theme = 'dark'; else delete document.documentElement.dataset.theme; try { localStorage.setItem('hd-theme', d ? 'dark' : 'light'); } catch {} };
+  box.querySelectorAll('#sTheme button').forEach((b) => (b.onclick = () => {
+    try { localStorage.setItem('hd-theme', b.dataset.t); } catch {}
+    applyTheme(b.dataset.t); box.querySelectorAll('#sTheme button').forEach((x) => x.classList.toggle('on', x === b));
+  }));
   $('#sMulti').onchange = (e) => { try { localStorage.setItem('hd-multi', e.target.checked ? '1' : '0'); } catch {} $('#multiBtn').style.display = e.target.checked ? '' : 'none'; };
   $('#sVol').oninput = (e) => { s.vol = Number(e.target.value); Sounds.save(); };
   $('#pSave').onclick = async () => {

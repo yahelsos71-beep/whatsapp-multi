@@ -383,3 +383,66 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .mentions > div:hover { background: var(--hover); }
 .mentions small { color: var(--muted); }
 #boldBtn b, #waBold b { font-size: 16px; }
+
+/* =====================================================================
+   ✨ ערכת "טכנולוגי" – כחול-לילה, זכוכית, ניאון ציאן/סגול (בנוי מעל הכהה)
+   ===================================================================== */
+:root[data-skin="tech"] {
+  --bg: #060a17; --panel: rgba(14,22,46,.78); --panel2: rgba(24,36,72,.72); --line: rgba(0,229,255,.14);
+  --text: #e6f1ff; --muted: #8aa0c4; --input: rgba(6,12,30,.85);
+  --green: #00d4c0; --green2: #00ffa3; --blue: #4cc9ff; --yellow: #ffc247; --red: #ff4d6d;
+  --in: rgba(20,32,66,.92); --out: linear-gradient(135deg, #0b4a5c, #13306b); --note: rgba(255,194,71,.10); --note-text: #ffd98a;
+  --chat-bg: transparent; --sel: rgba(0,229,255,.10); --hover: rgba(0,229,255,.06); --chip-bg: rgba(0,229,255,.07);
+  --meta: rgba(170,195,235,.65); --by: #5ef2d6; --sender: #ff9f6e; --auto-msg: rgba(76,201,255,.10);
+  --overlay: rgba(2,6,20,.7); --shadow: 0 0 0 1px rgba(0,229,255,.10), 0 10px 30px rgba(0,0,0,.45);
+  --brand: linear-gradient(90deg, #070d24 0%, #0c1640 55%, #1a0f45 100%);
+  --neon: #00e5ff; --neon2: #8b5cf6;
+}
+:root[data-skin="tech"] body {
+  background:
+    radial-gradient(900px 500px at 85% -10%, rgba(139,92,246,.18), transparent 60%),
+    radial-gradient(800px 500px at -10% 110%, rgba(0,229,255,.14), transparent 60%),
+    linear-gradient(rgba(0,229,255,.035) 1px, transparent 1px) 0 0 / 34px 34px,
+    linear-gradient(90deg, rgba(0,229,255,.035) 1px, transparent 1px) 0 0 / 34px 34px,
+    #060a17;
+  font-family: "Segoe UI", "Rubik", Arial, sans-serif; letter-spacing: .1px;
+}
+/* סרגל עליון: כהה עם קו ניאון */
+:root[data-skin="tech"] .top { background: var(--brand) !important; box-shadow: 0 1px 0 rgba(0,229,255,.35), 0 8px 24px rgba(0,0,0,.4); }
+:root[data-skin="tech"] .top .logo { background: linear-gradient(90deg, #00e5ff, #8b5cf6); -webkit-background-clip: text; background-clip: text; color: transparent; font-weight: 800; letter-spacing: .5px; }
+:root[data-skin="tech"] .top button { background: rgba(0,229,255,.07) !important; border: 1px solid rgba(0,229,255,.22); color: #cfe9ff !important; border-radius: 10px; transition: box-shadow .15s, border-color .15s; }
+:root[data-skin="tech"] .top button:hover, :root[data-skin="tech"] #waBtn.on { border-color: var(--neon); box-shadow: 0 0 12px rgba(0,229,255,.45); filter: none; }
+:root[data-skin="tech"] .me { color: #9fb4d8; font-size: 12px; }
+/* פאנלים זכוכית */
+:root[data-skin="tech"] .side, :root[data-skin="tech"] .chat-head, :root[data-skin="tech"] .box, :root[data-skin="tech"] .callpop,
+:root[data-skin="tech"] #staffPanel, :root[data-skin="tech"] .staffpop, :root[data-skin="tech"] .composer, :root[data-skin="tech"] .login .card {
+  background: var(--panel) !important; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+:root[data-skin="tech"] .side { border-left: 1px solid var(--line); }
+:root[data-skin="tech"] .box { border: 1px solid rgba(0,229,255,.22); box-shadow: 0 0 40px rgba(0,229,255,.12), 0 30px 60px rgba(0,0,0,.6); }
+:root[data-skin="tech"] .chat, :root[data-skin="tech"] .msgs { background: transparent !important; }
+/* כפתורים */
+:root[data-skin="tech"] button.primary { background: linear-gradient(90deg, #00c6d8, #6d5cf6) !important; color: #fff !important; box-shadow: 0 0 14px rgba(0,229,255,.35); }
+:root[data-skin="tech"] button.primary:hover { box-shadow: 0 0 22px rgba(0,229,255,.6); filter: none; }
+:root[data-skin="tech"] .tabs button.on, :root[data-skin="tech"] .seg button.on { background: linear-gradient(90deg, rgba(0,229,255,.25), rgba(139,92,246,.25)) !important; color: #fff !important; box-shadow: inset 0 0 0 1px rgba(0,229,255,.5); }
+:root[data-skin="tech"] input:focus, :root[data-skin="tech"] textarea:focus, :root[data-skin="tech"] select:focus { outline: none; border-color: var(--neon); box-shadow: 0 0 0 3px rgba(0,229,255,.15); }
+/* רשימת קריאות */
+:root[data-skin="tech"] .item { border-bottom: 1px solid rgba(0,229,255,.07); }
+:root[data-skin="tech"] .item.sel { background: linear-gradient(90deg, rgba(0,229,255,.04), rgba(0,229,255,.14)); border-right-color: var(--neon) !important; box-shadow: inset -2px 0 12px rgba(0,229,255,.25); }
+:root[data-skin="tech"] .av { box-shadow: 0 0 0 2px rgba(0,229,255,.35), 0 0 14px rgba(0,229,255,.25); }
+:root[data-skin="tech"] .dot { background: #00ffa3; box-shadow: 0 0 10px #00ffa3; }
+:root[data-skin="tech"] .time, :root[data-skin="tech"] .meta, :root[data-skin="tech"] .ph { font-family: Consolas, "Courier New", monospace; }
+:root[data-skin="tech"] .chip { border: 1px solid rgba(0,229,255,.18); }
+/* הודעות */
+:root[data-skin="tech"] .msg.in { background: var(--in); border: 1px solid rgba(0,229,255,.14); }
+:root[data-skin="tech"] .msg.out { background: var(--out); border: 1px solid rgba(76,201,255,.25); box-shadow: 0 0 18px rgba(0,229,255,.08); }
+:root[data-skin="tech"] .msg.note { border: 1px dashed rgba(255,194,71,.35); }
+:root[data-skin="tech"] .day { background: rgba(0,229,255,.08); color: #a9d8ff; border: 1px solid rgba(0,229,255,.2); font-family: Consolas, monospace; }
+:root[data-skin="tech"] .mention { color: #4cc9ff; }
+/* חלונות קופצים */
+:root[data-skin="tech"] .callpop { border-top: 3px solid var(--neon) !important; box-shadow: 0 0 30px rgba(0,229,255,.25), 0 20px 40px rgba(0,0,0,.5); }
+:root[data-skin="tech"] .sp-head, :root[data-skin="tech"] #testBanner { background: linear-gradient(90deg, #00c6d8, #6d5cf6); }
+:root[data-skin="tech"] #toast { background: linear-gradient(90deg, #00c6d8, #6d5cf6); box-shadow: 0 0 20px rgba(0,229,255,.4); }
+:root[data-skin="tech"] ::-webkit-scrollbar { width: 9px; height: 9px; }
+:root[data-skin="tech"] ::-webkit-scrollbar-thumb { background: rgba(0,229,255,.22); border-radius: 9px; }
+:root[data-skin="tech"] ::-webkit-scrollbar-track { background: transparent; }
