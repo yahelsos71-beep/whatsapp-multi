@@ -711,7 +711,8 @@ function adminConfigView() {
     instances: c.instances.map((i) => ({ ...i, token: mask(i.token) })),
     pbxKey: c.pbxKey || '',
     pbxIgnore: c.pbxIgnore || [],
-    pbx: { enabled: !!(c.pbx && c.pbx.enabled), host: (c.pbx && c.pbx.host) || 'www.015pbx.net', user: (c.pbx && c.pbx.user) || '', pass: mask(c.pbx && c.pbx.pass) },
+    pbx: { type: (c.pbx && c.pbx.type) || '015', enabled: !!(c.pbx && c.pbx.enabled), host: (c.pbx && c.pbx.host) || 'www.015pbx.net', user: (c.pbx && c.pbx.user) || '', pass: mask(c.pbx && c.pbx.pass),
+      eslHost: (c.pbx && c.pbx.eslHost) || '', eslPort: (c.pbx && c.pbx.eslPort) || 8021, eslPass: mask(c.pbx && c.pbx.eslPass), domain: (c.pbx && c.pbx.domain) || '' },
     pbxStatus,
   };
 }
@@ -1248,7 +1249,54 @@ const activeCalls = new Map(); // callId -> phone
 let pbxTimer = null, pbxSamples = 0;
 const pbxLogged = new Set();
 function pbxSchedule(ms) { clearTimeout(pbxTimer); pbxTimer = setTimeout(pbxPoll, ms); }
+// ---------- 📞 FusionPBX / FreeSWITCH: חיבור Event Socket – אירועי שיחה בזמן אמת + חיוג ----------
+const { Esl } = require('./lib/esl');
+const esl = new Esl();
+let eslKey = '';
+const fusionCalls = new Map(); // Unique-ID -> { phone, targets }
+esl.on('status', (state, text) => { if ((db.config.pbx || {}).type === 'fusion') pbxStatus = { state, at: now(), text }; });
+esl.on('event', (e) => {
+  const name = e['Event-Name'], uid = e['Unique-ID'];
+  if (name === 'CHANNEL_CREATE') {
+    // הרגל שמצלצלת בשלוחה של עובד (dialed_user) עם מספר חיצוני – שיחה נכנסת אליו
+    const ext = String(e.variable_dialed_user || '').replace(/\D/g, '');
+    const from = normPhone(e['Caller-Caller-ID-Number'] || '');
+    const dirVar = String(e.variable_call_direction || '').toLowerCase();
+    const incoming = e['Call-Direction'] === 'outbound' && ext && from && from.length >= 9 && (!dirVar || dirVar === 'inbound');
+    if (!pbxLogged.has(uid) && (ext || from)) {
+      pbxLogged.add(uid); if (pbxLogged.size > 500) pbxLogged.clear();
+      pbxLog.unshift({ at: now(), source: 'fusion', fields: { 'Call-Direction': e['Call-Direction'], call_direction: e.variable_call_direction || '', caller: e['Caller-Caller-ID-Number'] || '', destination: e['Caller-Destination-Number'] || '', dialed_user: e.variable_dialed_user || '', domain: e.variable_domain_name || '' },
+        parsed: { from: e['Caller-Caller-ID-Number'] || '', to: ext || e['Caller-Destination-Number'] || '', event: incoming ? 'נכנסת → חלון' : 'לא נכנסת → בלי חלון' } });
+      pbxLog.length = Math.min(pbxLog.length, 30);
+    }
+    if (!incoming || pbxIgnored(from, ext) || now() - (recentDials.get(from) || 0) < 90000) return;
+    const people = db.users.filter((u) => u.active !== false);
+    let targets = people.filter((u) => u.ext && (u.ext === ext || ext.endsWith(u.ext)));
+    if (!targets.length && !people.some((u) => u.ext)) targets = people;
+    if (!targets.length) return;
+    fusionCalls.set(uid, { phone: from, targets: targets.map((u) => u.id) });
+    log(`📞 fusion call from ${from} to ext ${ext}`);
+    const info = callInfo(from, { callId: uid, to: ext });
+    for (const u of targets) sendTo(u.id, { type: 'call', call: info });
+    sendCallWaInfo(info, targets).catch(() => {});
+  } else if ((name === 'CHANNEL_ANSWER' || name === 'CHANNEL_HANGUP_COMPLETE') && fusionCalls.has(uid)) {
+    const c = fusionCalls.get(uid);
+    if (name === 'CHANNEL_HANGUP_COMPLETE') fusionCalls.delete(uid);
+    for (const id of c.targets) sendTo(id, { type: 'call-end', phone: c.phone, callId: uid, answered: name === 'CHANNEL_ANSWER' });
+  }
+});
+function fusionSync() {
+  const c = db.config.pbx || {};
+  const want = c.type === 'fusion' && c.enabled && c.eslHost ? JSON.stringify([c.eslHost, c.eslPort, c.eslPass]) : '';
+  if (want === eslKey) return;
+  eslKey = want;
+  if (want) { pbxStatus = { state: 'wait', at: now(), text: 'מתחבר ל-FusionPBX...' }; esl.start({ host: c.eslHost, port: c.eslPort || 8021, password: c.eslPass || 'ClueCon' }); }
+  else esl.stop();
+}
+
 async function pbxPoll() {
+  if ((db.config.pbx || {}).type === 'fusion') { fusionSync(); return pbxSchedule(5000); }
+  fusionSync();
   if (TEST_MODE) { pbxStatus = { state: 'off', at: now(), text: '🧪 מצב ניסיון – לא מחובר למרכזייה' }; return; }
   const c = db.config.pbx || {};
   if (!c.enabled || !c.user || !c.pass) { pbxStatus = { state: 'off', at: now(), text: 'כבוי' }; return pbxSchedule(5000); }
@@ -1305,9 +1353,23 @@ route('POST', /^\/api\/dial$/, async (req, res, { user }) => {
   const phone = normPhone(b.phone);
   if (!phone) return send(res, 400, { error: 'מספר טלפון לא תקין' });
   const c = db.config.pbx || {};
-  if (!c.user || !c.pass) return send(res, 400, { error: 'המרכזייה לא מחוברת – מנהל: ניהול ← 📞 מרכזייה ← חיבור ישיר' });
   if (!user.ext) return send(res, 400, { error: 'לא רשום לך קו טלפון – מנהל: ניהול ← 👥 עובדים ← עריכה ← "שלוחה / קו"' });
   const local = phone.startsWith('972') ? '0' + phone.slice(3) : phone;
+  if (c.type === 'fusion') {
+    // FusionPBX: מצלצלים בשלוחה של העובד (עם מענה אוטומטי), וכשעונה – מחייגים ללקוח דרך ה-dialplan של הדומיין
+    if (!esl.ok) return send(res, 400, { error: 'אין חיבור ל-FusionPBX – מנהל: ניהול ← 📞 מרכזייה' });
+    if (!c.domain) return send(res, 400, { error: 'חסר דומיין של FusionPBX – מנהל: ניהול ← 📞 מרכזייה' });
+    recentDials.set(phone, now());
+    const name = String(b.name || local).replace(/[^\p{L}\p{N} .\-]/gu, '').slice(0, 30) || local;
+    const vars = [`origination_caller_id_name='${name}'`, `origination_caller_id_number=${local}`, 'sip_auto_answer=true', 'ignore_early_media=true',
+      'call_direction=outbound', `domain_name=${c.domain}`, 'hangup_after_bridge=true'].join(',');
+    try {
+      await esl.api(`originate {${vars}}user/${user.ext}@${c.domain} &transfer('${local} XML ${c.domain}')`);
+      log(`📞 ${user.name} dials ${local} (fusion, ext ${user.ext})`);
+      return send(res, 200, { ok: true });
+    } catch (e) { return send(res, 502, { error: 'החיוג נכשל: ' + e.message }); }
+  }
+  if (!c.user || !c.pass) return send(res, 400, { error: 'המרכזייה לא מחוברת – מנהל: ניהול ← 📞 מרכזייה ← חיבור ישיר' });
   recentDials.set(phone, now());
   try {
     const body = new URLSearchParams({ auth_username: c.user, auth_password: c.pass, stype: 'phone', snumber: user.ext, ctype: '', cnumber: local, callerid1: local, answer1: '1' }); // answer1=1: הטלפון של העובד עונה לבד
@@ -1326,8 +1388,9 @@ route('POST', /^\/api\/dial$/, async (req, res, { user }) => {
 route('POST', /^\/api\/admin\/pbx$/, async (req, res) => {
   const b = await readJson(req);
   const old = db.config.pbx || {};
-  db.config.pbx = { enabled: !!b.enabled, host: String(b.host || 'www.015pbx.net').trim(), user: String(b.user || '').trim(), pass: unmask(b.pass, old.pass) || '' };
-  store.saveConfig(); pbxSamples = 0;
+  db.config.pbx = { type: b.type === 'fusion' ? 'fusion' : '015', enabled: !!b.enabled, host: String(b.host || 'www.015pbx.net').trim(), user: String(b.user || '').trim(), pass: unmask(b.pass, old.pass) || '',
+    eslHost: String(b.eslHost || '').trim(), eslPort: Number(b.eslPort) || 8021, eslPass: unmask(b.eslPass, old.eslPass) || '', domain: String(b.domain || '').trim() };
+  store.saveConfig(); pbxSamples = 0; eslKey = ''; esl.stop();
   pbxStatus = { state: 'wait', at: now(), text: 'מתחבר...' };
   pbxSchedule(200);
   await sleep(2500);

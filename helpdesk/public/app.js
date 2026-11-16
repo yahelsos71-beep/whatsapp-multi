@@ -1623,10 +1623,23 @@ function adminPbx() {
   $('#apane').innerHTML = `<h4>📞 חלון "מי מתקשר"</h4>
     <div class="hint">כשהמרכזייה שולחת הודעה (webhook) על שיחה נכנסת – קופץ חלון עם שם הלקוח, החברה, קריאות פתוחות והטיפול האחרון.<br>
     את השיחה מקבל העובד שהשלוחה/הקו שלו רשומים אצלו (👥 עובדים ← עריכה ← "שלוחה / קו"). אם לא רשום לאף אחד – כולם מקבלים.</div>
-    <h4>🔌 חיבור ישיר למרכזיית 015 (מומלץ – בלי Webhook ובלי הגדרות בראוטר)</h4>
-    <div class="hint">השרת בודק במרכזייה כל 2 שניות אם יש שיחה נכנסת. משתמש וסיסמה של המרכזייה (כמו בתוסף של כרום). נשמרים רק בשרת.</div>
-    <div class="grid2"><div><label>שם משתמש במרכזייה</label><input id="xUser" dir="ltr" value="${esc(A.config.pbx.user)}"></div>
-      <div><label>סיסמה</label><input id="xPass" type="password" dir="ltr" placeholder="${A.config.pbx.pass ? '•••• (שמורה)' : ''}"></div></div>
+    <h4>🔌 חיבור ישיר למרכזייה (מומלץ)</h4>
+    <label>סוג המרכזייה</label>
+    <select id="xType"><option value="015">015 (015pbx.net)</option><option value="fusion" ${A.config.pbx.type === 'fusion' ? 'selected' : ''}>FusionPBX / FreeSWITCH</option></select>
+    <div id="x015">
+      <div class="hint">השרת בודק במרכזייה כל 2 שניות אם יש שיחה נכנסת. משתמש וסיסמה של המרכזייה (כמו בתוסף של כרום). נשמרים רק בשרת.</div>
+      <div class="grid2"><div><label>שם משתמש במרכזייה</label><input id="xUser" dir="ltr" value="${esc(A.config.pbx.user)}"></div>
+        <div><label>סיסמה</label><input id="xPass" type="password" dir="ltr" placeholder="${A.config.pbx.pass ? '•••• (שמורה)' : ''}"></div></div>
+    </div>
+    <div id="xFusion">
+      <div class="hint">חיבור ל-Event Socket של FreeSWITCH: חלון "מי מתקשר" ברגע שהשלוחה מצלצלת, וחיוג בלחיצה (השלוחה עונה לבד ומחייגת).
+        הגדרות ב-FusionPBX: Advanced ← Settings / קובץ event_socket.conf.xml (כתובת, פורט 8021, סיסמה).</div>
+      <div class="grid2"><div><label>כתובת שרת ה-FusionPBX</label><input id="xEHost" dir="ltr" placeholder="127.0.0.1 אם על אותו שרת" value="${esc(A.config.pbx.eslHost)}"></div>
+        <div><label>פורט Event Socket</label><input id="xEPort" dir="ltr" value="${esc(A.config.pbx.eslPort || 8021)}"></div>
+        <div><label>סיסמת Event Socket</label><input id="xEPass" type="password" dir="ltr" placeholder="${A.config.pbx.eslPass ? '•••• (שמורה)' : 'ClueCon'}"></div>
+        <div><label>הדומיין (Domain) של המשרד ב-FusionPBX</label><input id="xDomain" dir="ltr" placeholder="pbx.example.co.il" value="${esc(A.config.pbx.domain)}"></div></div>
+      <div class="hint">לכל עובד רושמים את מספר השלוחה שלו (👥 עובדים ← עריכה ← "שלוחה / קו") – החלון קופץ למי שהשלוחה שלו מצלצלת, והחיוג יוצא מהשלוחה שלו.</div>
+    </div>
     <label class="check"><input type="checkbox" id="xOn" ${A.config.pbx.enabled ? 'checked' : ''}> פעיל – להקפיץ חלון בכל שיחה נכנסת</label>
     <div class="row"><button class="primary" id="xSave">💾 שמור והתחבר</button><span id="xStat" class="hint" style="flex:1">${esc(A.config.pbxStatus ? A.config.pbxStatus.text : '')}</span></div>
     <h4>📵 מספרים שלא יקפיצו חלון</h4>
@@ -1640,9 +1653,12 @@ function adminPbx() {
     ובראוטר להפנות את הפורט ${esc(location.port || '80')} לשרת. אפשר לבקש מאיש המחשוב. שיטות: POST (JSON או טופס) או GET – הכל עובד.</div>
     <div class="row"><input id="pTest" dir="ltr" placeholder="מספר לבדיקה (למשל לקוח קיים)" style="flex:1;margin:0"><button id="pTestBtn">🧪 הקפץ חלון בדיקה</button></div>
     <h4>📥 מה התקבל מהמרכזייה לאחרונה</h4><div id="pLog" class="hint">טוען...</div>`;
+  const syncType = () => { const f = $('#xType').value === 'fusion'; $('#x015').style.display = f ? 'none' : ''; $('#xFusion').style.display = f ? '' : 'none'; };
+  $('#xType').onchange = syncType; syncType();
   $('#xSave').onclick = async () => {
     $('#xStat').textContent = 'מתחבר...';
-    try { const r = await api('POST', '/api/admin/pbx', { enabled: $('#xOn').checked, user: $('#xUser').value, pass: $('#xPass').value || A.config.pbx.pass, host: A.config.pbx.host });
+    try { const r = await api('POST', '/api/admin/pbx', { type: $('#xType').value, enabled: $('#xOn').checked, user: $('#xUser').value, pass: $('#xPass').value || A.config.pbx.pass, host: A.config.pbx.host,
+        eslHost: $('#xEHost').value, eslPort: $('#xEPort').value, eslPass: $('#xEPass').value || A.config.pbx.eslPass, domain: $('#xDomain').value });
       $('#xStat').textContent = (r.state === 'error' ? '⚠️ ' : '') + r.text; A = await api('GET', '/api/admin/config'); setTimeout(() => api('GET', '/api/admin/pbx-log').then(drawLog), 2500); }
     catch (e) { $('#xStat').textContent = e.message; }
   };
@@ -1664,7 +1680,7 @@ async function dialPhone(phone, name) {
   const p = String(phone || '').replace(/[^\d+]/g, '');
   if (!p) return;
   toast(`📞 מחייג ל${name ? name + ' ' : ''}${p}... הטלפון שלך יצלצל – הרם`, false, 6000);
-  try { await api('POST', '/api/dial', { phone: p }); }
+  try { await api('POST', '/api/dial', { phone: p, name: name || '' }); }
   catch (e) { toast(e.message, true, 8000); }
 }
 

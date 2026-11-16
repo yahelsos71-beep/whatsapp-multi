@@ -512,7 +512,8 @@ function settingsDialog() {
     <h4>🎧 כתובת מוקד הוואטסאפ (לשונית "מוקד")</h4>
     <div class="row"><input type="text" id="hdUrl" dir="ltr" value="${esc(settings.helpdeskUrl || '')}" placeholder="http://localhost:8080" style="flex:1;margin:0"><button id="hdSave">שמור</button></div>
     <div class="hint">ריק = בלי לשונית מוקד. במחשב אחר ברשת: http://10.10.10.250:8080</div>
-    <h4>📞 חיוג בלחיצה כפולה על מספר (מרכזיית 015)</h4>
+    <h4>📞 חיוג בלחיצה כפולה על מספר</h4>
+    <div class="row"><label style="flex:1"><input type="checkbox" id="dVia" ${(settings.dial || {}).via === 'helpdesk' ? 'checked' : ''}> לחייג דרך המוקד (FusionPBX או 015 – לפי ההגדרות במוקד, מהשלוחה שלך במוקד). אז לא צריך למלא את השדות למטה</label></div>
     <div class="row"><input type="text" id="dDomain" dir="ltr" placeholder="כתובת מרכזייה – ריק = 015 (015pbx.net)" value="${esc((settings.dial || {}).domain || '')}" style="flex:2;margin:0"><input type="text" id="dExt" dir="ltr" placeholder="קו טלפון (Telephone Line)" value="${esc((settings.dial || {}).ext || '')}" style="flex:1;margin:0"></div>
     <div class="row"><input type="text" id="dUser" dir="ltr" placeholder="שם משתמש במרכזייה" value="${esc((settings.dial || {}).user || '')}" style="flex:1;margin:0"><input type="password" id="dPass" dir="ltr" placeholder="${(settings.dial || {}).pass ? '•••••• (שמורה)' : 'סיסמה'}" style="flex:1;margin:0"></div>
     <details><summary class="hint" style="cursor:pointer">מתקדם – כתובת חיוג מלאה (אם התוסף בכרום משתמש בכתובת אחרת)</summary>
@@ -558,7 +559,8 @@ function settingsDialog() {
     const d = settings.dial || {};
     const pass = box.querySelector('#dPass').value;
     settings.dial = { domain: box.querySelector('#dDomain').value.trim(), ext: box.querySelector('#dExt').value.trim(), user: box.querySelector('#dUser').value.trim(),
-      pass: pass ? await ipcRenderer.invoke('enc', pass) : d.pass || '', template: box.querySelector('#dTpl').value.trim(), confirm: box.querySelector('#dConfirm').checked };
+      pass: pass ? await ipcRenderer.invoke('enc', pass) : d.pass || '', template: box.querySelector('#dTpl').value.trim(), confirm: box.querySelector('#dConfirm').checked,
+      via: box.querySelector('#dVia').checked ? 'helpdesk' : '' };
     saveSettings();
   };
   box.querySelector('#dSave').onclick = async () => { await saveDial(); toast('נשמר ✓ – לחיצה כפולה על מספר תחייג'); };
@@ -576,6 +578,15 @@ function settingsDialog() {
 // 📞 חיוג דרך המרכזייה
 async function dialNumber(num, skipConfirm) {
   const d = settings.dial || {};
+  if (d.via === 'helpdesk') {
+    if (!skipConfirm && d.confirm !== false && !confirm('לחייג ל-' + num + '?')) return;
+    const h = items.get(HELPDESK_PARTITION);
+    if (!h) { toast('אין לשונית מוקד – הגדר את כתובת המוקד ב-⚙', 7000); return; }
+    const ok = await h.wv.executeJavaScript(`typeof dialPhone === 'function' && typeof S !== 'undefined' && S.me ? (dialPhone(${JSON.stringify(num)}), true) : false`).catch(() => false);
+    if (!ok) toast('⚠️ כדי לחייג דרך המוקד – היכנס קודם ללשונית "🎧 מוקד" עם המשתמש שלך', 8000);
+    else toast('📞 מחייג ל-' + num + ' דרך המוקד... הטלפון שלך יענה לבד');
+    return;
+  }
   if (!d.user || !d.ext) { toast('כדי לחייג בלחיצה כפולה – מלא שם משתמש, סיסמה וקו טלפון ב-⚙ הגדרות ← "חיוג בלחיצה כפולה"', 7000); return; }
   if (!skipConfirm && d.confirm !== false && !confirm('לחייג ל-' + num + '?')) return;
   toast('📞 מחייג ל-' + num + '... הטלפון בשלוחה שלך יצלצל – הרם');
