@@ -1371,9 +1371,22 @@ route('POST', /^\/api\/dial$/, async (req, res, { user }) => {
     const name = String(b.name || local).replace(/[^\p{L}\p{N} .\-]/gu, '').slice(0, 30) || local;
     const vars = [`origination_caller_id_name='${name}'`, `origination_caller_id_number=${local}`, 'sip_auto_answer=true', 'ignore_early_media=true',
       'call_direction=outbound', `domain_name=${c.domain}`, 'hangup_after_bridge=true'].join(',');
+    const cmd = `originate {${vars}}user/${user.ext}@${c.domain} &transfer('${local} XML ${c.domain}')`;
     try {
-      await esl.api(`originate {${vars}}user/${user.ext}@${c.domain} &transfer('${local} XML ${c.domain}')`);
+      const job = await esl.api(cmd);
       log(`📞 ${user.name} dials ${local} (fusion, ext ${user.ext})`);
+      // התוצאה מגיעה כשהשלוחה עונה (במענה אוטומטי – מיד) או נכשלת. מחכים עד 12 שניות
+      const result = job ? await esl.waitJob(job, 12000) : null;
+      pbxLog.unshift({ at: now(), source: 'fusion', fields: { action: 'חיוג (originate)', from_ext: user.ext, to: local, domain: c.domain, result: result === null ? '(עדיין מצלצל)' : result },
+        parsed: { from: user.ext, to: local, event: result && result.startsWith('-ERR') ? 'חיוג נכשל' : 'חיוג' } });
+      pbxLog.length = Math.min(pbxLog.length, 30);
+      if (result && result.startsWith('-ERR')) {
+        const code = result.replace(/^-ERR\s*/, '').trim();
+        const why = { USER_NOT_REGISTERED: `השלוחה ${user.ext} לא מחוברת למרכזייה כרגע (הטלפון כבוי או לא רשום)`, SUBSCRIBER_ABSENT: `השלוחה ${user.ext} לא מחוברת`,
+          NO_ANSWER: `השלוחה ${user.ext} לא ענתה`, NO_USER_RESPONSE: `השלוחה ${user.ext} לא ענתה`, USER_BUSY: `השלוחה ${user.ext} תפוסה`, CALL_REJECTED: 'השיחה נדחתה בטלפון',
+          ORIGINATOR_CANCEL: 'החיוג בוטל', INVALID_NUMBER_FORMAT: 'מספר לא תקין', UNALLOCATED_NUMBER: `השלוחה ${user.ext} לא קיימת בדומיין ${c.domain}` }[code];
+        return send(res, 502, { error: 'החיוג נכשל: ' + (why || code) });
+      }
       return send(res, 200, { ok: true });
     } catch (e) { return send(res, 502, { error: 'החיוג נכשל: ' + e.message }); }
   }

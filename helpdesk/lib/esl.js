@@ -67,18 +67,26 @@ class Esl extends EventEmitter {
       if (!this.ok) {
         if (/^\+OK accepted/.test(reply)) {
           this.ok = true; this.sock.setTimeout(0);
-          this.send('event plain CHANNEL_CREATE CHANNEL_ANSWER CHANNEL_HANGUP_COMPLETE');
+          this.send('event plain CHANNEL_CREATE CHANNEL_ANSWER CHANNEL_HANGUP_COMPLETE BACKGROUND_JOB');
           this.emit('status', 'ok', 'מחובר ✓');
         } else if (/^-ERR/.test(reply)) {
           this.emit('status', 'error', 'הסיסמה של Event Socket שגויה'); this.cfg && this.sock.destroy();
         }
         return;
       }
-      if (/Job-UUID/.test(reply) || head['Job-UUID']) { const p = this.pending.shift(); if (p) p.resolve(reply); }
+      if (/Job-UUID/.test(reply) || head['Job-UUID']) { const p = this.pending.shift(); if (p) p.resolve(head['Job-UUID'] || (reply.match(/Job-UUID: (\S+)/) || [])[1] || ''); }
       else if (/^-ERR/.test(reply)) { const p = this.pending.shift(); if (p) p.reject(new Error(reply)); }
       return;
     }
-    if (type === 'text/event-plain') { this.emit('event', parseHeaders(body, true)); return; }
+    if (type === 'text/event-plain') {
+      // לאירוע יכול להיות "גוף" פנימי (למשל תוצאה של פקודת רקע – BACKGROUND_JOB)
+      const i = body.indexOf('\n\n');
+      const ev = parseHeaders(i >= 0 ? body.slice(0, i) : body, true);
+      if (i >= 0) ev._body = body.slice(i + 2).trim();
+      if (ev['Event-Name'] === 'BACKGROUND_JOB') this.emit('job', ev['Job-UUID'], ev._body || '');
+      this.emit('event', ev);
+      return;
+    }
     if (type === 'text/disconnect-notice') { this.sock.destroy(); }
   }
 }
@@ -94,5 +102,14 @@ function parseHeaders(text, decode) {
   }
   return out;
 }
+
+// מחכה לתוצאה של פקודת רקע (עד timeoutMs). מחזיר null אם עוד לא הסתיימה
+Esl.prototype.waitJob = function (uuid, timeoutMs) {
+  return new Promise((resolve) => {
+    const on = (id, body) => { if (id === uuid) { this.off('job', on); clearTimeout(t); resolve(body); } };
+    const t = setTimeout(() => { this.off('job', on); resolve(null); }, timeoutMs);
+    this.on('job', on);
+  });
+};
 
 module.exports = { Esl, parseHeaders };
