@@ -182,6 +182,7 @@ function createWindow(load = true) {
   if (load) win.loadFile(path.join(global.APP_DIR || __dirname, 'index.html'));
   else win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent('<body style="font-family:sans-serif;display:grid;place-items:center;height:90vh;color:#666">WhatsApp Multi…</body>'));
   win.on('closed', () => { if (mainWin === win) mainWin = null; });
+  win.on('focus', () => { try { win.flashFrame(false); } catch {} });
   mainWin = win;
   return win;
 }
@@ -253,6 +254,8 @@ ipcMain.on('restart-now', () => {
   app.exit(0);
 });
 ipcMain.on('app-version', (e) => { e.returnValue = localVersion(); });
+ipcMain.on('flash', () => { try { if (mainWin && !mainWin.isFocused()) mainWin.flashFrame(true); } catch {} });
+ipcMain.on('focus-win', () => { try { if (mainWin) { if (mainWin.isMinimized()) mainWin.restore(); mainWin.show(); mainWin.focus(); } } catch {} });
 ipcMain.on('changelog', (e) => {
   for (const d of [global.APP_DIR, global.BUILTIN_DIR, __dirname]) {
     try { if (d) { e.returnValue = JSON.parse(fs.readFileSync(path.join(d, 'changelog.json'), 'utf8')); return; } } catch {}

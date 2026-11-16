@@ -276,6 +276,15 @@ function build() {
       items.set(HELPDESK_PARTITION, h);
       tab.addEventListener('click', () => select(HELPDESK_PARTITION));
       wv.addEventListener('page-title-updated', (e) => { const m = /\((\d+)\)/.exec(e.title); tab.innerHTML = '🎧 מוקד' + (m ? ` <span class="badge on">${m[1]}</span>` : ''); });
+      // 💭 הודעה בצ'אט הצוות של המוקד – מקפיצים גם כאן, גם כשהלשונית של המוקד לא פתוחה
+      wv.addEventListener('console-message', (e) => {
+        if (!String(e.message || '').startsWith('__HD_STAFF__:')) return;
+        let d = {}; try { d = JSON.parse(e.message.slice(13)); } catch {}
+        ipcRenderer.send('flash');
+        try { new Notification('💭 ' + (d.from || 'הודעה מהצוות'), { body: d.text || '', silent: true }).onclick = () => { ipcRenderer.send('focus-win'); select(HELPDESK_PARTITION); }; } catch {}
+        if (active === HELPDESK_PARTITION && document.hasFocus()) return;
+        staffPop(d);
+      });
       // המוקד לא נטען: במחשב שאינו השרת "localhost" לא עובד – מנסים את כתובת השרת במשרד,
       // ואם גם זה לא – מציגים הסבר במקום מסך ריק
       const FALLBACK = 'http://10.10.10.250:8080';
@@ -661,3 +670,18 @@ function whatsNew(all) {
   box.querySelector('#newsOk').onclick = () => { close(); if (!all) { settings.seenVersion = ver; saveSettings(); } };
 }
 setTimeout(() => whatsNew(false), 2500);
+
+
+// 💭 פופאפ בתוכנה עצמה כשמגיעה הודעה מצ'אט הצוות של המוקד
+function staffPop(d) {
+  let el = document.getElementById('staffPop');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'staffPop';
+    el.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:9999;background:#fff;color:#10233a;border-right:6px solid #00a884;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.35);padding:12px 16px;min-width:300px;max-width:520px;cursor:pointer;font-size:15px;direction:rtl';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `<b>💭 ${esc(d.from || 'הודעה מהצוות')}</b><div style="margin:6px 0 8px;white-space:pre-wrap">${esc(d.text || '')}</div><div style="color:#00a884;font-weight:700">לחץ לפתיחה במוקד ←</div>`;
+  el.onclick = () => { el.remove(); select(HELPDESK_PARTITION); };
+  clearTimeout(el._t); el._t = setTimeout(() => el.remove(), 30000);
+  playTone(settings.newTone, settings.newFile);
+}

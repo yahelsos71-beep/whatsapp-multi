@@ -703,7 +703,8 @@ async function serviceCallDialog(t) {
     $('#sc_send').textContent = `📤 שלח ל${target.name}`;
     $('#sc_assign').innerHTML = target.userName
       ? `↪️ הקריאה תועבר במוקד ל<b>${esc(target.userName)}</b>`
-      : `⚠️ "${esc(target.name)}" לא מקושר לעובד במוקד – הקריאה תישאר אצל ${esc(d.currentAssignee || 'המטפל הנוכחי')}. (לקישור: ניהול ← כללי ← יעדים לקריאת שירות)`;
+      : `↪️ להעביר את הקריאה במוקד ל: <select id="sc_user" style="width:auto;display:inline-block;margin:0 6px"><option value="">— להשאיר אצל ${esc(d.currentAssignee || 'המטפל הנוכחי')} —</option>${S.users.map((u) => `<option value="${u.id}" ${u.name.trim() === target.name.trim() ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select>
+        ${S.me.role === 'admin' ? `<label class="check" style="display:inline-flex;font-size:12px;margin:0"><input type="checkbox" id="sc_remember" checked> לזכור ל"${esc(target.name)}"</label>` : ''}`;
   };
   box.querySelectorAll('#sc_to button').forEach((b) => (b.onclick = () => {
     target = d.targets[+b.dataset.i];
@@ -720,7 +721,9 @@ async function serviceCallDialog(t) {
     const first = String(d.customer || '').trim().split(' ')[0];
     if (tpl && first && !/^[\d+\s-]+$/.test(first)) tpl = tpl.split(' ' + first).join('{name}');
     try {
-      const r = await api('POST', `/api/tickets/${t.id}/service-call`, { targetId: target.id, text: build(), notifyCustomer: notify, customerText: ctext, saveCustomerMsg: save, customerTemplate: tpl });
+      const assignUserId = $('#sc_user') ? $('#sc_user').value : '';
+      const rememberLink = !!($('#sc_remember') && $('#sc_remember').checked && assignUserId);
+      const r = await api('POST', `/api/tickets/${t.id}/service-call`, { targetId: target.id, text: build(), notifyCustomer: notify, customerText: ctext, saveCustomerMsg: save, customerTemplate: tpl, assignUserId, rememberLink });
       closeModal();
       toast(`🛠 הקריאה נשלחה ל${target.name} ✓${r.customerSent ? ' · 📩 הלקוח קיבל הודעה' : r.customerError ? ' · ⚠️ ההודעה ללקוח לא נשלחה' : ''}`, !!r.customerError, 6000);
     }
@@ -1780,6 +1783,15 @@ function staffOnMessage(m, fromName) {
     return;
   }
   if (m.from === S.me.id) return;
+  try { console.log('__HD_STAFF__:' + JSON.stringify({ from: fromName || userName(m.from), text: m.text.slice(0, 120) })); } catch {}
+  // החלון של השיחה נפתח מעצמו (אם לא באמצע שיחה אחרת בצ'אט הצוות)
+  if (!S.staff.open) {
+    staffOpen(m.from);
+    Sounds.newMessage();
+    notify('💭 ' + (fromName || userName(m.from)), m.text.slice(0, 120));
+    flashTitle('💭 הודעה מ' + (fromName || userName(m.from)));
+    return;
+  }
   S.staff.unread[m.from] = (S.staff.unread[m.from] || 0) + 1; staffBadge();
   if (S.staff.open && !S.staff.with) staffOpen(null);
   // פופאפ קטן
@@ -1845,3 +1857,14 @@ document.addEventListener('click', async (e) => {
   }).join('');
   $('#dgOut').querySelectorAll('[data-open]').forEach((a) => (a.onclick = () => { closeModal(); openTicket(a.dataset.open); }));
 });
+
+// כותרת הלשונית מהבהבת עד שחוזרים לחלון – כדי שיראו גם כשהדפדפן ברקע
+let flashT = null;
+function flashTitle(text) {
+  if (document.hasFocus()) return;
+  clearInterval(flashT);
+  const base = document.title; let on = false;
+  flashT = setInterval(() => { document.title = (on = !on) ? text : base; }, 1000);
+  const stop = () => { clearInterval(flashT); flashT = null; renderList(); window.removeEventListener('focus', stop); };
+  window.addEventListener('focus', stop);
+}

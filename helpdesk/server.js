@@ -1531,7 +1531,13 @@ route('POST', /^\/api\/tickets\/(\d+)\/service-call$/, async (req, res, { user, 
   t.serviceCalls = (t.serviceCalls || 0) + 1;
   t.serviceCallList = [...(t.serviceCallList || []), { targetId: target.id, idMessage: sentId, ts: now() }];
   // הקצאה לעובד של היעד (למשל עידן)
-  const tu = targetUser(target);
+  // בחירת עובד מתוך החלון (כשהיעד עוד לא מקושר) – ואפשר לזכור את הקישור לפעם הבאה
+  const picked = b.assignUserId && userById(b.assignUserId);
+  if (picked && b.rememberLink && user.role === 'admin') {
+    const real = (db.config.serviceTargets || []).find((x) => x.id === target.id);
+    if (real) { real.userId = picked.id; store.saveConfig(); }
+  }
+  const tu = picked || targetUser(target);
   if (tu && t.assigneeId !== tu.id && t.status !== 'closed') {
     const old = t.assigneeId;
     t.assigneeId = tu.id;
