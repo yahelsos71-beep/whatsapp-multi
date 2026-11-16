@@ -32,6 +32,10 @@ const settings = Object.assign(
   load(SETTINGS_FILE, {})
 );
 const saveSettings = () => save(SETTINGS_FILE, settings);
+// 🎨 צבע קבוע לכל וואטסאפ (לפי המזהה), פרטי – סגול; מצב כהה לפי ההגדרה
+const TAB_COLORS = ['#00a884', '#1e88e5', '#f57c00', '#e91e63', '#00897b', '#8e24aa', '#43a047', '#fb8c00', '#3949ab'];
+const tabColor = (acc) => acc.color || (acc.private ? '#7b5cf0' : TAB_COLORS[[...String(acc.id)].reduce((a, c) => a + c.charCodeAt(0), 0) % TAB_COLORS.length]);
+document.body.classList.toggle('dark', !!settings.dark);
 
 document.getElementById('user').textContent = P.user + ' · v' + ipcRenderer.sendSync('app-version') + (P.personal ? ' · 👥 במקביל' : '') + ' · 📁 ' + path.basename(P.exeDir).slice(0, 18);
 document.getElementById('user').title = 'התוכנה רצה מהתיקייה:\n' + P.exeDir;
@@ -244,6 +248,7 @@ function build() {
     }
     it.acc = acc;
     it.tab.innerHTML = `${acc.private ? '<span title="פרטי – רק אתה רואה">🔒</span>' : ''}<span class="name"></span><span class="badge"></span>`;
+    it.tab.style.setProperty('--c', tabColor(acc));
     it.tab.querySelector('.name').textContent = acc.name;
     tabsEl.appendChild(it.tab);
   });
@@ -499,7 +504,7 @@ function toneSelect(id, cur, file) {
 
 function settingsDialog() {
   box.innerHTML = `
-    <h3>⚙️ הגדרות צלצול</h3>
+    <h3>⚙️ הגדרות</h3>
     <h4>צליל להודעה חדשה</h4>
     <div class="row">${toneSelect('newTone', settings.newTone, settings.newFile)}<button id="tNew">▶ נסה</button></div>
     <h4>צלצול תזכורת (כשיש צ'אט שממתין לתשובה)</h4>
@@ -511,7 +516,7 @@ function settingsDialog() {
     </select></div>
     <h4>🎧 כתובת מוקד הוואטסאפ (לשונית "מוקד")</h4>
     <div class="row"><input type="text" id="hdUrl" dir="ltr" value="${esc(settings.helpdeskUrl || '')}" placeholder="http://localhost:8080" style="flex:1;margin:0"><button id="hdSave">שמור</button></div>
-    <div class="hint">ריק = בלי לשונית מוקד. במחשב אחר ברשת: http://10.10.10.250:8080</div>
+    <div class="hint">ריק = בלי לשונית מוקד. למשל: http://45.93.92.111:8080</div>
     <h4>📞 חיוג בלחיצה כפולה על מספר</h4>
     <div class="row"><label style="flex:1"><input type="checkbox" id="dVia" ${(settings.dial || {}).via === 'helpdesk' ? 'checked' : ''}> לחייג דרך המוקד (FusionPBX או 015 – לפי ההגדרות במוקד, מהשלוחה שלך במוקד). אז לא צריך למלא את השדות למטה</label></div>
     <div class="row"><input type="text" id="dDomain" dir="ltr" placeholder="כתובת מרכזייה – ריק = 015 (015pbx.net)" value="${esc((settings.dial || {}).domain || '')}" style="flex:2;margin:0"><input type="text" id="dExt" dir="ltr" placeholder="קו טלפון (Telephone Line)" value="${esc((settings.dial || {}).ext || '')}" style="flex:1;margin:0"></div>
@@ -522,6 +527,8 @@ function settingsDialog() {
     <div class="row"><input type="text" id="dTestNum" dir="ltr" placeholder="מספר לבדיקה (למשל הנייד שלך)" style="flex:1;margin:0"><button id="dTest">🧪 חיוג בדיקה</button></div>
     <div class="row"><button id="dScan" title="מחפש את תוסף ה-Click To Call בכרום וקורא לאיזו כתובת הוא פונה (בלי סיסמאות)">🔍 בדוק את התוסף של כרום</button></div>
     <div class="hint">לחיצה כפולה על מספר בכל לשונית (וואטסאפ, מוקד) → המרכזייה מצלצלת בשלוחה שלך ואז מחייגת למספר.</div>
+    <h4>🎨 תצוגה</h4>
+    <div class="row"><label style="flex:1"><input type="checkbox" id="darkMode" ${settings.dark ? 'checked' : ''}> 🌙 מצב כהה (העיצוב הקודם)</label></div>
     <h4>👥 עבודה במקביל</h4>
     <div class="row"><label style="flex:1"><input type="checkbox" id="personalMode" ${P.personal ? 'checked' : ''}> כל משתמש עם חיבורים משלו – כמה משתמשים עובדים באותו זמן</label></div>
     <div class="hint">אחרי ההפעלה סורקים פעם אחת את הוואטסאפים ומתחברים פעם אחת למוקד. השינוי מפעיל את התוכנה מחדש.</div>
@@ -530,6 +537,7 @@ function settingsDialog() {
     <div class="row"><button class="primary" id="cancel">סגור</button><button id="newsAll">🆕 מה חדש</button><button id="dbg">🐞 שמור קובץ אבחון</button></div>`;
   modal.classList.add('on');
   box.querySelector('#dbg').onclick = saveDebug;
+  box.querySelector('#darkMode').onchange = (e) => { settings.dark = e.target.checked; saveSettings(); document.body.classList.toggle('dark', settings.dark); };
   box.querySelector('#newsAll').onclick = () => whatsNew(true);
   box.querySelector('#personalMode').onchange = (e) => {
     const on = e.target.checked;
