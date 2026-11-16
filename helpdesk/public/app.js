@@ -501,12 +501,12 @@ function messageHtml(m) {
     m = { ...m, text: '' };
   }
   const quote = m.quoted ? `<div class="quote"><b>${esc(m.quoted.from || '')}</b>${esc(m.quoted.text || '')}</div>` : '';
-  if (m.deleted) return `<div class="msg ${m.dir} deleted" data-mid="${m.id}">${by}<div class="del-note">🗑 נמחקה אצל הלקוח${m.deletedBy ? ' ע״י ' + esc(m.deletedBy) : ''}</div><div class="del-orig">${media}${esc(m.text)}</div><div class="meta">${fmtTime(m.ts)}</div></div>`;
+  if (m.deleted) return `<div class="msg ${m.dir} deleted" data-mid="${m.id}">${by}<div class="del-note">🗑 נמחקה אצל הלקוח${m.deletedBy ? ' ע״י ' + esc(m.deletedBy) : ''}</div><div class="del-orig">${media}${waFormat(m.text)}</div><div class="meta">${fmtTime(m.ts)}</div></div>`;
   const ro = S.view && S.view.readOnly && S.mode !== 'wa';
   const rep = m.idMessage && !ro ? `<button class="rep" data-rep="${m.id}" title="להגיב להודעה הזאת">↩</button>` : '';
   const del = m.dir === 'out' && m.idMessage && !ro && Date.now() - m.ts < 2 * 864e5 ? `<button class="del" data-del="${m.id}" title="מחיקת ההודעה אצל כולם (נשלחה בטעות)">🗑</button>` : '';
   const opts = Array.isArray(m.options) && m.options.length ? `<div class="opts">${m.options.map((o, i) => `<button class="opt ${o.kind}" data-opt="${i}" ${ro ? 'disabled' : ''} title="${o.kind === 'url' ? 'פתיחת הקישור' : o.kind === 'call' ? 'חיוג' : 'לחיצה שולחת את האפשרות הזו כתשובה'}">${o.kind === 'url' ? '🔗 ' : o.kind === 'call' ? '📞 ' : ''}${esc(o.text)}</button>`).join('')}</div>` : '';
-  return `<div class="msg ${m.dir} ${m.auto ? 'auto' : ''}" data-mid="${m.id}">${rep}${del}${by}${quote}${media}${esc(m.text)}${opts}<div class="meta">${fmtTime(m.ts)} ${ticks(m)}</div></div>`;
+  return `<div class="msg ${m.dir} ${m.auto ? 'auto' : ''}" data-mid="${m.id}">${rep}${del}${by}${quote}${media}${waFormat(m.text)}${opts}<div class="meta">${fmtTime(m.ts)} ${ticks(m)}</div></div>`;
 }
 
 function appendMessage(m, scroll) {
@@ -526,6 +526,7 @@ function renderComposer() {
   c.innerHTML = `<div class="replybar" id="replybar" style="display:none"><div class="rb-body"><b id="rbFrom"></b><span id="rbText"></span></div><button class="ghost" id="rbX" title="ביטול">✕</button></div><div class="composer">
     <button id="noteBtn" title="הערה פנימית – לא נשלחת ללקוח (למשל: עשינו ריסטרט לראוטר)">🗒</button>
     <button id="tplBtn" title="תבנית הודעה">📝</button>
+    <button id="boldBtn" title="הדגשה (בוואטסאפ: *טקסט*)"><b>B</b></button>
     <button id="attach" title="שליחת קובץ / תמונה">📎</button>
     <input type="file" id="file" hidden>
     <textarea id="txt" placeholder="כתוב הודעה... (Enter לשליחה, Shift+Enter לשורה חדשה)"></textarea>
@@ -547,6 +548,8 @@ function renderComposer() {
   $('#rbX').onclick = () => setReply(null);
   setReply(S.replyTo && S.replyTo.ticketId === t.id ? S.replyTo : null);
   setNote(false);
+  $('#boldBtn').onclick = () => waWrap(txt, '*');
+  if (t.isGroup) attachMentions(txt, () => api('GET', `/api/tickets/${t.id}/members`));
   $('#tplBtn').onclick = () => templatePicker((text) => {
     const v = S.view && S.view.ticket;
     txt.value = fillTemplate(text, v ? { name: v.customerName, company: v.company } : {});
@@ -1290,6 +1293,8 @@ function adminGeneral() {
     <div><label>פורט</label><input id="gPort" type="number" value="${c.port}"></div></div>
     <h4>👥 קבוצות</h4>
     <label class="check"><input type="checkbox" id="gGroups" ${c.groups.enabled ? 'checked' : ''}> הודעות מקבוצות פותחות קריאות</label>
+    <h4>👤 אנשי קשר</h4>
+    <label class="check"><input type="checkbox" id="gAutoSave" ${c.autoSaveContacts !== false ? 'checked' : ''}> לשמור אוטומטית מי שכותב לנו ועוד לא שמור – לפי השם שלו בוואטסאפ</label>
     <label class="check"><input type="checkbox" id="gGroupsAR" ${c.groups.autoReply ? 'checked' : ''}> לשלוח מענה אוטומטי גם לקבוצות</label>
     <h4>📌 צ'אטים וקבוצות שמקובעים לעובד</h4>
     <div id="ruleList">${c.chatRules.length ? c.chatRules.map((x, i) => `<div class="row" style="margin-top:4px"><span style="flex:1">${x.isGroup ? '👥' : '👤'} ${esc(x.name)} ← <b>${esc(x.userName)}</b></span><button class="ghost" data-unrule="${i}">בטל</button></div>`).join('') : '<div class="hint">אין. (כפתור "📌 קבע לעובד" בראש כל שיחה)</div>'}</div>
@@ -1338,7 +1343,7 @@ function adminGeneral() {
   $('#apane').querySelectorAll('[data-unrule]').forEach((b) => (b.onclick = () => { rules.splice(Number(b.dataset.unrule), 1); b.parentElement.remove(); }));
   $('#apane').querySelectorAll('[data-unign]').forEach((b) => (b.onclick = () => { ign.splice(Number(b.dataset.unign), 1); b.parentElement.remove(); }));
   $('#gSave').onclick = () => saveConfig({ companyName: $('#gName').value, routeDelaySec: $('#gDelay').value, host: $('#gHost').value, port: $('#gPort').value,
-    groups: { enabled: $('#gGroups').checked, autoReply: $('#gGroupsAR').checked }, ignoredChats: ign, chatRules: rules,
+    groups: { enabled: $('#gGroups').checked, autoReply: $('#gGroupsAR').checked }, autoSaveContacts: $('#gAutoSave').checked, ignoredChats: ign, chatRules: rules,
     ignoreGroupNames: $('#gIgnNames').value.split('\n').map((x) => x.trim()).filter(Boolean),
     serviceTargets: targets });
 }
@@ -1457,12 +1462,14 @@ function renderWaMsgs() {
 function renderWaComposer() {
   const c = $('#waComp'); if (!c) return;
   c.innerHTML = `<div class="replybar" id="waReplybar" style="display:none"><div class="rb-body"><b id="waRbFrom"></b><span id="waRbText"></span></div><button class="ghost" id="waRbX" title="ביטול">✕</button></div>
-    <div class="composer"><button id="waTpl" title="תבנית הודעה">📝</button><button id="waAttach" title="שליחת קובץ / תמונה">📎</button><input type="file" id="waFile" hidden>
+    <div class="composer"><button id="waTpl" title="תבנית הודעה">📝</button><button id="waBold" title="הדגשה (בוואטסאפ: *טקסט*)"><b>B</b></button><button id="waAttach" title="שליחת קובץ / תמונה">📎</button><input type="file" id="waFile" hidden>
     <textarea id="waTxt" placeholder="כתוב הודעה... (Enter לשליחה, Shift+Enter לשורה חדשה)"></textarea><button class="primary" id="waSend" title="שלח">➤</button></div>`;
   const txt = $('#waTxt');
   txt.oninput = () => { txt.style.height = 'auto'; txt.style.height = Math.min(160, txt.scrollHeight) + 'px'; };
   txt.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); waSendText(); } };
   $('#waSend').onclick = waSendText;
+  $('#waBold').onclick = () => waWrap(txt, '*');
+  { const v = S.wa.view && S.wa.view.chat; if (v && v.isGroup) attachMentions(txt, () => api('GET', `/api/wa/members?inst=${encodeURIComponent(v.instanceId)}&chat=${encodeURIComponent(v.chatId)}`)); }
   $('#waAttach').onclick = () => $('#waFile').click();
   $('#waFile').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) waSendFile(f); };
   txt.addEventListener('paste', (e) => { const f = [...(e.clipboardData?.files || [])][0]; if (f) { e.preventDefault(); waSendFile(f); } });
@@ -1775,7 +1782,7 @@ async function staffOpen(withId) {
 function staffMsgHtml(m) {
   const mine = m.from === S.me.id;
   const tk = m.ticketId ? `<a class="sp-tk" data-tk="${esc(m.ticketId)}">🎫 קריאה #${esc(m.ticketId)}${m.ticketName ? ' – ' + esc(m.ticketName) : ''}</a>` : '';
-  return `<div class="sp-m ${mine ? 'out' : 'in'}">${esc(m.text)}${tk}<div class="meta">${fmtTime(m.ts)}${mine ? ` <span class="ticks ${m.read ? 'read' : ''}">${m.read ? '✓✓' : '✓'}</span>` : ''}</div></div>`;
+  return `<div class="sp-m ${mine ? 'out' : 'in'}">${waFormat(m.text)}${tk}<div class="meta">${fmtTime(m.ts)}${mine ? ` <span class="ticks ${m.read ? 'read' : ''}">${m.read ? '✓✓' : '✓'}</span>` : ''}</div></div>`;
 }
 function staffRenderMsgs() {
   const box = $('#spMsgs'); if (!box) return;
@@ -1899,3 +1906,52 @@ document.addEventListener('dblclick', (e) => {
   sel.removeAllRanges();
   if (confirm('📞 לחייג ל-' + d + '?\n(הטלפון בשלוחה שלך יענה לבד ויחייג)')) dialPhone(d);
 }, true);
+
+
+// =====================================================================
+// ✍️ עיצוב טקסט כמו בוואטסאפ: *מודגש*  _נטוי_  ~קו חוצה~  ```קוד```  ותיוג @טלפון
+// =====================================================================
+function waFormat(text) {
+  let h = esc(text || '');
+  h = h.replace(/```([\s\S]+?)```/g, '<code>$1</code>');
+  const B = '(^|[\\s(>"\'\\u05be-])', E = '(?=$|[\\s.,!?:;)<"\'\\u05be-])';
+  h = h.replace(new RegExp(B + '\\*([^*\\n]+?)\\*' + E, 'g'), '$1<b>$2</b>');
+  h = h.replace(new RegExp(B + '_([^_\\n]+?)_' + E, 'g'), '$1<i>$2</i>');
+  h = h.replace(new RegExp(B + '~([^~\\n]+?)~' + E, 'g'), '$1<s>$2</s>');
+  h = h.replace(/@(\d{9,15})\b/g, (m0, d) => `<span class="mention" dir="ltr">@${esc(mentionName(d))}</span>`);
+  return h;
+}
+const mentionNames = new Map(); // phone -> name (מהקבוצות שנטענו)
+const mentionName = (d) => mentionNames.get(d) || localPhone(d);
+// עוטף את הטקסט המסומן (או מוסיף זוג סימנים) – למשל *מודגש*
+function waWrap(txt, mark) {
+  const a = txt.selectionStart, b = txt.selectionEnd, v = txt.value;
+  txt.value = v.slice(0, a) + mark + v.slice(a, b) + mark + v.slice(b);
+  txt.focus(); txt.selectionStart = a + 1; txt.selectionEnd = b + 1;
+  txt.dispatchEvent(new Event('input'));
+}
+// @ בקבוצה → רשימת המשתתפים לבחירה; נכנס כ-@972... (כמו שוואטסאפ שולח תיוג)
+function attachMentions(txt, load) {
+  let list = null, box = null;
+  const close = () => { if (box) { box.remove(); box = null; } };
+  const show = async () => {
+    const pos = txt.selectionStart, before = txt.value.slice(0, pos);
+    const m = /(^|\s)@([^\s@]*)$/.exec(before);
+    if (!m) return close();
+    if (!list) { try { list = await load(); list.forEach((x) => x.name && mentionNames.set(x.phone, x.name)); } catch { list = []; } }
+    const q = m[2].toLowerCase();
+    const items = list.filter((x) => !q || (x.name || '').toLowerCase().includes(q) || x.phone.includes(q.replace(/^0/, ''))).slice(0, 8);
+    if (!items.length) return close();
+    if (!box) { box = document.createElement('div'); box.className = 'mentions'; txt.parentElement.style.position = 'relative'; txt.parentElement.appendChild(box); }
+    box.innerHTML = items.map((x) => `<div data-p="${x.phone}"><b>${esc(x.name || localPhone(x.phone))}</b>${x.name ? ` <small dir="ltr">${esc(localPhone(x.phone))}</small>` : ''}</div>`).join('');
+    box.querySelectorAll('[data-p]').forEach((d) => (d.onmousedown = (e) => {
+      e.preventDefault();
+      const p = d.dataset.p; const start = pos - m[2].length - 1;
+      txt.value = txt.value.slice(0, start) + '@' + p + ' ' + txt.value.slice(pos);
+      const c = start + p.length + 2; txt.selectionStart = txt.selectionEnd = c; txt.focus(); close();
+      txt.dispatchEvent(new Event('input'));
+    }));
+  };
+  txt.addEventListener('input', show);
+  txt.addEventListener('blur', () => setTimeout(close, 150));
+}

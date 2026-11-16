@@ -442,6 +442,15 @@ function waUpsert(instId, chatId, { name, ts, text, dir, sender }) {
   return cur;
 }
 const waAudience = () => db.users.filter((u) => u.active !== false && canWa(u)).map((u) => u.id);
+// 👤 שמירה אוטומטית: מי שכותב לנו ועוד לא שמור – נשמר באנשי הקשר לפי השם שלו בוואטסאפ
+function autoSaveContact(phone, name) {
+  if (db.config.autoSaveContacts === false) return;
+  name = String(name || '').trim();
+  if (!phone || phone.length < 9 || !name || /^[\d+\s()-]+$/.test(name) || contactFor(phone)) return;
+  if (staffByPhone(phone)) return;
+  db.contacts.push({ id: store.newId(), source: 'auto', company: '', name, phones: [phone] });
+  reindexContacts(); store.saveContacts();
+}
 function waTrack(inst, body, type, sd, chatId) {
   if (!['incomingMessageReceived', 'outgoingMessageReceived', 'outgoingAPIMessageReceived'].includes(type)) return;
   const m = ga.parseMessage(body.messageData);
@@ -451,6 +460,7 @@ function waTrack(inst, body, type, sd, chatId) {
   const isGroup = chatId.endsWith('@g.us');
   const senderPhone = String(sd.sender || '').split('@')[0];
   const sender = isGroup && dir === 'in' ? (sd.senderContactName || sd.senderName || senderPhone) : '';
+  if (dir === 'in' && !isGroup) autoSaveContact(chatId.split('@')[0], sd.senderName || sd.senderContactName);
   const nameHint = isGroup ? sd.chatName : (dir === 'in' ? (sd.senderContactName || sd.senderName || sd.chatName) : sd.chatName);
   const text = m.type === 'deleted' ? '(הודעה נמחקה)' : m.text || ({ image: '📷 תמונה', video: '🎬 וידאו', file: '📎 קובץ', audio: '🎤 הקלטה', location: '📍 מיקום' }[m.type] || '');
   const c = waUpsert(inst.id, chatId, { name: waName(inst, chatId, nameHint), ts, text, dir, sender });
@@ -710,6 +720,7 @@ function adminConfigView() {
     chatRules: c.chatRules.map((r) => ({ ...r, userName: userById(r.userId)?.name || '' })),
     instances: c.instances.map((i) => ({ ...i, token: mask(i.token) })),
     pbxKey: c.pbxKey || '',
+    autoSaveContacts: c.autoSaveContacts !== false,
     pbxIgnore: c.pbxIgnore || [],
     pbx: { type: (c.pbx && c.pbx.type) || '015', enabled: !!(c.pbx && c.pbx.enabled), host: (c.pbx && c.pbx.host) || 'www.015pbx.net', user: (c.pbx && c.pbx.user) || '', pass: mask(c.pbx && c.pbx.pass),
       eslHost: (c.pbx && c.pbx.eslHost) || '', eslPort: (c.pbx && c.pbx.eslPort) || 8021, eslPass: mask(c.pbx && c.pbx.eslPass), domain: (c.pbx && c.pbx.domain) || '' },
@@ -1128,6 +1139,36 @@ route('POST', /^\/api\/wa\/delete$/, async (req, res, { user }) => {
   if (!inst || !b.chat || !b.id) return send(res, 400, { error: 'חסרים פרטים' });
   try { await deleteSent(inst, String(b.chat), String(b.id), Number(b.ts) || 0, user); send(res, 200, { ok: true }); }
   catch (e) { send(res, 502, { error: 'המחיקה נכשלה: ' + e.message }); }
+});
+
+// ---------- @ תיוג משתתפים בקבוצה ----------
+async function groupMemberList(inst, chatId) {
+  const key = 'm|' + inst.id + '|' + chatId;
+  const c = groupMembers.get(key);
+  if (c && now() - c.at < 600e3) return c.list;
+  let list = [];
+  try {
+    const g = await ga.getGroupData(inst, chatId);
+    list = (g && g.participants || []).map((p) => {
+      const phone = String(p.id || '').split('@')[0];
+      const ct = contactFor(phone); const staff = staffByPhone(phone);
+      return { phone, name: (staff && staff.name) || (ct && (ct.name || ct.company)) || '' };
+    }).filter((x) => x.phone);
+  } catch (e) { log('getGroupData failed', e.message); }
+  groupMembers.set(key, { at: now(), list });
+  return list;
+}
+route('GET', /^\/api\/tickets\/(\d+)\/members$/, async (req, res, { user, params }) => {
+  const t = visibleTicket(user, params[0]);
+  if (!t || !t.isGroup) return send(res, 200, []);
+  const inst = instById(t.instanceId); if (!inst) return send(res, 200, []);
+  send(res, 200, await groupMemberList(inst, t.chatId));
+});
+route('GET', /^\/api\/wa\/members$/, async (req, res, { user, query }) => {
+  if (!canWa(user)) return send(res, 403, { error: 'אין הרשאה' });
+  const inst = instById(query.get('inst')); const chatId = String(query.get('chat') || '');
+  if (!inst || !chatId.endsWith('@g.us')) return send(res, 200, []);
+  send(res, 200, await groupMemberList(inst, chatId));
 });
 
 // ---------- 📞 מרכזייה: webhook על שיחה נכנסת → חלון "מי מתקשר" ----------
@@ -1803,6 +1844,7 @@ route('POST', /^\/api\/admin\/config$/, async (req, res) => {
       ...(x.chatId ? { chatId: String(x.chatId), instanceId: x.instanceId || null } : { phone: normPhone(x.phone) }),
     })).filter((x) => x.name && (x.phone || x.chatId));
   }
+  if (b.autoSaveContacts !== undefined) c.autoSaveContacts = !!b.autoSaveContacts;
   if (b.quietMinutes !== undefined) c.quietMinutes = Math.max(0, Math.min(600, Number(b.quietMinutes) || 0));
   if (b.groups) c.groups = { enabled: !!b.groups.enabled, autoReply: !!b.groups.autoReply };
   if (Array.isArray(b.ignoreGroupNames)) {

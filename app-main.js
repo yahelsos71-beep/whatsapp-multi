@@ -271,12 +271,20 @@ app.whenReady().then(() => {
 // ---- 📞 חיוג בלחיצה כפולה על מספר טלפון (מרכזיית 015 / FusionPBX) ----
 const DIAL_JS = `(() => { if (window.__dialHook) return; window.__dialHook = 1;
   const RE = /(?:\\+?972[\\s-]?|0)(?:[\\s-]?\\d){8,9}(?!\\d)|\\+?\\d(?:[\\s-]?\\d){8,12}(?!\\d)/g;
+  const find = (text, off) => { RE.lastIndex = 0; let m, only = null, n = 0;
+    while ((m = RE.exec(text))) { n++; only = m[0]; if (off != null && off >= m.index && off <= m.index + m[0].length) return m[0]; }
+    return n === 1 ? only : null; };
   document.addEventListener('dblclick', (e) => {
-    const sel = window.getSelection(); const node = sel && sel.anchorNode; if (!node) return;
-    const text = node.textContent || ''; const off = sel.anchorOffset || 0;
-    let hit = null; RE.lastIndex = 0; let m;
-    while ((m = RE.exec(text))) { if (off >= m.index && off <= m.index + m[0].length) { hit = m[0]; break; } }
-    if (!hit) { const t = sel.toString().trim(); if (/^[\\d+\\s-]{9,}$/.test(t)) hit = t; }
+    let hit = null;
+    // 1) המקום המדויק שנלחץ (עובד גם בוואטסאפ ווב, שבו לפעמים אי אפשר לסמן טקסט)
+    try { const r = document.caretRangeFromPoint && document.caretRangeFromPoint(e.clientX, e.clientY);
+      if (r && r.startContainer && r.startContainer.nodeType === 3) hit = find(r.startContainer.textContent || '', r.startOffset); } catch (er) {}
+    // 2) הטקסט המסומן
+    if (!hit) { const sel = window.getSelection(); const node = sel && sel.anchorNode;
+      if (node) hit = find(node.textContent || '', sel.anchorOffset || 0);
+      if (!hit && sel) { const t = sel.toString().trim(); if (/^[\\d+\\s-]{9,}$/.test(t)) hit = t; } }
+    // 3) האלמנט שנלחץ – אם יש בו מספר טלפון אחד בלבד
+    if (!hit && e.target && e.target.innerText && e.target.innerText.length < 200) hit = find(e.target.innerText, null);
     if (hit) console.log('__DIAL__:' + hit);
   }, true);
 })();`;

@@ -1,7 +1,7 @@
 {
-  "version": 59,
+  "version": 60,
   "files": {
-    "server.js": "ea5b5bae20a3c31fad2dfbb41df079a453be6f790ac6afb2009486db6176d675",
+    "server.js": "8ee9ff5b811128d99d912599c12fa568f97dcf101ea31dd992f0a1860e3f49d1",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
     "reset-password.bat": "662bfbec8b94b264fd7b585a365f389415b8ec66bea540e876418e7a3f805187",
     "README-HE.txt": "df99092cc82f3de6e6d685ca604d95e154879a4a75ba6a0854e4134dd27e5cf3",
@@ -13,11 +13,11 @@
     "lib/greenapi.js": "11d800476c09bdc23282797abc71f4f2da65d8b8fa74a120df9f11c4f27a0884",
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "67c3f7771298c520fff27587f171e05195209a2bbfcd9aae7414fba949f04dbd",
-    "public/app.js": "8976c31f7463a770fc6480f9cc4832f330ca5f98c1cb39fe798725b73a3be621",
-    "public/changelog.json": "51759b71bbbccb0c497f93d590378252cbeba2c9104b2314b086eb58b641d614",
+    "public/app.js": "89958a51d947f47573c29b116a37807d00cc85f68ec0cf185e02992d63e5d21b",
+    "public/changelog.json": "282f8e63737383b7fb8e13ad27f57b175049676b7be8f29b895f8992205ed49e",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
-    "public/style.css": "6de08a1ff88794a6c60e91c50c4860631e0c0a2aea239b95b3bf40d430cf5429"
+    "public/style.css": "31307a87329a44a617261636c02b98b6f7f82926aa88ede49de45fa09d478100"
   },
-  "notes": "🏢 לקוח חדש בפקודה אחת: new-client.sh יוצר מוקד נקי ללקוח (תיקייה, פורט, שירות, https) | 🧹 התקנה חדשה מתחילה בלי ההגדרות המיוחדות של KC"
+  "notes": "✍️ עיצוב כמו בוואטסאפ: *מודגש* _נטוי_ ~מחוק~ – וכפתור B להדגשה | @ תיוג משתתפים בקבוצה: מקלידים @ ובוחרים מהרשימה | 👤 מי שכותב לנו ועוד לא שמור – נשמר אוטומטית באנשי הקשר לפי השם שלו בוואטסאפ"
 }

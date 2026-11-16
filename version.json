@@ -1,11 +1,11 @@
 {
-  "version": 23,
+  "version": 24,
   "files": {
-    "app-main.js": "c148f902c3e48d53c36e2797eae217f08320b68631ca93ad03e8204151259d3d",
+    "app-main.js": "a129a0d3012d4eed5b0d2f86f9f51c3af47ad96acaee3a4b986093e8ff0f2832",
     "index.html": "0bcea1e49c61f884d55811a036906d6306837b688b4e184c0512614751dfde34",
     "renderer.js": "1373b3bb61d3db7cccdb48e43d114ed67c898a4ab205d7c70903d440c33d7ade",
     "inject.js": "8f0e9471519ce20774b06d00707fa30d2b78e27950ca68b55b164e1b05ad824a",
-    "changelog.json": "34a24088b2004d39cb2a7a08761414fb93b7b3b81fa10971a658d9aa26f20327"
+    "changelog.json": "1f43d157cda4d344a35f06f0f1388610a10f576bb14d671cfc8a90e0ec1f0824"
   },
-  "notes": "🎨 עיצוב חדש וצבעוני: סרגל בצבעי מעבר, צבע לכל וואטסאפ, פאנל ממתינים בהיר | 🌙 מי שמעדיף את העיצוב הקודם: ⚙ ← \"מצב כהה\""
+  "notes": "📞 חיוג בלחיצה כפולה עובד עכשיו גם בתוך לשוניות הוואטסאפ (גם על מספר שאי אפשר לסמן)"
 }
