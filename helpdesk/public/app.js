@@ -1884,3 +1884,18 @@ function flashTitle(text) {
   const stop = () => { clearInterval(flashT); flashT = null; renderList(); window.removeEventListener('focus', stop); };
   window.addEventListener('focus', stop);
 }
+
+// 📞 לחיצה כפולה על מספר טלפון בכל מקום במוקד → "לחייג?" → חיוג דרך המרכזייה (FusionPBX / 015)
+document.addEventListener('dblclick', (e) => {
+  if (!S.me || e.target.closest('input, textarea, [contenteditable]')) return;
+  const sel = window.getSelection(); const node = sel && sel.anchorNode; if (!node) return;
+  const text = node.textContent || ''; const off = sel.anchorOffset || 0;
+  const RE = /(?:\+?972[\s-]?|0)(?:[\s-]?\d){8,9}(?!\d)/g;
+  let hit = null, m;
+  while ((m = RE.exec(text))) { if (off >= m.index && off <= m.index + m[0].length) { hit = m[0]; break; } }
+  if (!hit) return;
+  let d = hit.replace(/\D/g, ''); if (d.startsWith('972')) d = '0' + d.slice(3);
+  if (d.length < 9) return;
+  sel.removeAllRanges();
+  if (confirm('📞 לחייג ל-' + d + '?\n(הטלפון בשלוחה שלך יענה לבד ויחייג)')) dialPhone(d);
+}, true);

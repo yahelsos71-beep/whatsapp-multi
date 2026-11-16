@@ -1,5 +1,5 @@
 {
-  "version": 56,
+  "version": 57,
   "files": {
     "server.js": "c424b8f3a8de48014954af8195cdf7aae028c00c30d2735fe626538f9972b057",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
@@ -12,11 +12,11 @@
     "lib/greenapi.js": "11d800476c09bdc23282797abc71f4f2da65d8b8fa74a120df9f11c4f27a0884",
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "6d5f73a03d5838d4b08f4bb3d0965afa0586bc7aa26abaa78c01e1448cd35bf5",
-    "public/app.js": "c038ada6efcb6e64f84fc0c1aae0c73d6500aa1accd587d8ca8c663e68d9bea2",
-    "public/changelog.json": "cead9a98f4038f9558b2d716c757a1ed26c6dcacbb52c509a78479eb8bce4e49",
+    "public/app.js": "8976c31f7463a770fc6480f9cc4832f330ca5f98c1cb39fe798725b73a3be621",
+    "public/changelog.json": "3665fd707b6230c5ec368c5715b4ba9068ba18127152897f6b3307ce181ebea8",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "6de08a1ff88794a6c60e91c50c4860631e0c0a2aea239b95b3bf40d430cf5429"
   },
-  "notes": "📞 FusionPBX: אם חיוג נכשל – מופיעה הסיבה (שלוחה לא מחוברת / לא ענתה / תפוסה), והחיוג נרשם ביומן המרכזייה"
+  "notes": "📞 לחיצה כפולה על כל מספר טלפון במוקד → \"לחייג?\" → חיוג דרך המרכזייה מהשלוחה שלך"
 }
