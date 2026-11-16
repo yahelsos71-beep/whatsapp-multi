@@ -1260,6 +1260,11 @@ esl.on('status', (state, text) => { if ((db.config.pbx || {}).type === 'fusion')
 esl.on('event', (e) => {
   const name = e['Event-Name'], uid = e['Unique-ID'];
   if (name === 'CHANNEL_CREATE') {
+    // מרכזייה עם כמה לקוחות (דומיינים): מתעלמים מכל מה שלא שייך לדומיין שלנו – גם לא נרשם ביומן
+    const myDomain = String((db.config.pbx || {}).domain || '').toLowerCase();
+    const evDomain = String(e.variable_domain_name || e['Caller-Context'] || '').toLowerCase();
+    const publicLeg = e['Call-Direction'] === 'inbound' && /^(public|default)?$/.test(String(e['Caller-Context'] || '').toLowerCase());
+    if (myDomain && evDomain && evDomain !== myDomain && !publicLeg) return;
     // הרגל שמצלצלת בשלוחה של עובד (dialed_user) עם מספר חיצוני – שיחה נכנסת אליו
     const ext = String(e.variable_dialed_user || '').replace(/\D/g, '');
     const from = normPhone(e['Caller-Caller-ID-Number'] || '');
@@ -1270,7 +1275,7 @@ esl.on('event', (e) => {
     }
     const realInbound = now() - (fusionInbound.get(from) || 0) < 180000;
     const incoming = e['Call-Direction'] === 'outbound' && ext && from && from.length >= 9 && (!dirVar || dirVar === 'inbound') && realInbound;
-    if (!pbxLogged.has(uid) && (ext || from)) {
+    if (!pbxLogged.has(uid) && (ext || from) && !publicLeg) {
       pbxLogged.add(uid); if (pbxLogged.size > 500) pbxLogged.clear();
       pbxLog.unshift({ at: now(), source: 'fusion', fields: { 'Call-Direction': e['Call-Direction'], call_direction: e.variable_call_direction || '', caller: e['Caller-Caller-ID-Number'] || '', destination: e['Caller-Destination-Number'] || '', dialed_user: e.variable_dialed_user || '', domain: e.variable_domain_name || '',
           context: e['Caller-Context'] || '', other_leg: e['Other-Leg-Unique-ID'] || e.variable_originator || '', inbound_leg_seen: realInbound ? 'כן' : 'לא' },
