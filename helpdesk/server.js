@@ -1254,6 +1254,8 @@ const { Esl } = require('./lib/esl');
 const esl = new Esl();
 let eslKey = '';
 const fusionCalls = new Map(); // Unique-ID -> { phone, targets }
+// שיחה נכנסת אמיתית מתחילה ברגל "inbound" מבחוץ (מהספק). חיוג Click-to-Call (גם מהתוסף בכרום) – אין לו רגל כזו
+const fusionInbound = new Map(); // phone -> ts
 esl.on('status', (state, text) => { if ((db.config.pbx || {}).type === 'fusion') pbxStatus = { state, at: now(), text }; });
 esl.on('event', (e) => {
   const name = e['Event-Name'], uid = e['Unique-ID'];
@@ -1262,10 +1264,16 @@ esl.on('event', (e) => {
     const ext = String(e.variable_dialed_user || '').replace(/\D/g, '');
     const from = normPhone(e['Caller-Caller-ID-Number'] || '');
     const dirVar = String(e.variable_call_direction || '').toLowerCase();
-    const incoming = e['Call-Direction'] === 'outbound' && ext && from && from.length >= 9 && (!dirVar || dirVar === 'inbound');
+    if (e['Call-Direction'] === 'inbound' && from && from.length >= 9) {
+      fusionInbound.set(from, now());
+      if (fusionInbound.size > 500) for (const [k, t] of fusionInbound) if (now() - t > 300000) fusionInbound.delete(k);
+    }
+    const realInbound = now() - (fusionInbound.get(from) || 0) < 180000;
+    const incoming = e['Call-Direction'] === 'outbound' && ext && from && from.length >= 9 && (!dirVar || dirVar === 'inbound') && realInbound;
     if (!pbxLogged.has(uid) && (ext || from)) {
       pbxLogged.add(uid); if (pbxLogged.size > 500) pbxLogged.clear();
-      pbxLog.unshift({ at: now(), source: 'fusion', fields: { 'Call-Direction': e['Call-Direction'], call_direction: e.variable_call_direction || '', caller: e['Caller-Caller-ID-Number'] || '', destination: e['Caller-Destination-Number'] || '', dialed_user: e.variable_dialed_user || '', domain: e.variable_domain_name || '' },
+      pbxLog.unshift({ at: now(), source: 'fusion', fields: { 'Call-Direction': e['Call-Direction'], call_direction: e.variable_call_direction || '', caller: e['Caller-Caller-ID-Number'] || '', destination: e['Caller-Destination-Number'] || '', dialed_user: e.variable_dialed_user || '', domain: e.variable_domain_name || '',
+          context: e['Caller-Context'] || '', other_leg: e['Other-Leg-Unique-ID'] || e.variable_originator || '', inbound_leg_seen: realInbound ? 'כן' : 'לא' },
         parsed: { from: e['Caller-Caller-ID-Number'] || '', to: ext || e['Caller-Destination-Number'] || '', event: incoming ? 'נכנסת → חלון' : 'לא נכנסת → בלי חלון' } });
       pbxLog.length = Math.min(pbxLog.length, 30);
     }

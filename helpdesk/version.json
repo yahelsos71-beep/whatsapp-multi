@@ -1,7 +1,7 @@
 {
-  "version": 54,
+  "version": 55,
   "files": {
-    "server.js": "ca24a7a3a428a98f71783c17745b68f7bb651de897ada8d0128ea1c0a96e72b8",
+    "server.js": "b60035057ce919fae1634cf9958e39bc0155026a3295ddcf93cc442081ab6271",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
     "reset-password.bat": "662bfbec8b94b264fd7b585a365f389415b8ec66bea540e876418e7a3f805187",
     "README-HE.txt": "94e29460e59552e7459fdf3c92a58844385bcefbe6e3d885f096e40280326188",
@@ -13,10 +13,10 @@
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "6d5f73a03d5838d4b08f4bb3d0965afa0586bc7aa26abaa78c01e1448cd35bf5",
     "public/app.js": "c038ada6efcb6e64f84fc0c1aae0c73d6500aa1accd587d8ca8c663e68d9bea2",
-    "public/changelog.json": "816240ebec80a6686ea0cc66f2f76c6625f4c4365653cb71133bb49688f56c03",
+    "public/changelog.json": "43677c7910684a56de59bd0a1f53956ceece8f9ed88ca5131fb05b25ea7c85b2",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "6de08a1ff88794a6c60e91c50c4860631e0c0a2aea239b95b3bf40d430cf5429"
   },
-  "notes": "📞 התממשקות ל-FusionPBX: חלון 'מי מתקשר' ברגע שהשלוחה שלך מצלצלת, וחיוג בלחיצה עם מענה אוטומטי (ניהול ← 📞 מרכזייה ← סוג: FusionPBX)"
+  "notes": "📞 FusionPBX: חיוג Click-to-Call (גם מהתוסף בכרום) כבר לא מקפיץ חלון 'שיחה נכנסת' – רק שיחה שבאמת נכנסת מבחוץ"
 }
