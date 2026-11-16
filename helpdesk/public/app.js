@@ -1652,7 +1652,7 @@ function adminPbx() {
   $('#pTestBtn').onclick = async () => { try { await api('POST', '/api/admin/pbx-test', { phone: $('#pTest').value }); closeModal(); } catch (e) { toast(e.message, true); } };
   const drawLog = (list) => {
     if (!$('#pLog')) return;
-    $('#pLog').innerHTML = list.length ? list.map((x) => `<div class="card2" style="margin:6px 0;font-size:12px"><b>${new Date(x.at).toLocaleString('he-IL')}</b> –
+    $('#pLog').innerHTML = list.length ? list.map((x) => `<div class="card2" style="margin:6px 0;font-size:12px"><b>${new Date(x.at).toLocaleString('he-IL')}</b>${x.ip ? ` <span class="chip" dir="ltr" title="הכתובת שממנה הגיעה ההודעה">${esc(x.ip)}</span>` : x.source === '015' ? ' <span class="chip">015 (חיבור ישיר)</span>' : ''} –
       מתקשר: <b dir="ltr">${esc(x.parsed.from || '?')}</b> · קו: <b dir="ltr">${esc(x.parsed.to || '?')}</b> · אירוע: <b>${esc(x.parsed.event || '?')}</b>
       <pre dir="ltr" style="white-space:pre-wrap;margin:4px 0 0">${esc(JSON.stringify(x.fields, null, 1)).slice(0, 1500)}</pre></div>`).join('') : 'עוד לא התקבל כלום מהמרכזייה.';
   };

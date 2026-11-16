@@ -1210,7 +1210,11 @@ route('POST', /^\/api\/admin\/pbx-ignore$/, async (req, res) => {
 
 async function pbxWebhook(req, res, query) {
   const key = query.get('key') || req.headers['x-api-key'] || '';
-  if (!db.config.pbxKey || key !== db.config.pbxKey) return send(res, 403, { error: 'bad key' });
+  if (!db.config.pbxKey || key !== db.config.pbxKey) {
+    const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].replace(/^::ffff:/, '');
+    log(`📞 webhook with wrong key from ${ip}`);
+    return send(res, 403, { error: 'bad key' });
+  }
   let body = {};
   try {
     const raw = (await readBody(req, 256 * 1024)).toString('utf8');
@@ -1220,7 +1224,8 @@ async function pbxWebhook(req, res, query) {
   const f = flatten({ ...Object.fromEntries([...query].filter(([k]) => k !== 'key')), ...(Array.isArray(body) ? body[0] : body) });
   for (const k of Object.keys(f)) if (/pass|token|secret|key|auth/i.test(k)) delete f[k];
   const p = pbxParse(f);
-  pbxLog.unshift({ at: now(), fields: f, parsed: p }); pbxLog.length = Math.min(pbxLog.length, 30);
+  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].replace(/^::ffff:/, '');
+  pbxLog.unshift({ at: now(), fields: f, parsed: p, ip, source: 'webhook' }); pbxLog.length = Math.min(pbxLog.length, 30);
   send(res, 200, { ok: true });
   const phone = normPhone(p.from);
   if (!phone || !isIncoming(f) || pbxIgnored(p.from, p.to)) return;
