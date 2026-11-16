@@ -53,8 +53,20 @@ const DEFAULT_CONFIG = {
   },
 };
 
+// התקנה חדשה (אין עדיין config.json) = לקוח חדש: מתחילים נקי – בלי ההגדרות וההתאמות שנבנו במיוחד ל-KC
+const FRESH = !fs.existsSync(path.join(DATA_DIR, 'config.json'));
+const CLEAN = {
+  companyName: process.env.HD_COMPANY || 'המשרד',
+  hours: { ...DEFAULT_CONFIG.hours, message: 'שלום{name} 🙏\nהמשרד סגור כעת. אנו פתוחים בימים א׳–ה׳ בין 8:15 ל-17:00.\nנחזור אליך בהקדם.' },
+  ignoreGroupNames: [],
+  serviceTech: { name: 'טכנאי', phone: '' },
+  serviceTargets: [],
+  templates: [],
+  // ההעברות החד-פעמיות של KC לא רצות אצל לקוח חדש
+  migratedV11: true, vcatTargetAdded: true, templatesSeeded: true, quickCloseMigrated: true, cleanInstall: true,
+};
 const db = {
-  config: Object.assign({}, DEFAULT_CONFIG, readJson('config.json', {})),
+  config: Object.assign({}, DEFAULT_CONFIG, FRESH ? CLEAN : {}, readJson('config.json', {})),
   users: readJson('users.json', []),
   tickets: readJson('tickets.json', []),
   sessions: readJson('sessions.json', {}),
@@ -112,8 +124,11 @@ function saveMessages(ticketId) {
   }, 200);
 }
 
+if (FRESH) { try { writeJsonNow('config.json', db.config); } catch {} }
+
 module.exports = {
   DATA_DIR,
+  FRESH,
   db,
   newId,
   messages,
