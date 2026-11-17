@@ -567,6 +567,11 @@ async function handleNotification(inst, body) {
     return;
   }
 
+  if (!isGroup && /^\s*(הסר|הסירו|הסרה|stop|unsubscribe)\s*[.!]?\s*$/i.test(m.text || '')) {
+    const ph = chatId.split('@')[0];
+    db.config.optOut = [...new Set([...(db.config.optOut || []), ph])]; store.saveConfig();
+    log(`📣 opt-out ${ph}`);
+  }
   if (await handleTechMessage(inst, chatId, m, body, sd)) return;
   let t = openTicketFor(inst.id, chatId);
   const isNew = !t;
@@ -1478,6 +1483,142 @@ route('POST', /^\/api\/admin\/pbx-test$/, async (req, res, { user }) => {
   sendCallWaInfo(ci, [user]).catch(() => {});
   send(res, 200, { ok: true });
 }, { auth: 'admin' });
+
+// =====================================================================
+// 📣 הפצה: שליחת וואטסאפ לקבוצת לקוחות (לפי מוצר מה-CRM) או לרשימת מספרים
+// כל הודעה מקבלת פתיח/חתימה משתנים (לא שתי הודעות זהות), והפסקה בין שליחה לשליחה
+// =====================================================================
+const crm = require('./lib/crm');
+const SEGMENTS = [
+  { k: 'pbx015', label: '📞 מרכזייה 015', test: (c) => /015/.test(c.pbx) },
+  { k: 'fusion', label: '📞 מרכזייה פיוזן', test: (c) => /פיוז|fusion/i.test(c.pbx) },
+  { k: 'pbx', label: '📞 כל לקוחות המרכזייה', test: (c) => c.services.includes('מרכזיה') || !!c.pbx },
+  { k: 'cloud', label: '🖥 שרת ענן', test: (c) => c.services.includes('שרתי ענן') },
+  { k: 'm365', label: '✉️ מייל 365', test: (c) => c.services.includes('365') },
+  { k: 'answering', label: '🎧 מענה אנושי', test: (c) => c.services.includes('מענה אנושי') },
+  { k: 'internet', label: '🌐 אינטרנט', test: (c) => c.services.includes('אינטרנט') || c.services.includes('תשתיות תקשורת') },
+  { k: 'all', label: '👥 כל הלקוחות הפעילים', test: () => true },
+];
+let crmCache = (() => { try { return JSON.parse(require('fs').readFileSync(require('path').join(store.DATA_DIR, 'crmcache.json'), 'utf8')); } catch { return null; } })();
+let crmLoading = null;
+async function crmLoad(force) {
+  const url = (db.config.crm || {}).mcpUrl;
+  if (!url) throw new Error('ה-CRM לא מחובר – ניהול ← 📣 הפצה ← "חיבור ל-CRM"');
+  if (!force && crmCache && now() - crmCache.at < 6 * 3600e3) return crmCache;
+  if (crmLoading) return crmLoading;
+  crmLoading = (async () => {
+    const list = await crm.activeCustomers(url, (t) => emitAdmins({ type: 'bcast-progress', text: t }));
+    crmCache = { at: now(), list };
+    try { require('fs').writeFileSync(require('path').join(store.DATA_DIR, 'crmcache.json'), JSON.stringify(crmCache)); } catch {}
+    return crmCache;
+  })();
+  try { return await crmLoading; } finally { crmLoading = null; }
+}
+const emitAdmins = (ev) => { for (const u of admins()) sendTo(u.id, ev); };
+const optedOut = (phone) => (db.config.optOut || []).includes(phone);
+function segmentRecipients(key) {
+  const seg = SEGMENTS.find((x) => x.k === key);
+  if (!seg || !crmCache) return [];
+  const seen = new Set();
+  return crmCache.list.filter(seg.test).map((c) => ({ phone: normPhone(c.phone), name: c.name, company: c.company }))
+    .filter((r) => r.phone && r.phone.length >= 11 && !seen.has(r.phone) && seen.add(r.phone));
+}
+// ✍️ גיוון: פתיח לפי שעה + שם, סימן פיסוק, חתימה ואימוג'י משתנים – כל הודעה שונה מהשנייה
+function varyMessage(text, r, i) {
+  const pick = (arr) => arr[(i * 7 + Math.floor(Math.random() * arr.length)) % arr.length];
+  const h = Number(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem', hour: 'numeric', hour12: false }));
+  const timeGreet = h < 12 ? 'בוקר טוב' : h < 17 ? 'צהריים טובים' : 'ערב טוב';
+  const first = String(r.name || '').trim().split(/\s+/)[0] || '';
+  const okName = first && !/^[\d+]/.test(first);
+  const greet = pick(['שלום', 'היי', timeGreet, 'שלום וברכה', 'הי', timeGreet]) + (okName ? ' ' + first : '') + pick([',', ' 👋', '!', ' 🙂', ',']);
+  const sig = (db.config.broadcastSig || db.config.companyName || '').trim();
+  const close = sig ? pick([`בברכה,\n${sig}`, `תודה,\n${sig}`, `${sig} 🙏`, `יום טוב,\n${sig}`, `בברכה, ${sig}`]) : pick(['תודה!', 'יום טוב 🙏', 'בברכה', 'תודה 🙂']);
+  let body = String(text).replace(/\{name\}/g, okName ? first : '').replace(/\{company\}/g, r.company || '');
+  return `${greet}\n\n${body.trim()}\n\n${close}`;
+}
+// רשימת מספרים מודבקת: מחברים חלקים של אותו מספר ("054 7654321") ומפרידים בין מספרים
+function parseNumberList(text) {
+  const out = []; let buf = '';
+  const need = (d) => (/^972[57]/.test(d) ? 12 : /^972/.test(d) ? 11 : /^0[57]/.test(d) ? 10 : /^0/.test(d) ? 9 : 9);
+  for (const t of String(text || '').split(/[\s,;]+/)) {
+    const d = t.replace(/\D/g, ''); if (!d) continue;
+    buf += d;
+    if (buf.length >= need(buf)) { out.push(buf); buf = ''; }
+  }
+  return out;
+}
+let bcastJob = null;
+async function runBroadcast(job) {
+  const inst = instById(job.instanceId);
+  for (let i = 0; i < job.items.length; i++) {
+    if (job.cancel) break;
+    const it = job.items[i];
+    it.text = job.vary ? varyMessage(job.text, it, i) : job.text.replace(/\{name\}/g, String(it.name || '').split(' ')[0]);
+    if (job.optOutLine) it.text += '\n\n(להסרה מרשימת התפוצה השיבו "הסר")';
+    try {
+      const r = await ga.sendMessage(inst, it.phone + '@c.us', it.text);
+      if (r && r.idMessage) sentIds.add(r.idMessage);
+      it.status = 'sent'; job.sent++;
+    } catch (e) { it.status = 'failed'; it.error = e.message.slice(0, 120); job.failed++; }
+    job.done = i + 1;
+    emitAdmins({ type: 'bcast-job', job: jobView(job) });
+    if (i < job.items.length - 1 && !job.cancel) await sleep(Math.max(3, job.delaySec) * 1000 + Math.floor(Math.random() * 1500));
+  }
+  job.finished = now(); job.running = false;
+  log(`📣 broadcast "${job.title}": ${job.sent} sent, ${job.failed} failed`);
+  emitAdmins({ type: 'bcast-job', job: jobView(job) });
+}
+const jobView = (j) => j && { id: j.id, title: j.title, total: j.items.length, done: j.done, sent: j.sent, failed: j.failed, running: j.running, cancel: !!j.cancel, finished: j.finished || 0,
+  failures: j.items.filter((x) => x.status === 'failed').slice(0, 20).map((x) => ({ phone: x.phone, name: x.name, error: x.error })) };
+
+route('POST', /^\/api\/admin\/crm$/, async (req, res) => {
+  const b = await readJson(req);
+  const old = db.config.crm || {};
+  db.config.crm = { mcpUrl: unmask(String(b.mcpUrl || '').trim(), old.mcpUrl) || '' };
+  if (b.broadcastSig !== undefined) db.config.broadcastSig = String(b.broadcastSig || '').slice(0, 80);
+  store.saveConfig(); crmCache = null;
+  try { const c = await crmLoad(true); send(res, 200, { ok: true, count: c.list.length }); }
+  catch (e) { send(res, 200, { ok: false, error: e.message }); }
+}, { auth: 'admin' });
+route('GET', /^\/api\/admin\/broadcast\/segments$/, async (req, res, { query }) => {
+  const cfg = { connected: !!(db.config.crm || {}).mcpUrl, mcpUrl: mask((db.config.crm || {}).mcpUrl), broadcastSig: db.config.broadcastSig || db.config.companyName || '', optOutCount: (db.config.optOut || []).length };
+  let error = '';
+  if (cfg.connected) { try { await crmLoad(query.get('refresh') === '1'); } catch (e) { error = e.message; } }
+  const segs = SEGMENTS.map((sg) => ({ k: sg.k, label: sg.label, count: segmentRecipients(sg.k).length }));
+  const unknownPbx = crmCache ? crmCache.list.filter((c) => c.services.includes('מרכזיה') && !c.pbx).length : 0;
+  const noService = crmCache ? crmCache.list.filter((c) => !c.services.length && !c.pbx).length : 0;
+  send(res, 200, { ...cfg, error, at: crmCache ? crmCache.at : 0, total: crmCache ? crmCache.list.length : 0, segments: segs, unknownPbx, noService, job: jobView(bcastJob) });
+}, { auth: 'admin' });
+route('GET', /^\/api\/admin\/broadcast\/preview$/, (req, res, { query }) => {
+  send(res, 200, segmentRecipients(query.get('segment')).map((r) => ({ ...r, optedOut: optedOut(r.phone) })));
+}, { auth: 'admin' });
+route('POST', /^\/api\/admin\/broadcast\/send$/, async (req, res, { user }) => {
+  if (bcastJob && bcastJob.running) return send(res, 400, { error: 'כבר רצה הפצה – חכה שתסתיים או עצור אותה' });
+  const b = await readJson(req);
+  const text = String(b.text || '').trim();
+  if (text.length < 3) return send(res, 400, { error: 'כתוב את נוסח ההודעה' });
+  const inst = instById(b.instanceId) || db.config.instances.find((i) => i.enabled !== false);
+  if (!inst) return send(res, 400, { error: 'בחר מספר וואטסאפ לשליחה' });
+  let items = [];
+  if (b.segment) items = segmentRecipients(b.segment);
+  else items = [...new Set(parseNumberList(b.numbers).map(normPhone).filter((p) => p && p.length >= 11))].map((phone) => ({ phone, name: (contactFor(phone) || {}).name || '' }));
+  const exclude = new Set((b.exclude || []).map(String));
+  const staffPhones = new Set(db.users.map((u) => u.phone).filter(Boolean));
+  items = items.filter((r) => !exclude.has(r.phone) && !optedOut(r.phone) && !staffPhones.has(r.phone)).map((r) => ({ ...r, status: 'wait' }));
+  if (!items.length) return send(res, 400, { error: 'אין נמענים' });
+  const seg = SEGMENTS.find((x) => x.k === b.segment);
+  bcastJob = { id: store.newId(), title: seg ? seg.label : `${items.length} מספרים`, text, vary: b.vary !== false, optOutLine: !!b.optOutLine, delaySec: Math.max(3, Number(b.delaySec) || 3),
+    instanceId: inst.id, items, done: 0, sent: 0, failed: 0, running: true, by: user.name, at: now() };
+  log(`📣 broadcast "${bcastJob.title}" to ${items.length} by ${user.name}`);
+  runBroadcast(bcastJob).catch((e) => { bcastJob.running = false; log('broadcast error', e.message); });
+  send(res, 200, jobView(bcastJob));
+}, { auth: 'admin' });
+route('POST', /^\/api\/admin\/broadcast\/sample$/, async (req, res) => {
+  const b = await readJson(req);
+  const sample = [{ name: 'דני כהן' }, { name: 'מיכל' }, { name: '' }];
+  send(res, 200, sample.map((r, i) => varyMessage(String(b.text || ''), r, i) + (b.optOutLine ? '\n\n(להסרה מרשימת התפוצה השיבו "הסר")' : '')));
+}, { auth: 'admin' });
+route('POST', /^\/api\/admin\/broadcast\/cancel$/, (req, res) => { if (bcastJob) bcastJob.cancel = true; send(res, 200, jobView(bcastJob)); }, { auth: 'admin' });
 
 // ---------- 🔎 "למה הצ'אט לא נכנס?" – בדיקה לפי טלפון או שם ----------
 route('GET', /^\/api\/admin\/diagnose$/, async (req, res, { query }) => {

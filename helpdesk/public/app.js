@@ -130,6 +130,7 @@ async function startMain() {
       <button id="newChat" title="שליחת הודעה ללקוח חדש">✉️<span class="lbl"> שיחה חדשה</span></button>
       <button id="muteBtn"></button>
       <button id="mySettings" title="צלצולים וסיסמה">⚙️</button>
+      ${S.me.role === 'admin' ? '<button id="bcastBtn" title="הפצת וואטסאפ ללקוחות לפי מוצר או לרשימת מספרים">📣<span class="lbl"> הפצה</span></button>' : ''}
       ${S.me.role === 'admin' ? '<button id="dashBtn" title="דשבורד">📊<span class="lbl"> דשבורד</span></button><button id="adminBtn" title="ניהול">🛠️<span class="lbl"> ניהול</span></button>' : ''}
       <span class="me">${esc(S.me.name)} · v${S.version}</span>
       <button class="ghost" id="logout">יציאה</button>
@@ -143,6 +144,7 @@ async function startMain() {
     </div>
     <div class="chat" id="chat"></div>
   </div>`;
+  if ($('#bcastBtn')) $('#bcastBtn').onclick = () => broadcastDialog();
   if (S.me.role === 'admin') { S.tab = localStorage.getItem('hd-tab') || 'all'; $('#adminBtn').onclick = () => adminDialog(); $('#dashBtn').onclick = () => dashboardDialog(); }
   $('#logout').onclick = async () => { await api('POST', '/api/logout').catch(() => {}); location.reload(); };
   $('#mySettings').onclick = mySettingsDialog;
@@ -203,6 +205,10 @@ function onEvent(ev) {
     staffOnMessage(ev.message, ev.fromName);
   } else if (ev.type === 'staffread') {
     if (S.staff.with === ev.by) { S.staff.msgs.forEach((m) => { if (m.from === S.me.id) m.read = true; }); staffRenderMsgs(); }
+  } else if (ev.type === 'bcast-job') {
+    S.bjob = ev.job; if ($('#bProg')) drawBcastJob();
+  } else if (ev.type === 'bcast-progress') {
+    if ($('#bLoad')) $('#bLoad').textContent = ev.text;
   } else if (ev.type === 'call') {
     showCall(ev.call);
   } else if (ev.type === 'call-info') {
@@ -1965,4 +1971,98 @@ function attachMentions(txt, load) {
   };
   txt.addEventListener('input', show);
   txt.addEventListener('blur', () => setTimeout(close, 150));
+}
+
+
+// =====================================================================
+// 📣 הפצה – וואטסאפ לכל לקוחות המוצר (מה-CRM) או לרשימת מספרים
+// =====================================================================
+const BC = { mode: 'seg', seg: '', exclude: new Set(), text: '', optOut: true, delay: 3, inst: '', numbers: '' };
+async function broadcastDialog(refresh) {
+  openModal(`<h3>📣 הפצת וואטסאפ</h3><div id="bLoad" class="hint">טוען נתונים מה-CRM...</div>`, true);
+  let d; try { d = await api('GET', '/api/admin/broadcast/segments' + (refresh ? '?refresh=1' : '')); } catch (e) { $('#bLoad').textContent = e.message; return; }
+  S.bjob = d.job;
+  const insts = S.instances.filter((i) => i.enabled !== false);
+  if (!BC.inst && insts[0]) BC.inst = insts[0].id;
+  const when = d.at ? new Date(d.at).toLocaleString('he-IL', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+  box.innerHTML = `<h3>📣 הפצת וואטסאפ</h3>
+    <details class="card2" ${d.connected ? '' : 'open'} style="margin-bottom:10px"><summary><b>🔗 חיבור ל-CRM (SmartSale)</b> ${d.connected ? `<span class="chip">מחובר · ${d.total} לקוחות פעילים${when ? ' · עודכן ' + when : ''}</span>` : '<span class="chip">לא מחובר</span>'}</summary>
+      <div class="hint">מדביקים את <b>כתובת החיבור (MCP)</b> של SmartSale – הכתובת המלאה עם ה-token (בהגדרות SmartSale ← אינטגרציות / API, או בהגדרות החיבור של SmartSale ב-Claude). נשמרת רק בשרת.</div>
+      <div class="row"><input id="bUrl" dir="ltr" placeholder="${d.mcpUrl ? esc(d.mcpUrl) + ' (שמור)' : 'https://...supabase.co/functions/v1/...?token=...'}" style="flex:1;margin:0"><button class="primary" id="bUrlSave">💾 שמור ובדוק</button></div>
+      <label>חתימה בסוף ההודעות</label><input id="bSig" value="${esc(d.broadcastSig)}" placeholder="KC Group">
+      ${d.error ? `<div class="hint" style="color:var(--red)">⚠️ ${esc(d.error)}</div>` : ''}</details>
+    <div class="seg" id="bMode" style="margin-bottom:8px"><button data-m="seg" class="${BC.mode === 'seg' ? 'on' : ''}">🏷️ לפי מוצר (לקוחות פעילים)</button><button data-m="nums" class="${BC.mode === 'nums' ? 'on' : ''}">📋 רשימת מספרים</button></div>
+    <div id="bSegBox" style="${BC.mode === 'seg' ? '' : 'display:none'}">
+      <div class="pick" id="bSegs">${d.segments.map((g) => `<button data-k="${g.k}" class="${BC.seg === g.k ? 'on' : ''}">${esc(g.label)} <span class="chip">${g.count}</span></button>`).join('')}</div>
+      <div class="hint">${d.connected ? `<a id="bRefresh" style="cursor:pointer">🔄 משוך מחדש מה-CRM</a>` : ''}${d.unknownPbx ? ` · ⚠️ ${d.unknownPbx} לקוחות מרכזייה בלי "סוג מרכזיה" ב-CRM – לא ייכללו ב-015/פיוזן` : ''}${d.noService ? ` · ${d.noService} לקוחות פעילים בלי "סוג שירות" ב-CRM` : ''}${d.optOutCount ? ` · ${d.optOutCount} ביקשו הסרה – לא יקבלו` : ''}</div>
+      <div id="bList" style="max-height:200px;overflow-y:auto;margin-top:6px"></div>
+    </div>
+    <div id="bNumBox" style="${BC.mode === 'nums' ? '' : 'display:none'}">
+      <label>מדביקים מספרים (בכל שורה, או מופרדים בפסיק/רווח)</label><textarea id="bNums" rows="4" dir="ltr" placeholder="0521234567, 0547654321">${esc(BC.numbers)}</textarea>
+      <div class="hint" id="bNumCnt"></div>
+    </div>
+    <label>נוסח ההודעה <span class="hint">(אפשר {name} לשם הפרטי; פתיח, ברכה וחתימה מתווספים ומשתנים אוטומטית – אין שתי הודעות זהות)</span></label>
+    <textarea id="bText" rows="5" placeholder="רצינו לעדכן ש...">${esc(BC.text)}</textarea>
+    <div class="row" style="align-items:center">
+      <label class="check" style="margin:0"><input type="checkbox" id="bOpt" ${BC.optOut ? 'checked' : ''}> שורת "להסרה השיבו הסר"</label>
+      <span class="spacer" style="flex:1"></span>
+      <span class="hint">מ:</span><select id="bInst" style="width:auto">${insts.map((i) => `<option value="${i.id}" ${i.id === BC.inst ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select>
+      <span class="hint">הפסקה:</span><select id="bDelay" style="width:auto">${[3, 5, 8, 15, 30].map((x) => `<option value="${x}" ${x === BC.delay ? 'selected' : ''}>${x} שנ׳</option>`).join('')}</select>
+    </div>
+    <div class="row"><button id="bSample">👁 דוגמאות</button><button class="primary" id="bSend">📤 שלח</button><span class="spacer" style="flex:1"></span><button id="cancel">סגור</button></div>
+    <div id="bSamples"></div><div id="bProg"></div>`;
+  $('#cancel').onclick = closeModal;
+  const keep = () => { BC.text = $('#bText').value; BC.optOut = $('#bOpt').checked; BC.inst = $('#bInst').value; BC.delay = Number($('#bDelay').value); if ($('#bNums')) BC.numbers = $('#bNums').value; };
+  ['#bText', '#bOpt', '#bInst', '#bDelay'].forEach((q) => ($(q).oninput = $(q).onchange = keep));
+  box.querySelectorAll('#bMode button').forEach((b) => (b.onclick = () => { keep(); BC.mode = b.dataset.m; broadcastDialog(); }));
+  $('#bUrlSave').onclick = async () => {
+    $('#bUrlSave').disabled = true; $('#bUrlSave').textContent = 'בודק...';
+    const r = await api('POST', '/api/admin/crm', { mcpUrl: $('#bUrl').value.trim() || d.mcpUrl, broadcastSig: $('#bSig').value }).catch((e) => ({ ok: false, error: e.message }));
+    toast(r.ok ? `✓ מחובר – ${r.count} לקוחות פעילים` : '⚠️ ' + r.error, !r.ok, 7000); keep(); broadcastDialog();
+  };
+  $('#bSig').onchange = () => api('POST', '/api/admin/crm', { mcpUrl: d.mcpUrl, broadcastSig: $('#bSig').value }).catch(() => {});
+  if ($('#bRefresh')) $('#bRefresh').onclick = () => { keep(); broadcastDialog(true); };
+  const countNums = () => {
+    const out = new Set(); let buf = '';
+    const need = (d) => (/^972[57]/.test(d) ? 12 : /^972/.test(d) ? 11 : /^0[57]/.test(d) ? 10 : 9);
+    for (const t of $('#bNums').value.split(/[\s,;]+/)) { const d = t.replace(/\D/g, ''); if (!d) continue; buf += d; if (buf.length >= need(buf)) { out.add(buf.replace(/^972/, '0')); buf = ''; } }
+    $('#bNumCnt').textContent = out.size ? `${out.size} מספרים` : '';
+  };
+  if ($('#bNums')) { $('#bNums').oninput = () => { keep(); countNums(); }; countNums(); }
+  const drawList = async () => {
+    if (!BC.seg) { $('#bList').innerHTML = '<div class="hint">בחר מוצר כדי לראות למי תישלח ההודעה</div>'; return; }
+    const list = await api('GET', '/api/admin/broadcast/preview?segment=' + BC.seg).catch(() => []);
+    const ok = list.filter((r) => !r.optedOut);
+    $('#bList').innerHTML = `<div class="hint">${ok.length - [...BC.exclude].filter((p) => ok.some((r) => r.phone === p)).length} נמענים (בטל סימון כדי לא לשלוח):</div>` + ok.map((r) => `<label class="check" style="margin:2px 0"><input type="checkbox" data-p="${r.phone}" ${BC.exclude.has(r.phone) ? '' : 'checked'}> ${esc(r.name || r.company || '')} <span dir="ltr" class="chip">${esc(localPhone(r.phone))}</span></label>`).join('');
+    $('#bList').querySelectorAll('[data-p]').forEach((c) => (c.onchange = () => { if (c.checked) BC.exclude.delete(c.dataset.p); else BC.exclude.add(c.dataset.p); }));
+  };
+  box.querySelectorAll('#bSegs button').forEach((b) => (b.onclick = () => { BC.seg = b.dataset.k; BC.exclude.clear(); box.querySelectorAll('#bSegs button').forEach((x) => x.classList.toggle('on', x === b)); drawList(); }));
+  if (BC.mode === 'seg') drawList();
+  $('#bSample').onclick = async () => {
+    keep(); if (BC.text.trim().length < 3) return toast('כתוב קודם את נוסח ההודעה', true);
+    const ex = await api('POST', '/api/admin/broadcast/sample', { text: BC.text, optOutLine: BC.optOut }).catch(() => []);
+    $('#bSamples').innerHTML = `<div class="hint" style="margin-top:8px">כך זה ייראה אצל 3 לקוחות שונים:</div>` + ex.map((t) => `<div class="msg out" style="max-width:none;margin:6px 0;white-space:pre-wrap">${waFormat(t)}</div>`).join('');
+  };
+  $('#bSend').onclick = async () => {
+    keep();
+    if (BC.text.trim().length < 3) return toast('כתוב את נוסח ההודעה', true);
+    const body = { text: BC.text, optOutLine: BC.optOut, delaySec: BC.delay, instanceId: BC.inst, vary: true };
+    if (BC.mode === 'seg') { if (!BC.seg) return toast('בחר מוצר', true); body.segment = BC.seg; body.exclude = [...BC.exclude]; }
+    else { if (!BC.numbers.trim()) return toast('הדבק מספרים', true); body.numbers = BC.numbers; }
+    const b = $('#bSend');
+    if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = '⚠️ בטוח? לחץ שוב לשליחה'; setTimeout(() => { if (b.isConnected) { delete b.dataset.sure; b.textContent = '📤 שלח'; } }, 5000); return; }
+    try { S.bjob = await api('POST', '/api/admin/broadcast/send', body); drawBcastJob(); toast('📣 ההפצה התחילה'); } catch (e) { toast(e.message, true, 7000); }
+  };
+  drawBcastJob();
+}
+function drawBcastJob() {
+  const el = $('#bProg'); if (!el) return;
+  const j = S.bjob; if (!j) { el.innerHTML = ''; return; }
+  const pct = j.total ? Math.round((j.done / j.total) * 100) : 0;
+  el.innerHTML = `<div class="card2" style="margin-top:10px"><b>${j.running ? '📤 שולח' : j.cancel ? '⏹ נעצר' : '✅ הסתיים'}: ${esc(j.title)}</b>
+    <div style="height:8px;background:var(--bg);border-radius:8px;margin:8px 0;overflow:hidden"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#00c6d8,#6d5cf6)"></div></div>
+    <div class="hint">${j.done} מתוך ${j.total} · נשלחו ${j.sent}${j.failed ? ` · ⚠️ נכשלו ${j.failed}` : ''}</div>
+    ${j.failures && j.failures.length ? `<div class="hint">${j.failures.map((f) => `${esc(f.name || '')} ${esc(localPhone(f.phone))}: ${esc(f.error || '')}`).join('<br>')}</div>` : ''}
+    ${j.running ? '<button id="bStop" class="danger" style="margin-top:6px">⏹ עצור</button>' : ''}</div>`;
+  if ($('#bStop')) $('#bStop').onclick = async () => { S.bjob = await api('POST', '/api/admin/broadcast/cancel'); drawBcastJob(); };
 }
