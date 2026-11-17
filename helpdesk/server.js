@@ -1556,6 +1556,18 @@ function parseNumberList(text) {
 }
 let bcastJob = null;
 async function runBroadcast(job) {
+  if (job.scan) {
+    const r = await scanBotGroups({ slow: true, onProgress: (i, n, k) => {
+      if (job.cancel) return;
+      job.phase = `🔎 בודק קבוצות: ${i} מתוך ${n} · נמצאו ${k}`; if (i % 3 === 0 || i === n) emitAdmins({ type: 'bcast-job', job: jobView(job) });
+    } });
+    job.items = r.groups.map((g) => ({ chatId: g.chatId, instanceId: g.instanceId, name: g.name, group: true, phone: '', status: 'wait' }));
+    job.title = `👥 ${job.items.length} קבוצות של הבוט` + (r.failed ? ` (${r.failed} לא נבדקו)` : '');
+    job.phase = ''; job.scan = false;
+    log(`📣 broadcast scan done: ${job.items.length} groups`);
+    if (!job.items.length) job.cancel = true;
+    emitAdmins({ type: 'bcast-job', job: jobView(job) });
+  }
   for (let i = 0; i < job.items.length; i++) {
     if (job.cancel) break;
     const it = job.items[i];
@@ -1578,7 +1590,7 @@ async function runBroadcast(job) {
   log(`📣 broadcast "${job.title}": ${job.sent} sent, ${job.failed} failed`);
   emitAdmins({ type: 'bcast-job', job: jobView(job) });
 }
-const jobView = (j) => j && { id: j.id, title: j.title, total: j.items.length, done: j.done, sent: j.sent, failed: j.failed, running: j.running, cancel: !!j.cancel, finished: j.finished || 0,
+const jobView = (j) => j && { id: j.id, title: j.title, phase: j.phase || '', total: j.items.length, done: j.done, sent: j.sent, failed: j.failed, running: j.running, cancel: !!j.cancel, finished: j.finished || 0,
   failures: j.items.filter((x) => x.status === 'failed').slice(0, 20).map((x) => ({ phone: x.phone || '', name: x.name, error: x.error })) };
 // קבצים להפצה (תמונה וכו') – בזיכרון לשעתיים
 const bcastFiles = new Map();
@@ -1599,14 +1611,16 @@ async function instPhone(inst) {
 const grpMembers = new Map();
 async function botGroupMembers(inst, chatId) {
   const k = inst.id + '|' + chatId, c = grpMembers.get(k);
-  if (c && Date.now() - c.at < 30 * 60000) return c.ids;
+  if (c && Date.now() - c.at < 12 * 3600e3) return c.ids;
   const g = await ga.getGroupData(inst, chatId);
   const ids = new Set();
   for (const p of (g && g.participants) || []) for (const v of [p.id, p.phoneNumber, p.phone, p.jid, p.chatId]) if (v && !/@lid$/.test(String(v))) ids.add(normPhone(String(v).split('@')[0]));
   grpMembers.set(k, { at: Date.now(), ids, name: (g && g.subject) || '', sample: ((g && g.participants) || []).slice(0, 2).map((p) => JSON.stringify(p)).join(' ') });
   return ids;
 }
-route('GET', /^\/api\/admin\/broadcast\/groups$/, async (req, res) => {
+// סורק את הקבוצות ומחזיר את אלה שהבוט חבר בהן.
+// slow: אחת-אחת עם הפסקה וניסיונות חוזרים (להפצה ברקע); אחרת – עד ~25 שניות, והשאר בפעם הבאה
+async function scanBotGroups({ slow = false, onProgress } = {}) {
   const bot = normPhone(db.config.broadcastBotPhone || '');
   const all = []; const notes = []; const phones = [];
   for (const inst of db.config.instances.filter((i) => i.enabled !== false)) {
@@ -1620,40 +1634,42 @@ route('GET', /^\/api\/admin\/broadcast\/groups$/, async (req, res) => {
         seen.add(id); all.push({ inst, ph, chatId: id, name: c.contactName || c.name || (db.waChats[waKey(inst.id, id)] || {}).name || '' });
       }
     } catch (e) { notes.push(`${inst.name}: ${e.message.slice(0, 80)}`); }
-    // גם קבוצות שהמוקד ראה (למקרה שחסרות ברשימת אנשי הקשר)
     for (const w of Object.values(db.waChats)) if (w.instanceId === inst.id && w.isGroup && !seen.has(w.chatId)) { seen.add(w.chatId); all.push({ inst, ph, chatId: w.chatId, name: w.name || '' }); }
   }
-  // רק קבוצות שהבוט חבר בהן (או שהבוט הוא המספר ששולח)
-  const keep = [];
-  let i = 0, failed = 0;
-  const worker = async () => {
-    while (i < all.length) {
-      const g = all[i++];
-      if (!bot || g.ph === bot) { keep.push(g); continue; }
-      try { if ((await botGroupMembers(g.inst, g.chatId)).has(bot)) keep.push(g); } catch { failed++; }
+  const keep = []; let failed = 0; const t0 = Date.now();
+  for (let i = 0; i < all.length; i++) {
+    const g = all[i];
+    if (!bot || g.ph === bot) { keep.push(g); continue; }
+    const cached = grpMembers.get(g.inst.id + '|' + g.chatId);
+    if (!cached && !slow && Date.now() - t0 > 25000) { failed++; continue; }
+    let ok = false;
+    for (let attempt = 0; attempt < (slow ? 4 : 1) && !ok; attempt++) {
+      try { if ((await botGroupMembers(g.inst, g.chatId)).has(bot)) keep.push(g); ok = true; }
+      catch { if (slow) await sleep(5000 * (attempt + 1)); }
     }
-  };
-  await Promise.all([worker(), worker(), worker()]);
-  // קבוצה שמופיעה בשני מספרים – שולחים רק מאחד
+    if (!ok) failed++;
+    if (!cached) await sleep(slow ? 1500 : 400);
+    if (onProgress) onProgress(i + 1, all.length, keep.length);
+  }
   const byChat = new Map();
   for (const g of keep) if (!byChat.has(g.chatId)) byChat.set(g.chatId, g);
   const ignored = new Set((db.config.ignoredChats || []).map((x) => x.instanceId + '|' + x.chatId));
-  const groups = [...byChat.values()]
-    .map((g) => ({ instanceId: g.inst.id, instanceName: g.inst.name, chatId: g.chatId, name: g.name || (grpMembers.get(g.inst.id + '|' + g.chatId) || {}).name || 'קבוצה' }))
-    .filter((g) => !ignored.has(g.instanceId + '|' + g.chatId) && !ignoredByName(g.name))
-    .sort((a, b) => a.name.localeCompare(b.name, 'he'));
-  if (failed) notes.push(`לא הצלחתי לבדוק ${failed} קבוצות – נסה שוב בעוד דקה`);
+  const view = (g) => ({ instanceId: g.inst.id, instanceName: g.inst.name, chatId: g.chatId, name: g.name || (grpMembers.get(g.inst.id + '|' + g.chatId) || {}).name || 'קבוצה' });
+  const okG = (g) => !ignored.has(g.instanceId + '|' + g.chatId) && !ignoredByName(g.name);
+  const groups = [...byChat.values()].map(view).filter(okG).sort((a, b) => a.name.localeCompare(b.name, 'he'));
+  log(`👥 broadcast groups: checked ${all.length}, bot in ${groups.length}, failed ${failed}`);
+  return { bot, all, groups, failed, notes, phones, view, okG };
+}
+route('GET', /^\/api\/admin\/broadcast\/groups$/, async (req, res) => {
+  const { all, groups, failed, notes, phones, view, okG } = await scanBotGroups();
+  if (failed) notes.push(`עוד ${failed} קבוצות לא נבדקו – פתח שוב את הלשונית בעוד רגע, או השתמש ב"🚀 שלח ברקע" שבודק הכל לבד`);
   let out = groups, fallback = false;
-  if (!groups.length) {
+  if (!groups.length && !failed) {
     const sample = [...grpMembers.values()].find((x) => x.sample);
     notes.push(`נבדקו ${all.length} קבוצות ובאף אחת לא זוהה הבוט ${db.config.broadcastBotPhone || ''}. מוצגות כל הקבוצות – סמן ידנית. מספרי המוקד: ${phones.join(', ') || 'לא ידוע'}` + (sample ? ` · דוגמת משתתף: ${sample.sample.slice(0, 160)}` : ''));
     const seen = new Set(); fallback = true;
-    out = all.filter((g) => !seen.has(g.chatId) && seen.add(g.chatId))
-      .map((g) => ({ instanceId: g.inst.id, instanceName: g.inst.name, chatId: g.chatId, name: g.name || (grpMembers.get(g.inst.id + '|' + g.chatId) || {}).name || 'קבוצה' }))
-      .filter((g) => !ignored.has(g.instanceId + '|' + g.chatId) && !ignoredByName(g.name))
-      .sort((a, b) => a.name.localeCompare(b.name, 'he'));
+    out = all.filter((g) => !seen.has(g.chatId) && seen.add(g.chatId)).map(view).filter(okG).sort((a, b) => a.name.localeCompare(b.name, 'he'));
   }
-  log(`👥 broadcast groups: checked ${all.length}, bot in ${groups.length}, failed ${failed}`);
   send(res, 200, { bot: db.config.broadcastBotPhone || '', groups: out, fallback, notes, checked: all.length });
 }, { auth: 'admin' });
 route('POST', /^\/api\/admin\/broadcast\/bot$/, async (req, res) => {
@@ -1694,16 +1710,18 @@ route('POST', /^\/api\/admin\/broadcast\/send$/, async (req, res, { user }) => {
   const inst = instById(b.instanceId) || db.config.instances.find((i) => i.enabled !== false);
   if (!inst) return send(res, 400, { error: 'בחר מספר וואטסאפ לשליחה' });
   let items = [];
-  if (Array.isArray(b.groups)) items = b.groups.filter((g) => g && String(g.chatId).endsWith('@g.us') && instById(g.instanceId)).map((g) => ({ chatId: g.chatId, instanceId: g.instanceId, name: String(g.name || 'קבוצה'), group: true, phone: '' }));
+  if (b.botGroups) {
+    if (!db.config.broadcastBotPhone) return send(res, 400, { error: 'הגדר קודם את מספר הבוט' });
+  } else if (Array.isArray(b.groups)) items = b.groups.filter((g) => g && String(g.chatId).endsWith('@g.us') && instById(g.instanceId)).map((g) => ({ chatId: g.chatId, instanceId: g.instanceId, name: String(g.name || 'קבוצה'), group: true, phone: '' }));
   else if (b.segment) items = segmentRecipients(b.segment);
   else items = [...new Set(parseNumberList(b.numbers).map(normPhone).filter((p) => p && p.length >= 11))].map((phone) => ({ phone, name: (contactFor(phone) || {}).name || '' }));
   const exclude = new Set((b.exclude || []).map(String));
   const staffPhones = new Set(db.users.map((u) => u.phone).filter(Boolean));
   items = items.filter((r) => r.group || (!exclude.has(r.phone) && !optedOut(r.phone) && !staffPhones.has(r.phone))).map((r) => ({ ...r, status: 'wait' }));
-  if (!items.length) return send(res, 400, { error: 'אין נמענים' });
+  if (!items.length && !b.botGroups) return send(res, 400, { error: 'אין נמענים' });
   const seg = SEGMENTS.find((x) => x.k === b.segment);
-  bcastJob = { id: store.newId(), title: b.groups ? `👥 ${items.length} קבוצות` : seg ? seg.label : `${items.length} מספרים`, text, fileId: b.fileId || '', vary: b.vary !== false, optOutLine: !!b.optOutLine, delaySec: Math.max(3, Number(b.delaySec) || 3),
-    instanceId: inst.id, items, done: 0, sent: 0, failed: 0, running: true, by: user.name, at: now() };
+  bcastJob = { id: store.newId(), title: b.botGroups ? '👥 כל הקבוצות של הבוט' : b.groups ? `👥 ${items.length} קבוצות` : seg ? seg.label : `${items.length} מספרים`, text, fileId: b.fileId || '', vary: b.vary !== false, optOutLine: !!b.optOutLine, delaySec: Math.max(3, Number(b.delaySec) || 3),
+    instanceId: inst.id, items, done: 0, sent: 0, failed: 0, running: true, by: user.name, at: now(), scan: !!b.botGroups, phase: b.botGroups ? 'מחפש את הקבוצות של הבוט...' : '' };
   log(`📣 broadcast "${bcastJob.title}" to ${items.length} by ${user.name}`);
   runBroadcast(bcastJob).catch((e) => { bcastJob.running = false; log('broadcast error', e.message); });
   send(res, 200, jobView(bcastJob));

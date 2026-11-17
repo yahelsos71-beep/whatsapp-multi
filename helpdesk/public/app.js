@@ -2049,6 +2049,8 @@ async function broadcastDialog(refresh) {
     <div class="seg" id="bMode" style="margin-bottom:8px"><button data-m="seg" class="${BC.mode === 'seg' ? 'on' : ''}">🏷️ לפי מוצר (לקוחות פעילים)</button><button data-m="nums" class="${BC.mode === 'nums' ? 'on' : ''}">📋 רשימת מספרים</button><button data-m="groups" class="${BC.mode === 'groups' ? 'on' : ''}">👥 קבוצות</button></div>
     <div id="bGrpBox" style="${BC.mode === 'groups' ? '' : 'display:none'}">
       <div class="row" style="margin-top:0"><span class="hint">מספר הבוט (רק הקבוצות שהוא חבר בהן):</span><input id="bBot" dir="ltr" style="width:150px;margin:0" placeholder="05XXXXXXXX"><button id="bBotSave" class="ghost">💾</button></div>
+      <div class="card2" style="margin:6px 0;padding:8px"><b>🚀 הכי פשוט:</b> כתוב הודעה / צרף תמונה למטה ולחץ <b>"🚀 שלח ברקע לכל הקבוצות של הבוט"</b>. השרת ימצא לבד את כל הקבוצות וישלח – אפשר לסגור את החלון.
+        <div class="hint">או: בחר קבוצות ידנית מהרשימה ולחץ "שלח".</div></div>
       <label class="check" style="margin:6px 0"><input type="checkbox" id="bGAll"> <b>כל הקבוצות</b> <span class="chip" id="bGCnt"></span></label>
       <div id="bGList" style="max-height:200px;overflow-y:auto"><div class="hint">בודק את כל הקבוצות (עד דקה)...</div></div>
     </div>
@@ -2100,6 +2102,21 @@ async function broadcastDialog(refresh) {
   };
   box.querySelectorAll('#bSegs button').forEach((b) => (b.onclick = () => { BC.seg = b.dataset.k; BC.exclude.clear(); box.querySelectorAll('#bSegs button').forEach((x) => x.classList.toggle('on', x === b)); drawList(); }));
   if (BC.mode === 'seg') drawList();
+  if (BC.mode === 'groups' && $('#bSend')) {
+    const bg = document.createElement('button'); bg.id = 'bSendBg'; bg.className = 'primary'; bg.style.marginInlineStart = '6px'; bg.textContent = '🚀 שלח ברקע לכל הקבוצות של הבוט';
+    $('#bSend').after(bg);
+    let armed = false;
+    bg.onclick = async () => {
+      keep();
+      if (BC.text.trim().length < 3 && !BC.file) return toast('כתוב את נוסח ההודעה או צרף תמונה', true);
+      if (!armed) { armed = true; bg.textContent = '⚠️ לחץ שוב לאישור'; setTimeout(() => { armed = false; bg.textContent = '🚀 שלח ברקע לכל הקבוצות של הבוט'; }, 5000); return; }
+      try {
+        const body = { text: BC.text, delaySec: BC.delay, instanceId: BC.inst, vary: true, botGroups: true };
+        if (BC.file) { toast('מעלה את הקובץ...'); const up = await api('POST', '/api/admin/broadcast/upload', BC.file, { 'Content-Type': BC.file.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(BC.file.name) }); body.fileId = up.fileId; }
+        S.bjob = await api('POST', '/api/admin/broadcast/send', body); drawBcastJob(); toast('🚀 רץ ברקע – אפשר לסגור את החלון');
+      } catch (e) { toast(e.message, true, 7000); }
+    };
+  }
   $('#bFileBtn').onclick = () => $('#bFile').click();
   $('#bFile').onchange = (e) => { const f = e.target.files[0]; if (f) { keep(); BC.file = f; $('#bFileName').innerHTML = '📎 ' + esc(f.name) + ' <a id="bFileX" style="cursor:pointer">✕</a>'; $('#bFileX').onclick = () => { BC.file = null; $('#bFileName').textContent = ''; }; } };
   if ($('#bFileX')) $('#bFileX').onclick = () => { BC.file = null; $('#bFileName').textContent = ''; };
@@ -2147,6 +2164,8 @@ function drawBcastJob() {
   const pct = j.total ? Math.round((j.done / j.total) * 100) : 0;
   el.innerHTML = `<div class="card2" style="margin-top:10px"><b>${j.running ? '📤 שולח' : j.cancel ? '⏹ נעצר' : '✅ הסתיים'}: ${esc(j.title)}</b>
     <div style="height:8px;background:var(--bg);border-radius:8px;margin:8px 0;overflow:hidden"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#00c6d8,#6d5cf6)"></div></div>
+    ${j.phase ? `<div class="hint">${esc(j.phase)}</div>` : ''}
+    ${!j.running && !j.total ? '<div class="hint">⚠️ לא נמצאו קבוצות שהבוט חבר בהן</div>' : ''}
     <div class="hint">${j.done} מתוך ${j.total} · נשלחו ${j.sent}${j.failed ? ` · ⚠️ נכשלו ${j.failed}` : ''}</div>
     ${j.failures && j.failures.length ? `<div class="hint">${j.failures.map((f) => `${esc(f.name || '')} ${esc(localPhone(f.phone))}: ${esc(f.error || '')}`).join('<br>')}</div>` : ''}
     ${j.running ? '<button id="bStop" class="danger" style="margin-top:6px">⏹ עצור</button>' : ''}</div>`;
