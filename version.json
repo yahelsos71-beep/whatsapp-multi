@@ -1,11 +1,11 @@
 {
-  "version": 24,
+  "version": 25,
   "files": {
-    "app-main.js": "a129a0d3012d4eed5b0d2f86f9f51c3af47ad96acaee3a4b986093e8ff0f2832",
+    "app-main.js": "26cea88c57b204b0d03a21587cab025f9e889d072dc40efe8baa53e8a30d3d5d",
     "index.html": "0bcea1e49c61f884d55811a036906d6306837b688b4e184c0512614751dfde34",
     "renderer.js": "1373b3bb61d3db7cccdb48e43d114ed67c898a4ab205d7c70903d440c33d7ade",
     "inject.js": "8f0e9471519ce20774b06d00707fa30d2b78e27950ca68b55b164e1b05ad824a",
-    "changelog.json": "1f43d157cda4d344a35f06f0f1388610a10f576bb14d671cfc8a90e0ec1f0824"
+    "changelog.json": "e25ce335bd8e504e4b2a54af18e9dbbf3dc32f3827c2a07076c4e606a5db4300"
   },
-  "notes": "📞 חיוג בלחיצה כפולה עובד עכשיו גם בתוך לשוניות הוואטסאפ (גם על מספר שאי אפשר לסמן)"
+  "notes": "🎥 שיחות וידאו בוואטסאפ: התוכנה מזדהה כגרסת כרום חדשה, כדי שוואטסאפ ווב יציג את כפתורי השיחה | 📵 שיחות קוליות כבויות – הכפתור מוסתר, ורק שיחת וידאו אפשרית"
 }

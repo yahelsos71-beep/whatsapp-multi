@@ -5,7 +5,7 @@ const path = require('path');
 const os = require('os');
 
 const CHROME_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36';
 
 // ---- תיקיות ----
 // USER_DIR – פרטי לכל יוזר (חשבונות פרטיים, הגדרות צלצול, קבצי צליל)
@@ -288,11 +288,35 @@ const DIAL_JS = `(() => { if (window.__dialHook) return; window.__dialHook = 1;
     if (hit) console.log('__DIAL__:' + hit);
   }, true);
 })();`;
+// ---- 🎥 שיחות וואטסאפ: וידאו כן, קולי לא ----
+// מסתיר/חוסם כל כפתור או אפשרות של "שיחה קולית" בוואטסאפ ווב. שיחות וידאו נשארות.
+const CALL_JS = `(() => { if (window.__callHook) return; window.__callHook = 1;
+  const VOICE = /voice call|audio call|שיחה קולית|שיחת קול|שיחת שמע/i, VIDEO = /video|וידאו|וידיאו/i;
+  const ctl = (el) => { const r = el.getAttribute('role'); return el.tagName === 'BUTTON' || r === 'button' || r === 'menuitem' || r === 'option'; };
+  const label = (el) => { const t = ctl(el) ? (el.innerText || '').trim() : ''; return [el.getAttribute('aria-label'), el.getAttribute('title'), t.length < 30 ? t : ''].filter(Boolean).join(' '); };
+  const isVoice = (el) => { if (el.closest && el.closest('[role=row],[role=listitem],[role=gridcell],#pane-side,[data-tab="10"] .copyable-text')) return false;
+    const l = label(el); return (VOICE.test(l) || /^(voice-call|audio-call)$/i.test(el.getAttribute('data-icon') || '')) && !VIDEO.test(l); };
+  const pick = (t) => { for (let el = t, i = 0; el && el !== document.body && i < 7; el = el.parentElement, i++) {
+    if (el.nodeType !== 1) continue; const r = el.getAttribute('role');
+    if (ctl(el) || el.getAttribute('aria-label') || el.getAttribute('data-icon')) { if (isVoice(el)) return el; } } return null; };
+  const toast = () => { let d = document.getElementById('__noVoice'); if (!d) { d = document.createElement('div'); d.id = '__noVoice';
+    d.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:99999;background:#10233a;color:#fff;padding:10px 16px;border-radius:10px;font:15px sans-serif;direction:rtl;box-shadow:0 6px 20px rgba(0,0,0,.4)';
+    document.body.appendChild(d); } d.textContent = '📵 שיחות קוליות כבויות ב-WhatsApp Multi – אפשר רק שיחת וידאו 🎥'; clearTimeout(d._t); d._t = setTimeout(() => d.remove(), 3500); };
+  for (const ev of ['click', 'mousedown', 'pointerdown', 'keydown']) document.addEventListener(ev, (e) => {
+    if (ev === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+    if (pick(e.target)) { e.preventDefault(); e.stopImmediatePropagation(); if (ev === 'click' || ev === 'keydown') toast(); } }, true);
+  const hide = () => document.querySelectorAll('header [aria-label],header [title],header [data-icon],[role=menuitem],[role=application] [aria-label]').forEach((el) => { if (el.offsetParent && isVoice(el)) el.style.display = 'none'; });
+  new MutationObserver(() => { clearTimeout(window.__nvT); window.__nvT = setTimeout(hide, 150); }).observe(document.documentElement, { childList: true, subtree: true });
+  hide();
+})();`;
 const toLocalNumber = (raw) => { let d = String(raw).replace(/\D/g, ''); if (d.startsWith('972')) d = '0' + d.slice(3); return d; };
 let dialPending = 0;
 app.on('web-contents-created', (_e, contents) => {
   if (contents.getType() !== 'webview') return;
-  contents.on('dom-ready', () => { contents.executeJavaScript(DIAL_JS).catch(() => {}); });
+  contents.on('dom-ready', () => {
+    contents.executeJavaScript(DIAL_JS).catch(() => {});
+    if (/web\.whatsapp\.com/.test(contents.getURL())) contents.executeJavaScript(CALL_JS).catch(() => {});
+  });
   contents.on('console-message', (_ev, _level, message) => {
     if (typeof message !== 'string' || !message.startsWith('__DIAL__:')) return;
     const num = toLocalNumber(message.slice(9));
