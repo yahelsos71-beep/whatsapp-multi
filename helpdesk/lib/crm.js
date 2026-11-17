@@ -96,24 +96,25 @@ function fieldsOf(l) {
   return { services, pbx };
 }
 async function apiActiveCustomers(key, onProgress) {
-  let status = null, leads = [], sample = null;
+  // ה-API דורש פרמטר חיפוש (טלפון/מייל/חברה) – מחפשים לפי ספרה בטלפון (0..9) ומאחדים: כל טלפון מכיל לפחות ספרה אחת
+  const all = new Map(); let status = null, firstLead = null;
+  const page = async (st, digit, p) => leadsOf(await apiGet(key, `/leads/search?phone=${digit}&status=${encodeURIComponent(st)}&page=${p}&limit=100`));
   for (const st of ['activeclient', 'Active Client', 'active']) {
-    const j = await apiGet(key, `/leads/search?status=${encodeURIComponent(st)}&page=1&limit=100`);
-    const list = leadsOf(j);
-    if (list.length) { status = st; leads = list; sample = j; break; }
+    if ((await page(st, '0', 1)).length || (await page(st, '5', 1)).length) { status = st; break; }
   }
-  if (!status) return { list: [], debug: 'לא נמצאו לקוחות פעילים (status=activeclient)' };
-  for (let page = 2; page < 60 && leads.length % 100 === 0; page++) {
-    const list = leadsOf(await apiGet(key, `/leads/search?status=${encodeURIComponent(status)}&page=${page}&limit=100`));
-    if (!list.length) break;
-    leads.push(...list);
-    if (onProgress) onProgress(`נמשכו ${leads.length} לקוחות פעילים...`);
+  if (!status) return { list: [], debug: 'לא נמצאו לקוחות פעילים בחיפוש לפי טלפון (status=activeclient)' };
+  for (const digit of '0123456789') {
+    for (let p = 1; p < 60; p++) {
+      const list = await page(status, digit, p);
+      for (const l of list) { if (!firstLead) firstLead = l; if (l && l.id && !all.has(l.id)) all.set(l.id, l); }
+      if (list.length < 100) break;
+    }
+    if (onProgress) onProgress(`נמשכו ${all.size} לקוחות פעילים...`);
   }
-  const ids = new Set();
-  const list = leads.filter((l) => !ids.has(l.id) && ids.add(l.id)).map((l) => ({ id: l.id, name: [l.name, l.last_name].filter(Boolean).join(' ').trim(), company: l.company || '', phone: l.phone || '', ...fieldsOf(l) }));
+  const list = [...all.values()].filter((l) => !l.status || /active/i.test(String(l.status)) && !/inactive/i.test(String(l.status)))
+    .map((l) => ({ id: l.id, name: [l.name, l.last_name].filter(Boolean).join(' ').trim(), company: l.company || '', phone: l.phone || '', ...fieldsOf(l) }));
   const withFields = list.filter((c) => c.services.length || c.pbx).length;
-  const first = leadsOf(sample)[0] || {};
-  return { list, debug: withFields ? '' : `לא נמצאו שדות "סוג שירות" בתשובת ה-API. שדות שהתקבלו: ${Object.keys(first).join(', ').slice(0, 300)}` };
+  return { list, debug: withFields ? '' : `לא נמצאו שדות "סוג שירות" בתשובת ה-API. שדות שהתקבלו: ${Object.keys(firstLead || {}).join(', ').slice(0, 300)}` };
 }
 
 module.exports = { activeCustomers, apiActiveCustomers, callTool };
