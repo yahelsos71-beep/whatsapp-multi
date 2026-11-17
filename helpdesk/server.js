@@ -1601,8 +1601,9 @@ async function botGroupMembers(inst, chatId) {
   const k = inst.id + '|' + chatId, c = grpMembers.get(k);
   if (c && Date.now() - c.at < 30 * 60000) return c.ids;
   const g = await ga.getGroupData(inst, chatId);
-  const ids = new Set(((g && g.participants) || []).map((p) => normPhone(String(p.id || '').split('@')[0])));
-  grpMembers.set(k, { at: Date.now(), ids, name: (g && g.subject) || '' });
+  const ids = new Set();
+  for (const p of (g && g.participants) || []) for (const v of [p.id, p.phoneNumber, p.phone, p.jid, p.chatId]) if (v && !/@lid$/.test(String(v))) ids.add(normPhone(String(v).split('@')[0]));
+  grpMembers.set(k, { at: Date.now(), ids, name: (g && g.subject) || '', sample: ((g && g.participants) || []).slice(0, 2).map((p) => JSON.stringify(p)).join(' ') });
   return ids;
 }
 route('GET', /^\/api\/admin\/broadcast\/groups$/, async (req, res) => {
@@ -1642,8 +1643,18 @@ route('GET', /^\/api\/admin\/broadcast\/groups$/, async (req, res) => {
     .filter((g) => !ignored.has(g.instanceId + '|' + g.chatId) && !ignoredByName(g.name))
     .sort((a, b) => a.name.localeCompare(b.name, 'he'));
   if (failed) notes.push(`לא הצלחתי לבדוק ${failed} קבוצות – נסה שוב בעוד דקה`);
-  if (!groups.length) notes.push(`נבדקו ${all.length} קבוצות ובאף אחת מהן הבוט ${db.config.broadcastBotPhone || ''} לא חבר. המספרים המחוברים למוקד: ${phones.join(', ') || 'לא ידוע'}`);
-  send(res, 200, { bot: db.config.broadcastBotPhone || '', groups, notes, checked: all.length });
+  let out = groups, fallback = false;
+  if (!groups.length) {
+    const sample = [...grpMembers.values()].find((x) => x.sample);
+    notes.push(`נבדקו ${all.length} קבוצות ובאף אחת לא זוהה הבוט ${db.config.broadcastBotPhone || ''}. מוצגות כל הקבוצות – סמן ידנית. מספרי המוקד: ${phones.join(', ') || 'לא ידוע'}` + (sample ? ` · דוגמת משתתף: ${sample.sample.slice(0, 160)}` : ''));
+    const seen = new Set(); fallback = true;
+    out = all.filter((g) => !seen.has(g.chatId) && seen.add(g.chatId))
+      .map((g) => ({ instanceId: g.inst.id, instanceName: g.inst.name, chatId: g.chatId, name: g.name || (grpMembers.get(g.inst.id + '|' + g.chatId) || {}).name || 'קבוצה' }))
+      .filter((g) => !ignored.has(g.instanceId + '|' + g.chatId) && !ignoredByName(g.name))
+      .sort((a, b) => a.name.localeCompare(b.name, 'he'));
+  }
+  log(`👥 broadcast groups: checked ${all.length}, bot in ${groups.length}, failed ${failed}`);
+  send(res, 200, { bot: db.config.broadcastBotPhone || '', groups: out, fallback, notes, checked: all.length });
 }, { auth: 'admin' });
 route('POST', /^\/api\/admin\/broadcast\/bot$/, async (req, res) => {
   const b = await readJson(req); db.config.broadcastBotPhone = String(b.phone || '').trim(); store.saveConfig(); send(res, 200, { ok: true });

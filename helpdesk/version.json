@@ -1,7 +1,7 @@
 {
-  "version": 69,
+  "version": 70,
   "files": {
-    "server.js": "9e1d825a3e595e49e694d11f83b2e751f9a5ca1e96fb98ae431aca194924e225",
+    "server.js": "ae3fd4a0891ea26827d2a589b26500b962de6d5add48e777b740a2d0b901e71a",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
     "reset-password.bat": "662bfbec8b94b264fd7b585a365f389415b8ec66bea540e876418e7a3f805187",
     "README-HE.txt": "df99092cc82f3de6e6d685ca604d95e154879a4a75ba6a0854e4134dd27e5cf3",
@@ -14,11 +14,11 @@
     "lib/greenapi.js": "11d800476c09bdc23282797abc71f4f2da65d8b8fa74a120df9f11c4f27a0884",
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "67c3f7771298c520fff27587f171e05195209a2bbfcd9aae7414fba949f04dbd",
-    "public/app.js": "bd9a8dac818fb67d02898df09b93078d86edb0d7ee8983bdc24968e6e178f2a3",
-    "public/changelog.json": "6f4c6b72e93b97c9f05d8a6a90d9d5ab66005912b69e071eb2c1a4b9f250c094",
+    "public/app.js": "1c444f0449370550aa82dd0c3ceae51841ff33b03cf4e141a9a531dc17ccfb5f",
+    "public/changelog.json": "360c21d95b15d74bd25743f48a7f468ad5586b1a4724067c24306d22da183bbb",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "c84aa15de850e1d1accb8052a29d7e9a3664650b7f8adb97a47d456d6b1ea5ca"
   },
-  "notes": "👥 הפצה לקבוצות: מוצגות הקבוצות שמספר הבוט חבר בהן, והשליחה יוצאת ממספר המוקד שנמצא בקבוצה | אם לא נמצאו קבוצות – מוסבר למה"
+  "notes": "👥 הפצה לקבוצות: אם הבוט לא זוהה – מוצגות כל הקבוצות לסימון ידני, עם הסבר מה נבדק"
 }
