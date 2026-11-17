@@ -739,7 +739,7 @@ const route = (method, pattern, handler, { auth = 'user' } = {}) => routes.push(
 // ---------- התקנה ראשונה / התחברות ----------
 route('GET', /^\/api\/state$/, (req, res, { user }) =>
   send(res, 200, { setupNeeded: db.users.length === 0, user: publicUser(user), version: VERSION, company: db.config.companyName,
-    targets: user ? serviceTargets().map((x) => ({ id: x.id, name: x.name })) : [], testMode: TEST_MODE }), { auth: 'none' });
+    targets: user ? serviceTargets().map((x) => ({ id: x.id, name: x.name })) : [], testMode: TEST_MODE, mondayVcat: !!(user && mondayOk) }), { auth: 'none' });
 
 route('POST', /^\/api\/setup$/, async (req, res) => {
   if (db.users.length) return send(res, 400, { error: 'כבר הוגדר' });
@@ -1838,6 +1838,39 @@ route('POST', /^\/api\/tickets\/(\d+)\/service-call$/, async (req, res, { user, 
   if (b.saveCustomerMsg && user.role === 'admin' && b.customerTemplate) { db.config.serviceCustomerMsg = String(b.customerTemplate); store.saveConfig(); }
   emitTicket(t, { sound: tu ? 'new' : null });
   send(res, 200, { ok: true, target: target.name, customerSent, customerError });
+});
+// ---------- מאנדיי: "העבר לויקאט" (שינוי סטטוס קריאה בלוח של ויקאט) ----------
+// הרובוט רץ בנפרד על השרת (/opt/monday-bot, שירות monday-bot) – אם הוא לא קיים, הכפתור לא מופיע
+const MONDAY_BOT = process.env.MONDAY_BOT_URL || 'http://127.0.0.1:8099';
+let mondayOk = false;
+const checkMonday = () => fetch(MONDAY_BOT + '/health', { signal: AbortSignal.timeout(3000) }).then((r) => { mondayOk = r.ok; }).catch(() => { mondayOk = false; });
+checkMonday(); setInterval(checkMonday, 2 * 60 * 1000);
+async function mondayCall(p, body) {
+  let r;
+  try { r = await fetch(MONDAY_BOT + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(150000) }); }
+  catch (e) { throw new Error('רובוט המאנדיי לא זמין (systemctl status monday-bot)'); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || 'מאנדיי: שגיאה ' + r.status);
+  return j;
+}
+route('POST', /^\/api\/tickets\/(\d+)\/monday-vcat$/, async (req, res, { user, params }) => {
+  const t = visibleTicket(user, params[0]);
+  if (!t) return send(res, 404, { error: 'לא נמצא' });
+  if (!t.isGroup) return send(res, 400, { error: 'העברה לויקאט במאנדיי עובדת רק לקריאות מקבוצה' });
+  const b = await readJson(req);
+  try {
+    let item = b.itemId ? { id: String(b.itemId), name: String(b.itemName || '') } : null;
+    if (!item) {
+      const r = await mondayCall('/find', { group: t.customerName });
+      if (r.items.length !== 1) return send(res, 200, { ok: false, items: r.items, all: r.all });
+      item = r.items[0];
+    }
+    const r = await mondayCall('/set', { group: t.customerName, id: item.id });
+    note(t, `🔁 ${user.name} העביר/ה לויקאט במאנדיי: "${r.name || item.name}" ← ${r.status}`);
+    t.mondayItemId = item.id;
+    emitTicket(t);
+    send(res, 200, { ok: true, name: r.name || item.name });
+  } catch (e) { send(res, 502, { error: e.message }); }
 });
 // קבוצות שהמוקד מכיר (לבחירת יעד) – מתוך הקריאות
 route('GET', /^\/api\/admin\/known-groups$/, (req, res) => {

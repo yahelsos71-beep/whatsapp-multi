@@ -76,7 +76,7 @@ applyTheme(currentTheme());
 async function boot() {
   let st;
   try { st = await api('GET', '/api/state'); } catch { app.innerHTML = '<div class="welcome"><h2>אין חיבור לשרת</h2>מנסה שוב...</div>'; return setTimeout(boot, 3000); }
-  S.version = st.version; S.company = st.company; S.targets = st.targets || [];
+  S.version = st.version; S.company = st.company; S.targets = st.targets || []; S.mondayVcat = !!st.mondayVcat;
   S.testMode = !!st.testMode;
   if (st.setupNeeded) return renderSetup();
   if (!st.user) return renderLogin();
@@ -419,6 +419,7 @@ function renderChatHead() {
       ? '<button id="reopenBtn">🔄 פתח מחדש</button>'
       : `${t.snoozeUntil ? `<span class="chip who">⏸ מושהית עד ${fmtWhen(t.snoozeUntil)}</span><button id="unsnoozeBtn">▶ החזר עכשיו</button>` : '<button id="snoozeBtn" title="עדיין לא סגרנו – מתכתבים עם הלקוח. הקריאה תעבור ל״מושהות״ ותחזור עם תזכורת">⏸ השהה</button>'}<button id="transferBtn">↪️ העבר שיחה</button><button class="primary" id="closeBtn">✅ סגור קריאה</button>`}
     ${S.targets.length && !ro ? `<button id="svcBtn" title="שליחת קריאת שירות בוואטסאפ">🛠 ${S.targets.length === 1 ? 'קריאה ל' + esc(S.targets[0].name) : 'קריאת שירות'}</button>` : ''}
+    ${S.mondayVcat && t.isGroup && !ro ? `<button id="vcatBtn" title="משנה במאנדיי את סטטוס הקריאה של הקבוצה ל״העבר ל-VCAT״">🔁 העבר לויקאט</button>` : ''}
     ${!t.isGroup ? `<button class="ghost" id="dialBtn" title="חיוג ללקוח דרך המרכזייה – הטלפון שלך יצלצל קודם">📞 חייג</button>` : ''}
     ${!t.isGroup && !ro ? `<button class="ghost" id="contactBtn" title="שמירת שם וחברה ללקוח הזה">👤 ${t.contact ? 'איש קשר' : 'שמור איש קשר'}</button>` : ''}
     <button class="ghost" id="waHistBtn" title="ההודעות הקודמות עם ${t.isGroup ? 'הקבוצה' : 'הלקוח'} מוואטסאפ – גם מלפני המוקד">📜 היסטוריה</button>
@@ -432,6 +433,7 @@ function renderChatHead() {
   $('#waHistBtn').onclick = () => waHistoryDialog(t);
   if ($('#dialBtn')) $('#dialBtn').onclick = () => dialPhone(localPhone(t.phone), t.customerName);
   if ($('#svcBtn')) $('#svcBtn').onclick = () => serviceCallDialog(t);
+  if ($('#vcatBtn')) $('#vcatBtn').onclick = () => mondayVcat(t);
   if ($('#contactBtn')) $('#contactBtn').onclick = () => {
     const c = t.contact;
     openModal(`<h3>👤 ${c ? 'עריכת איש קשר' : 'שמירת איש קשר'}</h3>
@@ -685,6 +687,23 @@ async function doCloseTicket(t, resolution) {
 }
 
 // ---------- קריאת שירות לטכנאי ----------
+// "העבר לויקאט" – שינוי הסטטוס במאנדיי (לוקח כחצי דקה)
+async function mondayVcat(t, item) {
+  const btn = $('#vcatBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ מעביר במאנדיי...'; }
+  try {
+    const r = await api('POST', `/api/tickets/${t.id}/monday-vcat`, item ? { itemId: item.id, itemName: item.name } : {});
+    if (r.ok) return toast(`✅ הועבר לויקאט במאנדיי: ${r.name}`, false, 5000);
+    if (!r.items.length) return toast(`לא נמצאה במאנדיי קריאה פתוחה של "${t.customerName}"`, true, 7000);
+    openModal(`<h3>🔁 איזו קריאה להעביר לויקאט?</h3>
+      <div class="hint">יש כמה קריאות פתוחות של ${esc(t.customerName)} במאנדיי</div>
+      ${r.items.map((x, i) => `<div class="row" style="margin-top:6px"><button style="flex:1" data-vi="${i}">${esc(x.name)} <small>(${esc(x.status || 'בלי סטטוס')})</small></button></div>`).join('')}
+      <div class="row"><span style="flex:1"></span><button class="ghost" id="vcatCancel">ביטול</button></div>`);
+    $('#vcatCancel').onclick = closeModal;
+    document.querySelectorAll('[data-vi]').forEach((b) => (b.onclick = () => { closeModal(); mondayVcat(t, r.items[+b.dataset.vi]); }));
+  } catch (e) { toast(e.message, true, 7000); }
+  finally { const b2 = $('#vcatBtn'); if (b2) { b2.disabled = false; b2.textContent = '🔁 העבר לויקאט'; } }
+}
 async function serviceCallDialog(t) {
   let d;
   try { d = await api('GET', `/api/tickets/${t.id}/service-call`); } catch (e) { return toast(e.message, true); }

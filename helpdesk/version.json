@@ -1,7 +1,7 @@
 {
-  "version": 66,
+  "version": 67,
   "files": {
-    "server.js": "557fa946b2464c28ff6d918f6b00a3fcffe5eb737ed5473d7944580f08be85bc",
+    "server.js": "1f33fae821e7712121aee65ee456fb637dfefd3b34b0a2401fc3fd03eff1ab55",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
     "reset-password.bat": "662bfbec8b94b264fd7b585a365f389415b8ec66bea540e876418e7a3f805187",
     "README-HE.txt": "df99092cc82f3de6e6d685ca604d95e154879a4a75ba6a0854e4134dd27e5cf3",
@@ -14,11 +14,11 @@
     "lib/greenapi.js": "11d800476c09bdc23282797abc71f4f2da65d8b8fa74a120df9f11c4f27a0884",
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "67c3f7771298c520fff27587f171e05195209a2bbfcd9aae7414fba949f04dbd",
-    "public/app.js": "00558ce04b58f7d00e99c6d3100c8f6ebb02a5d9d33e304ddf9541905371c625",
-    "public/changelog.json": "5064e046245a091a9681805dccf23d88859301e33352e74d772347f76de69a7d",
+    "public/app.js": "7655c3b5c1e894ddeb087343de02860ee7d555c94d6526118aa17cb6972aff6b",
+    "public/changelog.json": "42b0b1b44a63c371d522e5c01a9436bebade03ded6d1a55046f63b761dcad4d9",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "c84aa15de850e1d1accb8052a29d7e9a3664650b7f8adb97a47d456d6b1ea5ca"
   },
-  "notes": "📣 הפצה: משיכת כל הלקוחות מה-CRM דרך \"הצג את כל הלקוחות\" של SmartSale"
+  "notes": "🔁 כפתור \"העבר לויקאט\" בקריאה מקבוצה – משנה במאנדיי את סטטוס הקריאה ל\"העבר ל-VCAT\""
 }
