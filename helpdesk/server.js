@@ -1574,7 +1574,11 @@ const jobView = (j) => j && { id: j.id, title: j.title, total: j.items.length, d
 route('POST', /^\/api\/admin\/crm$/, async (req, res) => {
   const b = await readJson(req);
   const old = db.config.crm || {};
-  db.config.crm = { mcpUrl: unmask(String(b.mcpUrl || '').trim(), old.mcpUrl) || '' };
+  const url = unmask(String(b.mcpUrl || '').trim(), old.mcpUrl) || '';
+  if (url && (!/^https?:\/\//i.test(url) || /smartsalecrm\.co\.il\/(he|en)?\/?dashboard/i.test(url) || !/token=/i.test(url))) {
+    return send(res, 200, { ok: false, error: 'זו לא כתובת החיבור. צריך את כתובת ה-MCP של SmartSale – מתחילה ב-https:// ומסתיימת ב-?token=... (לא הכתובת של מסך הלקוחות)' });
+  }
+  db.config.crm = { mcpUrl: url };
   if (b.broadcastSig !== undefined) db.config.broadcastSig = String(b.broadcastSig || '').slice(0, 80);
   store.saveConfig(); crmCache = null;
   try { const c = await crmLoad(true); send(res, 200, { ok: true, count: c.list.length }); }

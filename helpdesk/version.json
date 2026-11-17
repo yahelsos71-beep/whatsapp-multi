@@ -1,7 +1,7 @@
 {
-  "version": 62,
+  "version": 63,
   "files": {
-    "server.js": "878ac791ec3253b6eb1323d54e1bf87e4302cb0196721c95842c27c58e946ca0",
+    "server.js": "d5faec34985fb7218c1e75f151a2ec761050e34ff194aa15cf8e21aef65b5d12",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
     "reset-password.bat": "662bfbec8b94b264fd7b585a365f389415b8ec66bea540e876418e7a3f805187",
     "README-HE.txt": "df99092cc82f3de6e6d685ca604d95e154879a4a75ba6a0854e4134dd27e5cf3",
@@ -15,10 +15,10 @@
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "67c3f7771298c520fff27587f171e05195209a2bbfcd9aae7414fba949f04dbd",
     "public/app.js": "f7ca0969148fdf20807bc15bc62e3e243c6cf8d5a8c81a06c0453dc2d5f351ae",
-    "public/changelog.json": "9f52651bcb747cb4b069ebbf4a8b970d71f0731867174d8fa93c5b10c8cb3bbe",
+    "public/changelog.json": "7cb4a79d52c269bcf011ad21c2dd6fbd91398ad6e86fef218d054a971f3375d3",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "c84aa15de850e1d1accb8052a29d7e9a3664650b7f8adb97a47d456d6b1ea5ca"
   },
-  "notes": "📣 הפצה (מנהלים): הודעת וואטסאפ לכל הלקוחות הפעילים של מוצר מה-CRM (015, פיוזן, שרת ענן, 365, מענה אנושי, אינטרנט) או לרשימת מספרים | ✍️ כל הודעה עם פתיח וחתימה משתנים, 3 שניות לפחות בין הודעות, ומי שעונה \"הסר\" לא יקבל יותר"
+  "notes": "📣 הפצה: הודעה ברורה כשמדביקים כתובת לא נכונה בחיבור ל-CRM"
 }
