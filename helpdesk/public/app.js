@@ -138,9 +138,9 @@ async function startMain() {
     <div class="side" id="waSide" style="display:none"></div>
     <div class="side" id="tSide">
       <div class="tabs" id="tabs"></div>
-      <div class="search" style="display:flex;gap:6px"><input id="q" placeholder="🔍 חיפוש לפי שם או טלפון" style="flex:1">
-        ${S.me.role === 'admin' ? '<select id="fuser" title="סינון לפי עובד" style="width:auto;max-width:130px"></select>' : ''}
-        <select id="fdate" title="סינון לפי תאריך" style="width:auto;max-width:120px"><option value="">📅 כל התאריכים</option><option value="today">היום</option><option value="yesterday">אתמול</option><option value="week">7 ימים אחרונים</option><option value="month">30 ימים אחרונים</option><option value="custom">📅 טווח תאריכים...</option></select></div>
+      <div class="search" style="display:flex;gap:6px"><input id="q" placeholder="🔍 חיפוש לפי שם או טלפון" style="flex:2;min-width:130px">
+        ${S.me.role === 'admin' ? '<select id="fuser" title="סינון לפי עובד" style="flex:1;min-width:0;width:auto;max-width:110px"></select>' : ''}
+        <select id="fdate" title="סינון לפי תאריך" style="flex:1;min-width:0;width:auto;max-width:90px"><option value="">📅 הכל</option><option value="today">היום</option><option value="yesterday">אתמול</option><option value="week">7 ימים אחרונים</option><option value="month">30 ימים אחרונים</option><option value="custom">📅 טווח תאריכים...</option></select></div>
       <div class="search" id="fdateRange" style="display:none;gap:6px;align-items:center;padding-top:0"><span class="hint">מ-</span><input type="date" id="fdFrom" style="flex:1"><span class="hint">עד</span><input type="date" id="fdTo" style="flex:1"></div>
       <div class="list" id="list"></div>
     </div>
@@ -207,6 +207,8 @@ function onEvent(ev) {
       Sounds.newMessage();
       notify(ev.sound === 'new' ? 'קריאה חדשה' : 'הודעה חדשה', `${t.customerName}: ${t.lastText || ''}`);
     }
+  } else if (ev.type === 'group-pop') {
+    groupPop(ev);
   } else if (ev.type === 'staffmsg') {
     staffOnMessage(ev.message, ev.fromName);
   } else if (ev.type === 'staffread') {
@@ -1190,12 +1192,13 @@ function adminUsers() {
       <div><label>תפקיד</label><select id="urole"><option value="agent">נציג – רואה רק את הקריאות שלו</option><option value="admin" ${u?.role === 'admin' ? 'selected' : ''}>מנהל – רואה הכל ומנהל</option></select></div></div>
       ${u ? `<label class="check"><input type="checkbox" id="uactive" ${u.active ? 'checked' : ''}> פעיל (אפשר להיכנס ולקבל קריאות)</label>` : ''}
       <label class="check"><input type="checkbox" id="uquick" ${u?.quickClose ? 'checked' : ''}> ✅ יכול לסגור קריאה בלי לכתוב "מה בוצע"</label>
+      <label class="check"><input type="checkbox" id="ugpop" ${u?.groupPop ? 'checked' : ''}> 👥 חלון קופץ כשנפתחת קריאה חדשה בקבוצה</label>
       <label class="check"><input type="checkbox" id="uwa" ${u?.waAccess ? 'checked' : ''}> 💬 גישה למסך "וואטסאפ" – רואה את כל הצ׳אטים של המספרים ויכול לכתוב בהם (למנהל תמיד יש)</label>
       <div class="row"><button class="primary" id="usave">💾 שמור</button>${u ? '<button id="unew">+ עובד חדש</button>' : ''}</div>`;
     if ($('#unew')) $('#unew').onclick = () => form(null);
     $('#usave').onclick = async () => {
       try {
-        await api('POST', '/api/admin/users', { id: u?.id, name: $('#uname').value, username: $('#uuser').value, password: $('#upass').value, phone: $('#uphone').value, role: $('#urole').value, active: u ? $('#uactive').checked : true, waAccess: $('#uwa').checked, ext: $('#uext').value, quickClose: $('#uquick').checked });
+        await api('POST', '/api/admin/users', { id: u?.id, name: $('#uname').value, username: $('#uuser').value, password: $('#upass').value, phone: $('#uphone').value, role: $('#urole').value, active: u ? $('#uactive').checked : true, waAccess: $('#uwa').checked, ext: $('#uext').value, quickClose: $('#uquick').checked, groupPop: $('#ugpop').checked });
         A = await api('GET', '/api/admin/config'); S.users = await api('GET', '/api/users'); fillUserFilter();
         toast('נשמר ✓'); draw();
       } catch (e) { toast(e.message, true); }
@@ -2170,4 +2173,21 @@ function drawBcastJob() {
     ${j.failures && j.failures.length ? `<div class="hint">${j.failures.map((f) => `${esc(f.name || '')} ${esc(localPhone(f.phone))}: ${esc(f.error || '')}`).join('<br>')}</div>` : ''}
     ${j.running ? '<button id="bStop" class="danger" style="margin-top:6px">⏹ עצור</button>' : ''}</div>`;
   if ($('#bStop')) $('#bStop').onclick = async () => { S.bjob = await api('POST', '/api/admin/broadcast/cancel'); drawBcastJob(); };
+}
+
+// 👥 קריאה חדשה בקבוצה – חלון קופץ (גם בתוך WhatsApp Multi)
+function groupPop(ev) {
+  try { console.log('__HD_STAFF__:' + JSON.stringify({ from: '👥 קריאה חדשה בקבוצה: ' + ev.group, text: (ev.sender ? ev.sender + ': ' : '') + ev.text })); } catch {}
+  Sounds.newMessage();
+  notify('👥 ' + ev.group, (ev.sender ? ev.sender + ': ' : '') + ev.text);
+  flashTitle('👥 קריאה חדשה בקבוצה');
+  let el = document.getElementById('grpPop');
+  if (!el) { el = document.createElement('div'); el.id = 'grpPop'; el.className = 'grppop'; document.body.appendChild(el); }
+  el.innerHTML = `<div class="gp-h">👥 קריאה חדשה בקבוצה <span class="chip">${esc(ev.inst || '')}</span><a class="gp-x" title="סגור">✕</a></div>
+    <div class="gp-g">${esc(ev.group)}</div>
+    <div class="gp-t">${ev.sender ? `<b>${esc(ev.sender)}:</b> ` : ''}${esc(ev.text || '')}</div>
+    <button class="primary gp-open">פתח את הקריאה #${ev.ticketId}</button>`;
+  el.querySelector('.gp-x').onclick = (e) => { e.stopPropagation(); el.remove(); };
+  el.querySelector('.gp-open').onclick = () => { el.remove(); if (S.mode === 'wa' && typeof leaveWa === 'function') leaveWa(); openTicket(ev.ticketId); };
+  clearTimeout(el._t); el._t = setTimeout(() => el.remove(), 60000);
 }

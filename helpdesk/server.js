@@ -28,7 +28,7 @@ function checkPassword(user, password) {
   const { hash } = hashPassword(password, user.salt);
   return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(user.hash, 'hex'));
 }
-const publicUser = (u) => u && { id: u.id, name: u.name, username: u.username, role: u.role, active: u.active !== false, phone: u.phone || '', waAccess: canWa(u), ext: u.ext || '', quickClose: !!u.quickClose, seenVersion: u.seenVersion || 0 };
+const publicUser = (u) => u && { id: u.id, name: u.name, username: u.username, role: u.role, active: u.active !== false, phone: u.phone || '', waAccess: canWa(u), ext: u.ext || '', quickClose: !!u.quickClose, groupPop: !!u.groupPop, seenVersion: u.seenVersion || 0 };
 // מי רואה את מסך "💬 וואטסאפ" (כל הצ'אטים של המספרים): מנהלים, ועובדים שקיבלו הרשאה
 const canWa = (u) => !!u && (u.role === 'admin' || u.waAccess === true);
 // איפוס סיסמה מקומי: reset-password.bat כותב data/reset-password.json והשרת מחיל אותו
@@ -598,6 +598,10 @@ async function handleNotification(inst, body) {
       if (!isGroup && !isOpenNow()) { t.silent = true; note(t, '🌙 נפתחה מחוץ לשעות הפעילות – בלי שיחה עם העוזר'); }
     }
     log(`new ticket #${t.id} from ${t.phone} (${inst.name})`);
+    if (isGroup) {
+      const ev = { type: 'group-pop', ticketId: t.id, group: t.customerName || sd.chatName || 'קבוצה', sender: sd.senderContactName || sd.senderName || '', text: (m.text || ({ image: '📷 תמונה', video: '🎬 וידאו', file: '📎 קובץ', audio: '🎤 הקלטה' }[m.type] || '')).slice(0, 160), inst: inst.name };
+      for (const u of db.users) if (u.groupPop && u.active !== false) sendTo(u.id, ev);
+    }
   }
   // מחוץ לשעות הפעילות: הודעת "המשרד סגור" – פעם אחת ב-12 שעות ללקוח, ולא אם עובד ענה לו לאחרונה
   if (!isGroup && !isOpenNow() && db.config.hours.message && !isQuiet(inst.id, chatId) && !(pinned && pinned.active !== false)) {
@@ -2193,7 +2197,7 @@ route('POST', /^\/api\/admin\/users$/, async (req, res, { user }) => {
     db.users.push(u);
   }
   if (u.id === user.id && b.role !== 'admin') return send(res, 400, { error: 'אי אפשר להוריד לעצמך הרשאת מנהל' });
-  Object.assign(u, { name: String(b.name || username), username, role: b.role === 'admin' ? 'admin' : 'agent', active: b.active !== false, phone: normPhone(b.phone), waAccess: !!b.waAccess, ext: String(b.ext || '').replace(/\D/g, ''), quickClose: !!b.quickClose });
+  Object.assign(u, { name: String(b.name || username), username, role: b.role === 'admin' ? 'admin' : 'agent', active: b.active !== false, phone: normPhone(b.phone), waAccess: !!b.waAccess, ext: String(b.ext || '').replace(/\D/g, ''), quickClose: !!b.quickClose, groupPop: !!b.groupPop });
   if (b.password) Object.assign(u, hashPassword(b.password));
   store.saveUsers();
   send(res, 200, publicUser(u));
@@ -2381,6 +2385,11 @@ process.on('unhandledRejection', (e) => log('unhandled', e && (e.stack || e.mess
 if (!db.config.quickCloseMigrated) {
   const chaim = db.users.find((u) => u.role === 'admin' && /חיים/.test(u.name));
   if (chaim) { chaim.quickClose = true; db.config.quickCloseMigrated = true; store.saveUsers(); store.saveConfig(); }
+}
+// חד-פעמי: חלון קופץ בקריאה חדשה בקבוצה – לחיים ולנועה
+if (!db.config.groupPopMigrated) {
+  const who = db.users.filter((u) => u.active !== false && /^(חיים|נועה)(\s|$)/.test(u.name || ''));
+  if (who.length) { for (const u of who) u.groupPop = true; db.config.groupPopMigrated = true; store.saveUsers(); store.saveConfig(); log('groupPop →', who.map((u) => u.name).join(', ')); }
 }
 if (!db.config.pbxKey) { db.config.pbxKey = crypto.randomBytes(12).toString('hex'); store.saveConfig(); }
 
