@@ -72,9 +72,9 @@ async function activeCustomers(url, onProgress) {
 }
 
 // ---------- API רגיל של SmartSale (מפתח API בכותרת x-api-token) ----------
-const API = process.env.HD_CRM_API || 'https://smartsalecrm.com/api';
+const API = process.env.HD_CRM_API || 'https://www.smartsalecrm.co.il/api';
 async function apiGet(key, path) {
-  const r = await fetch(API + path, { headers: { 'Content-Type': 'application/json', 'x-api-token': key }, signal: AbortSignal.timeout(60000) });
+  const r = await fetch(API + path, { headers: { 'Content-Type': 'application/json', 'x-api-token': key, Authorization: 'Bearer ' + key }, signal: AbortSignal.timeout(60000) });
   const text = await r.text();
   if (!r.ok) throw new Error(`CRM ${r.status}: ${text.replace(/<[^>]+>/g, ' ').trim().slice(0, 160)}`);
   try { return JSON.parse(text); } catch { throw new Error('CRM: תשובה לא צפויה'); }
@@ -96,25 +96,26 @@ function fieldsOf(l) {
   return { services, pbx };
 }
 async function apiActiveCustomers(key, onProgress) {
-  // ה-API דורש פרמטר חיפוש (טלפון/מייל/חברה) – מחפשים לפי ספרה בטלפון (0..9) ומאחדים: כל טלפון מכיל לפחות ספרה אחת
-  const all = new Map(); let status = null, firstLead = null;
-  const page = async (st, digit, p) => leadsOf(await apiGet(key, `/leads/search?phone=${digit}&status=${encodeURIComponent(st)}&page=${p}&limit=100`));
-  for (const st of ['activeclient', 'Active Client', 'active']) {
-    if ((await page(st, '0', 1)).length || (await page(st, '5', 1)).length) { status = st; break; }
+  // "הצג את כל הלקוחות": GET /api/leads (עם דפדוף אם יש), ומסננים לקוחות פעילים
+  const all = new Map(); let firstLead = null, sampleKeys = '';
+  for (let p = 1; p <= 100; p++) {
+    const j = await apiGet(key, `/leads?page=${p}&limit=500`);
+    if (p === 1) sampleKeys = Object.keys(j || {}).join(', ');
+    const list = leadsOf(j);
+    let added = 0;
+    for (const l of list) { if (!firstLead) firstLead = l; if (l && l.id && !all.has(l.id)) { all.set(l.id, l); added++; } }
+    if (onProgress) onProgress(`נמשכו ${all.size} לקוחות...`);
+    if (!added || list.length < 50) break;
   }
-  if (!status) return { list: [], debug: 'לא נמצאו לקוחות פעילים בחיפוש לפי טלפון (status=activeclient)' };
-  for (const digit of '0123456789') {
-    for (let p = 1; p < 60; p++) {
-      const list = await page(status, digit, p);
-      for (const l of list) { if (!firstLead) firstLead = l; if (l && l.id && !all.has(l.id)) all.set(l.id, l); }
-      if (list.length < 100) break;
-    }
-    if (onProgress) onProgress(`נמשכו ${all.size} לקוחות פעילים...`);
-  }
-  const list = [...all.values()].filter((l) => !l.status || /active/i.test(String(l.status)) && !/inactive/i.test(String(l.status)))
+  const isActive = (l) => { const st = String(l.status || l.status_label || ''); return /^activeclient$|active\s*client|לקוח פעיל/i.test(st); };
+  const list = [...all.values()].filter(isActive)
     .map((l) => ({ id: l.id, name: [l.name, l.last_name].filter(Boolean).join(' ').trim(), company: l.company || '', phone: l.phone || '', ...fieldsOf(l) }));
   const withFields = list.filter((c) => c.services.length || c.pbx).length;
-  return { list, debug: withFields ? '' : `לא נמצאו שדות "סוג שירות" בתשובת ה-API. שדות שהתקבלו: ${Object.keys(firstLead || {}).join(', ').slice(0, 300)}` };
+  let debug = '';
+  if (!all.size) debug = `ה-CRM לא החזיר לקוחות. מבנה התשובה: ${sampleKeys}`;
+  else if (!list.length) debug = `התקבלו ${all.size} לקוחות, אבל אף אחד לא בסטטוס "לקוח פעיל". סטטוסים לדוגמה: ${[...new Set([...all.values()].slice(0, 50).map((l) => l.status))].join(', ')}`;
+  else if (!withFields) debug = `התקבלו ${list.length} לקוחות פעילים, אבל בלי השדות "סוג שירות"/"סוג מרכזיה". שדות שהתקבלו: ${Object.keys(firstLead || {}).join(', ').slice(0, 300)}`;
+  return { list, debug };
 }
 
 module.exports = { activeCustomers, apiActiveCustomers, callTool };

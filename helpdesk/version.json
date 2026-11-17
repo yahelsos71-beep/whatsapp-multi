@@ -1,5 +1,5 @@
 {
-  "version": 65,
+  "version": 66,
   "files": {
     "server.js": "557fa946b2464c28ff6d918f6b00a3fcffe5eb737ed5473d7944580f08be85bc",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
@@ -9,16 +9,16 @@
     "start-linux-test.sh": "2532e7b94a74bb03639a2501ea99a89ef9b209c5cc2bee55b96365db12aad500",
     "new-client.sh": "8024b33cb77409101b048cdf9e6680fbd9866da39e756ba395a9fd9c6f1100b6",
     "lib/ai.js": "a86761c5735519efe6d73fff0f2450800a36a5a8ed816ca41ef898fbe53a80c3",
-    "lib/crm.js": "f23b05da1cb99dcc82c6c4829ffa603e6a2e6b04bd1f000ef42c5d78cdea7aae",
+    "lib/crm.js": "3c201305184905cdc974ec9616ff4bc56304dba7b81847bd2ef5f3765658c078",
     "lib/esl.js": "203d1b9b5c6f81cffebc115d67fd01b640fc2afd1fa0006cfb0c656bf86098b9",
     "lib/greenapi.js": "11d800476c09bdc23282797abc71f4f2da65d8b8fa74a120df9f11c4f27a0884",
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "67c3f7771298c520fff27587f171e05195209a2bbfcd9aae7414fba949f04dbd",
     "public/app.js": "00558ce04b58f7d00e99c6d3100c8f6ebb02a5d9d33e304ddf9541905371c625",
-    "public/changelog.json": "ee19b856bc53d60632246e81cfb655973549a02c44d9e825e2a756f9b92cbbb6",
+    "public/changelog.json": "5064e046245a091a9681805dccf23d88859301e33352e74d772347f76de69a7d",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "c84aa15de850e1d1accb8052a29d7e9a3664650b7f8adb97a47d456d6b1ea5ca"
   },
-  "notes": "📣 הפצה: תיקון החיבור ל-API של SmartSale (חיפוש לפי טלפון)"
+  "notes": "📣 הפצה: משיכת כל הלקוחות מה-CRM דרך \"הצג את כל הלקוחות\" של SmartSale"
 }
