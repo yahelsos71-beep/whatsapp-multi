@@ -1,7 +1,7 @@
 {
-  "version": 73,
+  "version": 74,
   "files": {
-    "server.js": "9eb6eadbba5fb546faf2fb1f5ae45f7de96e1966cb85ea0269fec0bec13a5192",
+    "server.js": "42732fa65cd89e76d62cffae2512a1e6a5f504b552da038065d1c810843c6d19",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
     "reset-password.bat": "662bfbec8b94b264fd7b585a365f389415b8ec66bea540e876418e7a3f805187",
     "README-HE.txt": "df99092cc82f3de6e6d685ca604d95e154879a4a75ba6a0854e4134dd27e5cf3",
@@ -15,10 +15,10 @@
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "67c3f7771298c520fff27587f171e05195209a2bbfcd9aae7414fba949f04dbd",
     "public/app.js": "58717f6915c5d9c87f45de51cc81bba89009fbc4be57695727a8077774d13dfc",
-    "public/changelog.json": "356adb270c8824084ca31dc303a5b50cb23e5fd18640e81839c795893bc998a4",
+    "public/changelog.json": "956451c17b51fc6bba5775f12f3bcc2f75f232276e3c51dc15b5011d444a7888",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "fe743a2aecf83da44fae8f31faadfa6c97ba33c48a771efeaeb74d86de91a9e6"
   },
-  "notes": "👥 חלון קופץ כשנפתחת קריאה חדשה בקבוצה – לחיים ולנועה (אפשר לשנות לכל עובד: עובדים ← עריכה ← 'חלון קופץ בקריאה בקבוצה'), גם בתוך WhatsApp Multi | תיבת החיפוש לא נמעכת ליד סינון התאריך"
+  "notes": "🔁 ויקאט סימנו 'טופל' במאנדיי → הקריאה במוקד נסגרת לבד (בדיקה כל 10 דקות, רק לקריאות שהועברו לויקאט)"
 }

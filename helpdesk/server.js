@@ -1984,6 +1984,44 @@ route('POST', /^\/api\/tickets\/(\d+)\/monday-vcat$/, async (req, res, { user, p
     send(res, 200, { ok: true, name: r.name || item.name });
   } catch (e) { send(res, 502, { error: e.message }); }
 });
+// ✅ ויקאט מסמנים "טופל" במאנדיי → הקריאה במוקד נסגרת לבד (בדיקה כל 10 דקות)
+const MONDAY_DONE = /טופל|בוצע|הושלם|done|closed|resolved/i;
+let mondayStatusWay = ''; // '/status' או '/find' – לפי מה שהרובוט תומך
+async function mondayStatus(t) {
+  const q = { group: t.customerName, id: t.mondayItemId };
+  if (mondayStatusWay !== '/find') {
+    try { const r = await mondayCall('/status', q); mondayStatusWay = '/status'; return String(r.status || ''); }
+    catch (e) { if (mondayStatusWay === '/status') throw e; }
+  }
+  const r = await mondayCall('/find', { group: t.customerName });
+  mondayStatusWay = '/find';
+  const it = [...(r.items || []), ...(r.all || [])].find((x) => String(x.id) === String(t.mondayItemId));
+  return it ? String(it.status || it.state || '') : '';
+}
+let mondayChecking = false, mondayWarned = false;
+async function checkMondayDone() {
+  if (!mondayOk || mondayChecking) return;
+  mondayChecking = true;
+  try {
+    for (const t of db.tickets.filter((x) => x.status !== 'closed' && x.mondayItemId)) {
+      let st = '';
+      try { st = await mondayStatus(t); } catch (e) { log('monday status', e.message); continue; }
+      if (!st) { if (!mondayWarned) { mondayWarned = true; log('monday: הרובוט לא מחזיר סטטוס (/status או status ב-/find) – סגירה אוטומטית לא פעילה'); } continue; }
+      t.mondayStatus = st;
+      if (!MONDAY_DONE.test(st) || t.status === 'closed') continue;
+      const vt = serviceTargets().find((x) => /ויקאט|vcat/i.test(x.name));
+      const tu = vt && targetUser(vt);
+      t.status = 'closed'; t.closedAt = now(); t.closedBy = tu ? tu.id : null; t.awaiting = false; t.snoozeUntil = null;
+      t.resolution = `🔁 ויקאט סימנו במאנדיי: ${st}`;
+      note(t, `✅ הקריאה נסגרה אוטומטית – ויקאט סימנו במאנדיי "${st}"`);
+      emitTicket(t);
+      log(`ticket #${t.id} closed – monday status "${st}"`);
+    }
+  } finally { mondayChecking = false; }
+}
+setInterval(() => checkMondayDone().catch((e) => log('monday check', e.message)), 10 * 60 * 1000);
+setTimeout(() => checkMondayDone().catch(() => {}), 60 * 1000);
+
 // קבוצות שהמוקד מכיר (לבחירת יעד) – מתוך הקריאות
 route('GET', /^\/api\/admin\/known-groups$/, (req, res) => {
   const seen = new Map();
