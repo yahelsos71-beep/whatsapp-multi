@@ -1502,13 +1502,16 @@ const SEGMENTS = [
 let crmCache = (() => { try { return JSON.parse(require('fs').readFileSync(require('path').join(store.DATA_DIR, 'crmcache.json'), 'utf8')); } catch { return null; } })();
 let crmLoading = null;
 async function crmLoad(force) {
-  const url = (db.config.crm || {}).mcpUrl;
-  if (!url) throw new Error('ה-CRM לא מחובר – ניהול ← 📣 הפצה ← "חיבור ל-CRM"');
+  const url = (db.config.crm || {}).mcpUrl, key = (db.config.crm || {}).apiKey;
+  if (!url && !key) throw new Error('ה-CRM לא מחובר – 📣 הפצה ← "חיבור ל-CRM"');
   if (!force && crmCache && now() - crmCache.at < 6 * 3600e3) return crmCache;
   if (crmLoading) return crmLoading;
   crmLoading = (async () => {
-    const list = await crm.activeCustomers(url, (t) => emitAdmins({ type: 'bcast-progress', text: t }));
-    crmCache = { at: now(), list };
+    const prog = (t) => emitAdmins({ type: 'bcast-progress', text: t });
+    let list, debug = '';
+    if (key) ({ list, debug } = await crm.apiActiveCustomers(key, prog));
+    else list = await crm.activeCustomers(url, prog);
+    crmCache = { at: now(), list, debug };
     try { require('fs').writeFileSync(require('path').join(store.DATA_DIR, 'crmcache.json'), JSON.stringify(crmCache)); } catch {}
     return crmCache;
   })();
@@ -1574,18 +1577,19 @@ const jobView = (j) => j && { id: j.id, title: j.title, total: j.items.length, d
 route('POST', /^\/api\/admin\/crm$/, async (req, res) => {
   const b = await readJson(req);
   const old = db.config.crm || {};
+  const apiKey = unmask(String(b.apiKey || '').trim(), old.apiKey) || '';
   const url = unmask(String(b.mcpUrl || '').trim(), old.mcpUrl) || '';
-  if (url && (!/^https?:\/\//i.test(url) || /smartsalecrm\.co\.il\/(he|en)?\/?dashboard/i.test(url) || !/token=/i.test(url))) {
+  if (!apiKey && url && (!/^https?:\/\//i.test(url) || /smartsalecrm\.co\.il\/(he|en)?\/?dashboard/i.test(url) || !/token=/i.test(url))) {
     return send(res, 200, { ok: false, error: 'זו לא כתובת החיבור. צריך את כתובת ה-MCP של SmartSale – מתחילה ב-https:// ומסתיימת ב-?token=... (לא הכתובת של מסך הלקוחות)' });
   }
-  db.config.crm = { mcpUrl: url };
+  db.config.crm = { mcpUrl: apiKey ? '' : url, apiKey };
   if (b.broadcastSig !== undefined) db.config.broadcastSig = String(b.broadcastSig || '').slice(0, 80);
   store.saveConfig(); crmCache = null;
   try { const c = await crmLoad(true); send(res, 200, { ok: true, count: c.list.length }); }
   catch (e) { send(res, 200, { ok: false, error: e.message }); }
 }, { auth: 'admin' });
 route('GET', /^\/api\/admin\/broadcast\/segments$/, async (req, res, { query }) => {
-  const cfg = { connected: !!(db.config.crm || {}).mcpUrl, mcpUrl: mask((db.config.crm || {}).mcpUrl), broadcastSig: db.config.broadcastSig || db.config.companyName || '', optOutCount: (db.config.optOut || []).length };
+  const cfg = { connected: !!((db.config.crm || {}).mcpUrl || (db.config.crm || {}).apiKey), mcpUrl: mask((db.config.crm || {}).mcpUrl), apiKey: mask((db.config.crm || {}).apiKey), debug: crmCache ? crmCache.debug || '' : '', broadcastSig: db.config.broadcastSig || db.config.companyName || '', optOutCount: (db.config.optOut || []).length };
   let error = '';
   if (cfg.connected) { try { await crmLoad(query.get('refresh') === '1'); } catch (e) { error = e.message; } }
   const segs = SEGMENTS.map((sg) => ({ k: sg.k, label: sg.label, count: segmentRecipients(sg.k).length }));

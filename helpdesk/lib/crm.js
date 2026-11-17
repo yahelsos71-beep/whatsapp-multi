@@ -71,4 +71,49 @@ async function activeCustomers(url, onProgress) {
   return out;
 }
 
-module.exports = { activeCustomers, callTool };
+// ---------- API רגיל של SmartSale (מפתח API בכותרת x-api-token) ----------
+const API = process.env.HD_CRM_API || 'https://smartsalecrm.com/api';
+async function apiGet(key, path) {
+  const r = await fetch(API + path, { headers: { 'Content-Type': 'application/json', 'x-api-token': key }, signal: AbortSignal.timeout(60000) });
+  const text = await r.text();
+  if (!r.ok) throw new Error(`CRM ${r.status}: ${text.replace(/<[^>]+>/g, ' ').trim().slice(0, 160)}`);
+  try { return JSON.parse(text); } catch { throw new Error('CRM: תשובה לא צפויה'); }
+}
+const leadsOf = (j) => (Array.isArray(j) ? j : j && (j.leads || j.data || j.results || j.items || (j.data && j.data.leads))) || [];
+// מוציא את "סוג שירות" ו"סוג מרכזיה" מכל צורה שה-API מחזיר
+function fieldsOf(l) {
+  let services = [], pbx = '';
+  const take = (label, v) => {
+    label = String(label || '').trim();
+    try { if (typeof v === 'string' && /^[\[{"]/.test(v.trim())) v = JSON.parse(v); } catch {}
+    if (/סוג שירות|^want$/i.test(label)) services = Array.isArray(v) ? v : String(v || '').split(/[,;]/).map((x) => x.trim()).filter(Boolean);
+    if (/סוג מרכזי|^sug$/i.test(label)) pbx = Array.isArray(v) ? String(v[0] || '') : String(v || '');
+  };
+  const cf = l.custom_fields || l.customFields || l.custom_field_values || l.customFieldValues || l.fields;
+  if (Array.isArray(cf)) for (const f of cf) take(f.label || f.name || f.field_label || f.field_name || (f.custom_field_definitions && (f.custom_field_definitions.label || f.custom_field_definitions.name)) || (f.field && (f.field.label || f.field.name)), f.value !== undefined ? f.value : f.values);
+  else if (cf && typeof cf === 'object') for (const [k, v] of Object.entries(cf)) take(k, v && typeof v === 'object' && !Array.isArray(v) && 'value' in v ? v.value : v);
+  for (const [k, v] of Object.entries(l)) if (/סוג שירות|סוג מרכזי|^want$|^sug$/.test(k)) take(k, v);
+  return { services, pbx };
+}
+async function apiActiveCustomers(key, onProgress) {
+  let status = null, leads = [], sample = null;
+  for (const st of ['activeclient', 'Active Client', 'active']) {
+    const j = await apiGet(key, `/leads/search?status=${encodeURIComponent(st)}&page=1&limit=100`);
+    const list = leadsOf(j);
+    if (list.length) { status = st; leads = list; sample = j; break; }
+  }
+  if (!status) return { list: [], debug: 'לא נמצאו לקוחות פעילים (status=activeclient)' };
+  for (let page = 2; page < 60 && leads.length % 100 === 0; page++) {
+    const list = leadsOf(await apiGet(key, `/leads/search?status=${encodeURIComponent(status)}&page=${page}&limit=100`));
+    if (!list.length) break;
+    leads.push(...list);
+    if (onProgress) onProgress(`נמשכו ${leads.length} לקוחות פעילים...`);
+  }
+  const ids = new Set();
+  const list = leads.filter((l) => !ids.has(l.id) && ids.add(l.id)).map((l) => ({ id: l.id, name: [l.name, l.last_name].filter(Boolean).join(' ').trim(), company: l.company || '', phone: l.phone || '', ...fieldsOf(l) }));
+  const withFields = list.filter((c) => c.services.length || c.pbx).length;
+  const first = leadsOf(sample)[0] || {};
+  return { list, debug: withFields ? '' : `לא נמצאו שדות "סוג שירות" בתשובת ה-API. שדות שהתקבלו: ${Object.keys(first).join(', ').slice(0, 300)}` };
+}
+
+module.exports = { activeCustomers, apiActiveCustomers, callTool };

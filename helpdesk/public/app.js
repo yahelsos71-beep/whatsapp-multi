@@ -1987,8 +1987,10 @@ async function broadcastDialog(refresh) {
   const when = d.at ? new Date(d.at).toLocaleString('he-IL', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
   box.innerHTML = `<h3>📣 הפצת וואטסאפ</h3>
     <details class="card2" ${d.connected ? '' : 'open'} style="margin-bottom:10px"><summary><b>🔗 חיבור ל-CRM (SmartSale)</b> ${d.connected ? `<span class="chip">מחובר · ${d.total} לקוחות פעילים${when ? ' · עודכן ' + when : ''}</span>` : '<span class="chip">לא מחובר</span>'}</summary>
-      <div class="hint">מדביקים את <b>כתובת החיבור (MCP)</b> של SmartSale – הכתובת המלאה עם ה-token (בהגדרות SmartSale ← אינטגרציות / API, או בהגדרות החיבור של SmartSale ב-Claude). נשמרת רק בשרת.</div>
-      <div class="row"><input id="bUrl" dir="ltr" placeholder="${d.mcpUrl ? esc(d.mcpUrl) + ' (שמור)' : 'https://...supabase.co/functions/v1/...?token=...'}" style="flex:1;margin:0"><button class="primary" id="bUrlSave">💾 שמור ובדוק</button></div>
+      <div class="hint">מדביקים את <b>מפתח ה-API</b> של SmartSale (ב-SmartSale: חיבור למערכות חיצוניות ← מפתח API). נשמר רק בשרת.</div>
+      <div class="row"><input id="bKey" dir="ltr" placeholder="${d.apiKey ? esc(d.apiKey) + ' (שמור)' : 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'}" style="flex:1;margin:0"><button class="primary" id="bUrlSave">💾 שמור ובדוק</button></div>
+      <details style="margin-top:6px"><summary class="hint" style="cursor:pointer">או: כתובת חיבור MCP (מתקדם)</summary><input id="bUrl" dir="ltr" placeholder="${d.mcpUrl ? esc(d.mcpUrl) + ' (שמור)' : 'https://...?token=...'}"></details>
+      ${d.debug ? `<div class="hint" style="color:var(--yellow)">ℹ️ ${esc(d.debug)}</div>` : ''}
       <label>חתימה בסוף ההודעות</label><input id="bSig" value="${esc(d.broadcastSig)}" placeholder="KC Group">
       ${d.error ? `<div class="hint" style="color:var(--red)">⚠️ ${esc(d.error)}</div>` : ''}</details>
     <div class="seg" id="bMode" style="margin-bottom:8px"><button data-m="seg" class="${BC.mode === 'seg' ? 'on' : ''}">🏷️ לפי מוצר (לקוחות פעילים)</button><button data-m="nums" class="${BC.mode === 'nums' ? 'on' : ''}">📋 רשימת מספרים</button></div>
@@ -2017,10 +2019,11 @@ async function broadcastDialog(refresh) {
   box.querySelectorAll('#bMode button').forEach((b) => (b.onclick = () => { keep(); BC.mode = b.dataset.m; broadcastDialog(); }));
   $('#bUrlSave').onclick = async () => {
     $('#bUrlSave').disabled = true; $('#bUrlSave').textContent = 'בודק...';
-    const r = await api('POST', '/api/admin/crm', { mcpUrl: $('#bUrl').value.trim() || d.mcpUrl, broadcastSig: $('#bSig').value }).catch((e) => ({ ok: false, error: e.message }));
+    const key = $('#bKey').value.trim(), url = $('#bUrl').value.trim();
+    const r = await api('POST', '/api/admin/crm', { apiKey: key || (url ? '' : d.apiKey), mcpUrl: url || (key ? '' : d.mcpUrl), broadcastSig: $('#bSig').value }).catch((e) => ({ ok: false, error: e.message }));
     toast(r.ok ? `✓ מחובר – ${r.count} לקוחות פעילים` : '⚠️ ' + r.error, !r.ok, 7000); keep(); broadcastDialog();
   };
-  $('#bSig').onchange = () => api('POST', '/api/admin/crm', { mcpUrl: d.mcpUrl, broadcastSig: $('#bSig').value }).catch(() => {});
+  $('#bSig').onchange = () => api('POST', '/api/admin/crm', { mcpUrl: d.mcpUrl, apiKey: d.apiKey, broadcastSig: $('#bSig').value }).catch(() => {});
   if ($('#bRefresh')) $('#bRefresh').onclick = () => { keep(); broadcastDialog(true); };
   const countNums = () => {
     const out = new Set(); let buf = '';
