@@ -1595,27 +1595,55 @@ async function instPhone(inst) {
   const c = instPhoneCache.get(inst.id); if (c) return c;
   try { const st = await ga.getSettings(inst); const p = String(st && st.wid || '').split('@')[0]; if (p) instPhoneCache.set(inst.id, p); return p; } catch { return ''; }
 }
+// חברי קבוצה – נשמר לחצי שעה כדי לא להציף את Green API
+const grpMembers = new Map();
+async function botGroupMembers(inst, chatId) {
+  const k = inst.id + '|' + chatId, c = grpMembers.get(k);
+  if (c && Date.now() - c.at < 30 * 60000) return c.ids;
+  const g = await ga.getGroupData(inst, chatId);
+  const ids = new Set(((g && g.participants) || []).map((p) => normPhone(String(p.id || '').split('@')[0])));
+  grpMembers.set(k, { at: Date.now(), ids, name: (g && g.subject) || '' });
+  return ids;
+}
 route('GET', /^\/api\/admin\/broadcast\/groups$/, async (req, res) => {
   const bot = normPhone(db.config.broadcastBotPhone || '');
-  const out = []; const notes = []; const phones = [];
+  const all = []; const notes = []; const phones = [];
   for (const inst of db.config.instances.filter((i) => i.enabled !== false)) {
     const ph = await instPhone(inst);
     if (ph) phones.push(`${inst.name} = 0${ph.slice(3)}`);
-    if (bot && ph && ph !== bot) continue;
     const seen = new Set();
     try {
       for (const c of (await ga.getContacts(inst)) || []) {
         const id = String(c.id || '');
         if (!id.endsWith('@g.us') || seen.has(id)) continue;
-        seen.add(id); out.push({ instanceId: inst.id, instanceName: inst.name, chatId: id, name: c.contactName || c.name || (db.waChats[waKey(inst.id, id)] || {}).name || 'קבוצה' });
+        seen.add(id); all.push({ inst, ph, chatId: id, name: c.contactName || c.name || (db.waChats[waKey(inst.id, id)] || {}).name || '' });
       }
     } catch (e) { notes.push(`${inst.name}: ${e.message.slice(0, 80)}`); }
     // גם קבוצות שהמוקד ראה (למקרה שחסרות ברשימת אנשי הקשר)
-    for (const w of Object.values(db.waChats)) if (w.instanceId === inst.id && w.isGroup && !seen.has(w.chatId)) { seen.add(w.chatId); out.push({ instanceId: inst.id, instanceName: inst.name, chatId: w.chatId, name: w.name || 'קבוצה' }); }
+    for (const w of Object.values(db.waChats)) if (w.instanceId === inst.id && w.isGroup && !seen.has(w.chatId)) { seen.add(w.chatId); all.push({ inst, ph, chatId: w.chatId, name: w.name || '' }); }
   }
-  if (bot && !out.length) notes.push(`אף מספר וואטסאפ במוקד אינו ${db.config.broadcastBotPhone}. המספרים המחוברים: ${phones.join(', ') || 'לא ידוע'}`);
+  // רק קבוצות שהבוט חבר בהן (או שהבוט הוא המספר ששולח)
+  const keep = [];
+  let i = 0, failed = 0;
+  const worker = async () => {
+    while (i < all.length) {
+      const g = all[i++];
+      if (!bot || g.ph === bot) { keep.push(g); continue; }
+      try { if ((await botGroupMembers(g.inst, g.chatId)).has(bot)) keep.push(g); } catch { failed++; }
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  // קבוצה שמופיעה בשני מספרים – שולחים רק מאחד
+  const byChat = new Map();
+  for (const g of keep) if (!byChat.has(g.chatId)) byChat.set(g.chatId, g);
   const ignored = new Set((db.config.ignoredChats || []).map((x) => x.instanceId + '|' + x.chatId));
-  send(res, 200, { bot: db.config.broadcastBotPhone || '', groups: out.filter((g) => !ignored.has(g.instanceId + '|' + g.chatId) && !ignoredByName(g.name)).sort((a, b) => a.name.localeCompare(b.name, 'he')), notes });
+  const groups = [...byChat.values()]
+    .map((g) => ({ instanceId: g.inst.id, instanceName: g.inst.name, chatId: g.chatId, name: g.name || (grpMembers.get(g.inst.id + '|' + g.chatId) || {}).name || 'קבוצה' }))
+    .filter((g) => !ignored.has(g.instanceId + '|' + g.chatId) && !ignoredByName(g.name))
+    .sort((a, b) => a.name.localeCompare(b.name, 'he'));
+  if (failed) notes.push(`לא הצלחתי לבדוק ${failed} קבוצות – נסה שוב בעוד דקה`);
+  if (!groups.length) notes.push(`נבדקו ${all.length} קבוצות ובאף אחת מהן הבוט ${db.config.broadcastBotPhone || ''} לא חבר. המספרים המחוברים למוקד: ${phones.join(', ') || 'לא ידוע'}`);
+  send(res, 200, { bot: db.config.broadcastBotPhone || '', groups, notes, checked: all.length });
 }, { auth: 'admin' });
 route('POST', /^\/api\/admin\/broadcast\/bot$/, async (req, res) => {
   const b = await readJson(req); db.config.broadcastBotPhone = String(b.phone || '').trim(); store.saveConfig(); send(res, 200, { ok: true });

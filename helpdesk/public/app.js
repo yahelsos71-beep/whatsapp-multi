@@ -2050,7 +2050,7 @@ async function broadcastDialog(refresh) {
     <div id="bGrpBox" style="${BC.mode === 'groups' ? '' : 'display:none'}">
       <div class="row" style="margin-top:0"><span class="hint">מספר הבוט (רק הקבוצות שהוא חבר בהן):</span><input id="bBot" dir="ltr" style="width:150px;margin:0" placeholder="05XXXXXXXX"><button id="bBotSave" class="ghost">💾</button></div>
       <label class="check" style="margin:6px 0"><input type="checkbox" id="bGAll"> <b>כל הקבוצות</b> <span class="chip" id="bGCnt"></span></label>
-      <div id="bGList" style="max-height:200px;overflow-y:auto"><div class="hint">טוען קבוצות...</div></div>
+      <div id="bGList" style="max-height:200px;overflow-y:auto"><div class="hint">בודק את כל הקבוצות (עד דקה)...</div></div>
     </div>
     <div id="bSegBox" style="${BC.mode === 'seg' ? '' : 'display:none'}">
       <div class="pick" id="bSegs">${d.segments.map((g) => `<button data-k="${g.k}" class="${BC.seg === g.k ? 'on' : ''}">${esc(g.label)} <span class="chip">${g.count}</span></button>`).join('')}</div>
@@ -2108,16 +2108,16 @@ async function broadcastDialog(refresh) {
       const gs = BC.groups || [];
       const on = gs.filter((g) => !BC.gOff.has(g.chatId)).length;
       $('#bGAll').checked = gs.length && on === gs.length; $('#bGCnt').textContent = `${on} מתוך ${gs.length}`;
-      $('#bGList').innerHTML = gs.length ? gs.map((g) => `<label class="check" style="margin:2px 0"><input type="checkbox" data-g="${esc(g.chatId)}" ${BC.gOff.has(g.chatId) ? '' : 'checked'}> 👥 ${esc(g.name)} <span class="chip">${esc(g.instanceName)}</span></label>`).join('') : '<div class="hint">לא נמצאו קבוצות. בדוק את מספר הבוט.</div>';
+      $('#bGList').innerHTML = gs.length ? gs.map((g) => `<label class="check" style="margin:2px 0"><input type="checkbox" data-g="${esc(g.chatId)}" ${BC.gOff.has(g.chatId) ? '' : 'checked'}> 👥 ${esc(g.name)} <span class="chip">${esc(g.instanceName)}</span></label>`).join('') : `<div class="hint">${esc((BC.gNotes || []).join(' · ') || 'לא נמצאו קבוצות. בדוק את מספר הבוט.')}</div>`;
       $('#bGList').querySelectorAll('[data-g]').forEach((c) => (c.onchange = () => { if (c.checked) BC.gOff.delete(c.dataset.g); else BC.gOff.add(c.dataset.g); drawGroups(); }));
     };
     $('#bGAll').onchange = (e) => { if (e.target.checked) BC.gOff.clear(); else (BC.groups || []).forEach((g) => BC.gOff.add(g.chatId)); drawGroups(); };
     const load = async () => {
       const r = await api('GET', '/api/admin/broadcast/groups').catch((e) => ({ groups: [], notes: [e.message], bot: '' }));
-      BC.groups = r.groups; if ($('#bBot')) $('#bBot').value = r.bot ? localPhone(normLocal(r.bot)).replace(/-/g, '') : '';
+      BC.groups = r.groups; BC.gNotes = r.notes; if ($('#bBot')) $('#bBot').value = r.bot ? localPhone(normLocal(r.bot)).replace(/-/g, '') : '';
       drawGroups(); if (r.notes && r.notes.length) toast(r.notes.join(' · '), true, 7000);
     };
-    $('#bBotSave').onclick = async () => { await api('POST', '/api/admin/broadcast/bot', { phone: $('#bBot').value }); BC.groups = null; BC.gOff.clear(); $('#bGList').innerHTML = '<div class="hint">טוען קבוצות...</div>'; load(); };
+    $('#bBotSave').onclick = async () => { await api('POST', '/api/admin/broadcast/bot', { phone: $('#bBot').value }); BC.groups = null; BC.gOff.clear(); $('#bGList').innerHTML = '<div class="hint">בודק את כל הקבוצות (עד דקה)...</div>'; load(); };
     if (BC.groups) { drawGroups(); api('GET', '/api/admin/broadcast/groups').then((r) => { if ($('#bBot')) $('#bBot').value = r.bot ? localPhone(normLocal(r.bot)).replace(/-/g, '') : ''; }).catch(() => {}); } else load();
   }
   $('#bSample').onclick = async () => {
