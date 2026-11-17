@@ -1,7 +1,7 @@
 {
-  "version": 71,
+  "version": 72,
   "files": {
-    "server.js": "2791a9e9ef333a7a2f1abb2ecfaa8e9d3d8c57e2d36abd4d2a20ede762d63a83",
+    "server.js": "46d3bb418198ce1aeabb66608102db9293d819dedd55d649a950de863491d495",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
     "reset-password.bat": "662bfbec8b94b264fd7b585a365f389415b8ec66bea540e876418e7a3f805187",
     "README-HE.txt": "df99092cc82f3de6e6d685ca604d95e154879a4a75ba6a0854e4134dd27e5cf3",
@@ -11,14 +11,14 @@
     "lib/ai.js": "a86761c5735519efe6d73fff0f2450800a36a5a8ed816ca41ef898fbe53a80c3",
     "lib/crm.js": "3c201305184905cdc974ec9616ff4bc56304dba7b81847bd2ef5f3765658c078",
     "lib/esl.js": "203d1b9b5c6f81cffebc115d67fd01b640fc2afd1fa0006cfb0c656bf86098b9",
-    "lib/greenapi.js": "11d800476c09bdc23282797abc71f4f2da65d8b8fa74a120df9f11c4f27a0884",
+    "lib/greenapi.js": "ac42b3418b86fcca4b0ee8a82116a5a1b1a97fcc206d91d3b5b5338051ba25a3",
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "67c3f7771298c520fff27587f171e05195209a2bbfcd9aae7414fba949f04dbd",
     "public/app.js": "f1255fd3d9ec10764590971a87c6dde065778f641c149851b96759d8073d4ab9",
-    "public/changelog.json": "bae8b2cc4f4a04664cc477f4b2fe1cbe88d1a86b5b9c5c5fdfb398a12d15c92d",
+    "public/changelog.json": "2b36a19cf78112b44589b9dc79ea3e67c1d1c9051f735e4db127ae302e096431",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "c84aa15de850e1d1accb8052a29d7e9a3664650b7f8adb97a47d456d6b1ea5ca"
   },
-  "notes": "🚀 'שלח ברקע לכל הקבוצות של הבוט': כותבים הודעה/תמונה, לוחצים, והשרת מוצא לבד את כל הקבוצות ושולח – אפשר לסגור את החלון | בדיקת הקבוצות איטית ובטוחה יותר (בלי חסימות של Green API), והמוקד זוכר את התוצאה 12 שעות"
+  "notes": "👥 הפצה לקבוצות: התקדמות מתעדכנת בכל קבוצה ומראה ניסיונות חוזרים, המתנה קצרה יותר לקבוצה שלא עונה, ואפשר לעצור גם בזמן הבדיקה"
 }

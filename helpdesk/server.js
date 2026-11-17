@@ -1557,11 +1557,11 @@ function parseNumberList(text) {
 let bcastJob = null;
 async function runBroadcast(job) {
   if (job.scan) {
-    const r = await scanBotGroups({ slow: true, onProgress: (i, n, k) => {
-      if (job.cancel) return;
-      job.phase = `🔎 בודק קבוצות: ${i} מתוך ${n} · נמצאו ${k}`; if (i % 3 === 0 || i === n) emitAdmins({ type: 'bcast-job', job: jobView(job) });
+    const r = await scanBotGroups({ slow: true, onProgress: (i, n, k, extra) => {
+      job.phase = `🔎 בודק קבוצות: ${i} מתוך ${n} · נמצאו ${k}` + (extra ? ` · ${extra}` : '');
+      emitAdmins({ type: 'bcast-job', job: jobView(job) });
     } });
-    job.items = r.groups.map((g) => ({ chatId: g.chatId, instanceId: g.instanceId, name: g.name, group: true, phone: '', status: 'wait' }));
+    job.items = job.cancel ? [] : r.groups.map((g) => ({ chatId: g.chatId, instanceId: g.instanceId, name: g.name, group: true, phone: '', status: 'wait' }));
     job.title = `👥 ${job.items.length} קבוצות של הבוט` + (r.failed ? ` (${r.failed} לא נבדקו)` : '');
     job.phase = ''; job.scan = false;
     log(`📣 broadcast scan done: ${job.items.length} groups`);
@@ -1609,10 +1609,10 @@ async function instPhone(inst) {
 }
 // חברי קבוצה – נשמר לחצי שעה כדי לא להציף את Green API
 const grpMembers = new Map();
-async function botGroupMembers(inst, chatId) {
+async function botGroupMembers(inst, chatId, timeoutMs) {
   const k = inst.id + '|' + chatId, c = grpMembers.get(k);
   if (c && Date.now() - c.at < 12 * 3600e3) return c.ids;
-  const g = await ga.getGroupData(inst, chatId);
+  const g = await ga.getGroupData(inst, chatId, timeoutMs || 12000);
   const ids = new Set();
   for (const p of (g && g.participants) || []) for (const v of [p.id, p.phoneNumber, p.phone, p.jid, p.chatId]) if (v && !/@lid$/.test(String(v))) ids.add(normPhone(String(v).split('@')[0]));
   grpMembers.set(k, { at: Date.now(), ids, name: (g && g.subject) || '', sample: ((g && g.participants) || []).slice(0, 2).map((p) => JSON.stringify(p)).join(' ') });
@@ -1638,16 +1638,19 @@ async function scanBotGroups({ slow = false, onProgress } = {}) {
   }
   const keep = []; let failed = 0; const t0 = Date.now();
   for (let i = 0; i < all.length; i++) {
+    if (bcastJob && bcastJob.cancel && slow) break;
     const g = all[i];
     if (!bot || g.ph === bot) { keep.push(g); continue; }
     const cached = grpMembers.get(g.inst.id + '|' + g.chatId);
     if (!cached && !slow && Date.now() - t0 > 25000) { failed++; continue; }
     let ok = false;
-    for (let attempt = 0; attempt < (slow ? 4 : 1) && !ok; attempt++) {
+    let lastErr = '';
+    for (let attempt = 0; attempt < (slow ? 3 : 1) && !ok; attempt++) {
+      if (attempt && onProgress) onProgress(i, all.length, keep.length, `מנסה שוב (${attempt + 1}/3) – ${g.name || g.chatId}`);
       try { if ((await botGroupMembers(g.inst, g.chatId)).has(bot)) keep.push(g); ok = true; }
-      catch { if (slow) await sleep(5000 * (attempt + 1)); }
+      catch (e) { lastErr = e.message.slice(0, 80); if (slow && attempt < 2) await sleep(3000 * (attempt + 1)); }
     }
-    if (!ok) failed++;
+    if (!ok) { failed++; log(`👥 group check failed: ${g.name || g.chatId}: ${lastErr}`); }
     if (!cached) await sleep(slow ? 1500 : 400);
     if (onProgress) onProgress(i + 1, all.length, keep.length);
   }

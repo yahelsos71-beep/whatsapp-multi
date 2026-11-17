@@ -149,7 +149,7 @@ function parseMessage(md) {
 }
 
 // פרטי קבוצה (כולל המשתתפים)
-const getGroupData = (inst, groupId) => call(inst, 'getGroupData', { json: { groupId }, timeoutMs: 30000 });
+const getGroupData = (inst, groupId, timeoutMs = 30000) => call(inst, 'getGroupData', { json: { groupId }, timeoutMs });
 
 // היסטוריית צ'אט מוואטסאפ (ההודעות האחרונות, כולל מלפני המוקד)
 const getChatHistory = (inst, chatId, count = 100) => call(inst, 'getChatHistory', { json: { chatId, count }, timeoutMs: 60000 });
