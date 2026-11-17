@@ -840,7 +840,9 @@ route('GET', /^\/api\/instances$/, (req, res) => send(res, 200, instancesStatus(
 route('GET', /^\/api\/tickets$/, (req, res, { user, query }) => {
   const closed = query.get('scope') === 'closed';
   let list = db.tickets.filter((t) => (closed ? t.status === 'closed' : t.status !== 'closed') && canSee(user, t));
-  if (closed) list = list.sort((a, b) => (b.closedAt || 0) - (a.closedAt || 0)).slice(0, 200);
+  const from = Number(query.get('from')) || 0, to = Number(query.get('to')) || 0;
+  if (closed && (from || to)) list = list.filter((t) => { const x = t.closedAt || t.updatedAt || 0; return x >= from && (!to || x < to); });
+  if (closed) list = list.sort((a, b) => (b.closedAt || 0) - (a.closedAt || 0)).slice(0, from || to ? 1000 : 200);
   send(res, 200, list.map(summary));
 });
 
@@ -1531,9 +1533,11 @@ function varyMessage(text, r, i) {
   const pick = (arr) => arr[(i * 7 + Math.floor(Math.random() * arr.length)) % arr.length];
   const h = Number(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem', hour: 'numeric', hour12: false }));
   const timeGreet = h < 12 ? 'בוקר טוב' : h < 17 ? 'צהריים טובים' : 'ערב טוב';
-  const first = String(r.name || '').trim().split(/\s+/)[0] || '';
+  const first = r.group ? '' : String(r.name || '').trim().split(/\s+/)[0] || '';
   const okName = first && !/^[\d+]/.test(first);
-  const greet = pick(['שלום', 'היי', timeGreet, 'שלום וברכה', 'הי', timeGreet]) + (okName ? ' ' + first : '') + pick([',', ' 👋', '!', ' 🙂', ',']);
+  const greet = r.group
+    ? pick(['שלום לכולם', 'היי לכולם', timeGreet + ' לכולם', 'שלום וברכה', 'היי כולם', timeGreet]) + pick([',', ' 👋', '!', ' 🙂', ','])
+    : pick(['שלום', 'היי', timeGreet, 'שלום וברכה', 'הי', timeGreet]) + (okName ? ' ' + first : '') + pick([',', ' 👋', '!', ' 🙂', ',']);
   const sig = (db.config.broadcastSig || db.config.companyName || '').trim();
   const close = sig ? pick([`בברכה,\n${sig}`, `תודה,\n${sig}`, `${sig} 🙏`, `יום טוב,\n${sig}`, `בברכה, ${sig}`]) : pick(['תודה!', 'יום טוב 🙏', 'בברכה', 'תודה 🙂']);
   let body = String(text).replace(/\{name\}/g, okName ? first : '').replace(/\{company\}/g, r.company || '');
@@ -1552,14 +1556,17 @@ function parseNumberList(text) {
 }
 let bcastJob = null;
 async function runBroadcast(job) {
-  const inst = instById(job.instanceId);
   for (let i = 0; i < job.items.length; i++) {
     if (job.cancel) break;
     const it = job.items[i];
-    it.text = job.vary ? varyMessage(job.text, it, i) : job.text.replace(/\{name\}/g, String(it.name || '').split(' ')[0]);
-    if (job.optOutLine) it.text += '\n\n(להסרה מרשימת התפוצה השיבו "הסר")';
+    const inst = instById(it.instanceId || job.instanceId);
+    const chatId = it.chatId || it.phone + '@c.us';
+    it.text = !job.text ? '' : job.vary ? varyMessage(job.text, it, i) : job.text.replace(/\{name\}/g, String(it.name || '').split(' ')[0]);
+    if (job.optOutLine && !it.group) it.text += '\n\n(להסרה מרשימת התפוצה השיבו "הסר")';
     try {
-      const r = await ga.sendMessage(inst, it.phone + '@c.us', it.text);
+      const f = job.fileId && bcastFiles.get(job.fileId);
+      if (job.fileId && !f) throw new Error('הקובץ פג תוקף – העלה שוב');
+      const r = f ? await ga.sendFile(inst, chatId, f.buf, f.name, f.mime, it.text) : await ga.sendMessage(inst, chatId, it.text);
       if (r && r.idMessage) sentIds.add(r.idMessage);
       it.status = 'sent'; job.sent++;
     } catch (e) { it.status = 'failed'; it.error = e.message.slice(0, 120); job.failed++; }
@@ -1572,7 +1579,47 @@ async function runBroadcast(job) {
   emitAdmins({ type: 'bcast-job', job: jobView(job) });
 }
 const jobView = (j) => j && { id: j.id, title: j.title, total: j.items.length, done: j.done, sent: j.sent, failed: j.failed, running: j.running, cancel: !!j.cancel, finished: j.finished || 0,
-  failures: j.items.filter((x) => x.status === 'failed').slice(0, 20).map((x) => ({ phone: x.phone, name: x.name, error: x.error })) };
+  failures: j.items.filter((x) => x.status === 'failed').slice(0, 20).map((x) => ({ phone: x.phone || '', name: x.name, error: x.error })) };
+// קבצים להפצה (תמונה וכו') – בזיכרון לשעתיים
+const bcastFiles = new Map();
+route('POST', /^\/api\/admin\/broadcast\/upload$/, async (req, res) => {
+  let buf; try { buf = await readBody(req, 60 * 1024 * 1024); } catch { return send(res, 413, { error: 'הקובץ גדול מדי (עד 60MB)' }); }
+  const id = store.newId();
+  bcastFiles.set(id, { buf, name: decodeURIComponent(req.headers['x-file-name'] || 'file'), mime: req.headers['content-type'] || 'application/octet-stream', at: now() });
+  for (const [k, v] of bcastFiles) if (now() - v.at > 2 * 3600e3) bcastFiles.delete(k);
+  send(res, 200, { fileId: id });
+}, { auth: 'admin' });
+// 👥 הקבוצות של מספר הבוט (רק מספרים שהמספר שלהם = מספר הבוט שהוגדר)
+const instPhoneCache = new Map();
+async function instPhone(inst) {
+  const c = instPhoneCache.get(inst.id); if (c) return c;
+  try { const st = await ga.getSettings(inst); const p = String(st && st.wid || '').split('@')[0]; if (p) instPhoneCache.set(inst.id, p); return p; } catch { return ''; }
+}
+route('GET', /^\/api\/admin\/broadcast\/groups$/, async (req, res) => {
+  const bot = normPhone(db.config.broadcastBotPhone || '');
+  const out = []; const notes = []; const phones = [];
+  for (const inst of db.config.instances.filter((i) => i.enabled !== false)) {
+    const ph = await instPhone(inst);
+    if (ph) phones.push(`${inst.name} = 0${ph.slice(3)}`);
+    if (bot && ph && ph !== bot) continue;
+    const seen = new Set();
+    try {
+      for (const c of (await ga.getContacts(inst)) || []) {
+        const id = String(c.id || '');
+        if (!id.endsWith('@g.us') || seen.has(id)) continue;
+        seen.add(id); out.push({ instanceId: inst.id, instanceName: inst.name, chatId: id, name: c.contactName || c.name || (db.waChats[waKey(inst.id, id)] || {}).name || 'קבוצה' });
+      }
+    } catch (e) { notes.push(`${inst.name}: ${e.message.slice(0, 80)}`); }
+    // גם קבוצות שהמוקד ראה (למקרה שחסרות ברשימת אנשי הקשר)
+    for (const w of Object.values(db.waChats)) if (w.instanceId === inst.id && w.isGroup && !seen.has(w.chatId)) { seen.add(w.chatId); out.push({ instanceId: inst.id, instanceName: inst.name, chatId: w.chatId, name: w.name || 'קבוצה' }); }
+  }
+  if (bot && !out.length) notes.push(`אף מספר וואטסאפ במוקד אינו ${db.config.broadcastBotPhone}. המספרים המחוברים: ${phones.join(', ') || 'לא ידוע'}`);
+  const ignored = new Set((db.config.ignoredChats || []).map((x) => x.instanceId + '|' + x.chatId));
+  send(res, 200, { bot: db.config.broadcastBotPhone || '', groups: out.filter((g) => !ignored.has(g.instanceId + '|' + g.chatId) && !ignoredByName(g.name)).sort((a, b) => a.name.localeCompare(b.name, 'he')), notes });
+}, { auth: 'admin' });
+route('POST', /^\/api\/admin\/broadcast\/bot$/, async (req, res) => {
+  const b = await readJson(req); db.config.broadcastBotPhone = String(b.phone || '').trim(); store.saveConfig(); send(res, 200, { ok: true });
+}, { auth: 'admin' });
 
 route('POST', /^\/api\/admin\/crm$/, async (req, res) => {
   const b = await readJson(req);
@@ -1604,18 +1651,19 @@ route('POST', /^\/api\/admin\/broadcast\/send$/, async (req, res, { user }) => {
   if (bcastJob && bcastJob.running) return send(res, 400, { error: 'כבר רצה הפצה – חכה שתסתיים או עצור אותה' });
   const b = await readJson(req);
   const text = String(b.text || '').trim();
-  if (text.length < 3) return send(res, 400, { error: 'כתוב את נוסח ההודעה' });
+  if (text.length < 3 && !b.fileId) return send(res, 400, { error: 'כתוב את נוסח ההודעה או צרף קובץ' });
   const inst = instById(b.instanceId) || db.config.instances.find((i) => i.enabled !== false);
   if (!inst) return send(res, 400, { error: 'בחר מספר וואטסאפ לשליחה' });
   let items = [];
-  if (b.segment) items = segmentRecipients(b.segment);
+  if (Array.isArray(b.groups)) items = b.groups.filter((g) => g && String(g.chatId).endsWith('@g.us') && instById(g.instanceId)).map((g) => ({ chatId: g.chatId, instanceId: g.instanceId, name: String(g.name || 'קבוצה'), group: true, phone: '' }));
+  else if (b.segment) items = segmentRecipients(b.segment);
   else items = [...new Set(parseNumberList(b.numbers).map(normPhone).filter((p) => p && p.length >= 11))].map((phone) => ({ phone, name: (contactFor(phone) || {}).name || '' }));
   const exclude = new Set((b.exclude || []).map(String));
   const staffPhones = new Set(db.users.map((u) => u.phone).filter(Boolean));
-  items = items.filter((r) => !exclude.has(r.phone) && !optedOut(r.phone) && !staffPhones.has(r.phone)).map((r) => ({ ...r, status: 'wait' }));
+  items = items.filter((r) => r.group || (!exclude.has(r.phone) && !optedOut(r.phone) && !staffPhones.has(r.phone))).map((r) => ({ ...r, status: 'wait' }));
   if (!items.length) return send(res, 400, { error: 'אין נמענים' });
   const seg = SEGMENTS.find((x) => x.k === b.segment);
-  bcastJob = { id: store.newId(), title: seg ? seg.label : `${items.length} מספרים`, text, vary: b.vary !== false, optOutLine: !!b.optOutLine, delaySec: Math.max(3, Number(b.delaySec) || 3),
+  bcastJob = { id: store.newId(), title: b.groups ? `👥 ${items.length} קבוצות` : seg ? seg.label : `${items.length} מספרים`, text, fileId: b.fileId || '', vary: b.vary !== false, optOutLine: !!b.optOutLine, delaySec: Math.max(3, Number(b.delaySec) || 3),
     instanceId: inst.id, items, done: 0, sent: 0, failed: 0, running: true, by: user.name, at: now() };
   log(`📣 broadcast "${bcastJob.title}" to ${items.length} by ${user.name}`);
   runBroadcast(bcastJob).catch((e) => { bcastJob.running = false; log('broadcast error', e.message); });
@@ -1623,7 +1671,7 @@ route('POST', /^\/api\/admin\/broadcast\/send$/, async (req, res, { user }) => {
 }, { auth: 'admin' });
 route('POST', /^\/api\/admin\/broadcast\/sample$/, async (req, res) => {
   const b = await readJson(req);
-  const sample = [{ name: 'דני כהן' }, { name: 'מיכל' }, { name: '' }];
+  const sample = b.group ? [{ group: true }, { group: true }, { group: true }] : [{ name: 'דני כהן' }, { name: 'מיכל' }, { name: '' }];
   send(res, 200, sample.map((r, i) => varyMessage(String(b.text || ''), r, i) + (b.optOutLine ? '\n\n(להסרה מרשימת התפוצה השיבו "הסר")' : '')));
 }, { auth: 'admin' });
 route('POST', /^\/api\/admin\/broadcast\/cancel$/, (req, res) => { if (bcastJob) bcastJob.cancel = true; send(res, 200, jobView(bcastJob)); }, { auth: 'admin' });

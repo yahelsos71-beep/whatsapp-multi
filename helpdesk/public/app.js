@@ -139,7 +139,9 @@ async function startMain() {
     <div class="side" id="tSide">
       <div class="tabs" id="tabs"></div>
       <div class="search" style="display:flex;gap:6px"><input id="q" placeholder="🔍 חיפוש לפי שם או טלפון" style="flex:1">
-        ${S.me.role === 'admin' ? '<select id="fuser" title="סינון לפי עובד" style="width:auto;max-width:130px"></select>' : ''}</div>
+        ${S.me.role === 'admin' ? '<select id="fuser" title="סינון לפי עובד" style="width:auto;max-width:130px"></select>' : ''}
+        <select id="fdate" title="סינון לפי תאריך" style="width:auto;max-width:120px"><option value="">📅 כל התאריכים</option><option value="today">היום</option><option value="yesterday">אתמול</option><option value="week">7 ימים אחרונים</option><option value="month">30 ימים אחרונים</option><option value="custom">📅 טווח תאריכים...</option></select></div>
+      <div class="search" id="fdateRange" style="display:none;gap:6px;align-items:center;padding-top:0"><span class="hint">מ-</span><input type="date" id="fdFrom" style="flex:1"><span class="hint">עד</span><input type="date" id="fdTo" style="flex:1"></div>
       <div class="list" id="list"></div>
     </div>
     <div class="chat" id="chat"></div>
@@ -155,6 +157,10 @@ async function startMain() {
   api('GET', '/api/staff/unread').then((u) => { S.staff.unread = u; staffBadge(); }).catch(() => {});
   if ($('#waBtn')) $('#waBtn').onclick = () => (S.mode === 'wa' ? leaveWa() : enterWa());
   $('#q').oninput = (e) => { S.q = e.target.value.trim(); renderList(); };
+  const dateChanged = async () => { if (S.tab === 'closed') await loadClosed(); renderList(); };
+  $('#fdate').onchange = (e) => { S.fdate = e.target.value; $('#fdateRange').style.display = S.fdate === 'custom' ? 'flex' : 'none'; dateChanged(); };
+  $('#fdFrom').onchange = (e) => { S.fdFrom = e.target.value; dateChanged(); };
+  $('#fdTo').onchange = (e) => { S.fdTo = e.target.value; dateChanged(); };
   if ($('#fuser')) $('#fuser').onchange = (e) => { S.fuser = e.target.value; try { localStorage.setItem('hd-fuser', S.fuser); } catch {} renderList(); };
   const paintMute = () => { $('#muteBtn').textContent = Sounds.settings.muted ? '🔕' : '🔔'; $('#muteBtn').title = Sounds.settings.muted ? 'הצלצולים כבויים' : 'הצלצולים פעילים'; };
   $('#muteBtn').onclick = () => { Sounds.settings.muted = !Sounds.settings.muted; Sounds.save(); paintMute(); };
@@ -277,9 +283,31 @@ function renderTabs() {
   $('#tabs').innerHTML = tabs.map(([k, n]) => `<button data-k="${k}" class="${S.tab === k ? 'on' : ''}">${n} <span data-cnt="${k}"></span></button>`).join('');
   $('#tabs').querySelectorAll('button').forEach((b) => (b.onclick = async () => {
     S.tab = b.dataset.k; localStorage.setItem('hd-tab', S.tab); renderTabs();
-    if (S.tab === 'closed') S.closed = await api('GET', '/api/tickets?scope=closed').catch(() => []);
+    if (S.tab === 'closed') await loadClosed();
     renderList();
   }));
+}
+
+// טווח התאריכים שנבחר בסינון [מ, עד) במילישניות, או null
+function dateRange() {
+  const day = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime(); };
+  const D = 86400000, t0 = day(Date.now());
+  switch (S.fdate) {
+    case 'today': return [t0, t0 + D];
+    case 'yesterday': return [t0 - D, t0];
+    case 'week': return [t0 - 6 * D, t0 + D];
+    case 'month': return [t0 - 29 * D, t0 + D];
+    case 'custom': {
+      if (!S.fdFrom && !S.fdTo) return null;
+      const f = S.fdFrom ? day(S.fdFrom + 'T00:00') : 0, t = S.fdTo ? day(S.fdTo + 'T00:00') + D : Date.now() + D;
+      return [Math.min(f, t), Math.max(f, t)];
+    }
+  }
+  return null;
+}
+async function loadClosed() {
+  const r = dateRange();
+  S.closed = await api('GET', '/api/tickets?scope=closed' + (r ? `&from=${r[0]}&to=${r[1]}` : '')).catch(() => []);
 }
 
 function sortTickets(list) {
@@ -307,6 +335,12 @@ function currentList() {
   if (S.me.role === 'admin' && S.fuser && S.tab !== 'mine') {
     list = list.filter((t) => (S.fuser === 'none' ? !t.assigneeId : t.assigneeId === S.fuser || (S.tab === 'closed' && t.closedBy === S.fuser)));
   }
+  const dr = dateRange();
+  if (dr) {
+    // פתוחות – לפי פעילות (הודעה אחרונה או פתיחה); סגורות – לפי מועד הסגירה
+    const when = (t) => (S.tab === 'closed' ? [t.closedAt || t.updatedAt] : [t.createdAt, t.updatedAt, t.lastInAt, t.lastOutAt]);
+    list = list.filter((t) => when(t).some((x) => x && x >= dr[0] && x < dr[1]));
+  }
   if (S.q) {
     const q = S.q.toLowerCase();
     list = list.filter((t) => String(t.customerName).toLowerCase().includes(q) || String(t.company || '').toLowerCase().includes(q) || String(t.phone).includes(q.replace(/\D/g, '') || '§') || String(t.id) === q.replace('#', ''));
@@ -327,7 +361,7 @@ function renderList() {
     snoozed: [...S.tickets.values()].filter((t) => t.snoozeUntil && (S.me.role === 'admin' || t.assigneeId === S.me.id)).length };
   for (const [k, n] of Object.entries(counts)) { const c = document.querySelector(`[data-cnt="${k}"]`); if (c) c.textContent = n ? `(${n})` : ''; }
   if (!list.length) {
-    el.innerHTML = `<div class="empty">${S.q ? 'לא נמצא' : S.fuser && S.tab !== 'mine' ? 'אין קריאות לעובד הזה' : S.tab === 'closed' ? 'אין קריאות סגורות' : S.tab === 'snoozed' ? 'אין קריאות מושהות' : 'אין קריאות פתוחות 🎉'}</div>`;
+    el.innerHTML = `<div class="empty">${S.q ? 'לא נמצא' : dateRange() ? 'אין קריאות בתאריכים האלה' : S.fuser && S.tab !== 'mine' ? 'אין קריאות לעובד הזה' : S.tab === 'closed' ? 'אין קריאות סגורות' : S.tab === 'snoozed' ? 'אין קריאות מושהות' : 'אין קריאות פתוחות 🎉'}</div>`;
     return;
   }
   el.innerHTML = list.map((t) => {
@@ -1996,7 +2030,7 @@ function attachMentions(txt, load) {
 // =====================================================================
 // 📣 הפצה – וואטסאפ לכל לקוחות המוצר (מה-CRM) או לרשימת מספרים
 // =====================================================================
-const BC = { mode: 'seg', seg: '', exclude: new Set(), text: '', optOut: true, delay: 3, inst: '', numbers: '' };
+const BC = { mode: 'seg', seg: '', exclude: new Set(), text: '', optOut: true, delay: 3, inst: '', numbers: '', groups: null, gOff: new Set(), file: null };
 async function broadcastDialog(refresh) {
   openModal(`<h3>📣 הפצת וואטסאפ</h3><div id="bLoad" class="hint">טוען נתונים מה-CRM...</div>`, true);
   let d; try { d = await api('GET', '/api/admin/broadcast/segments' + (refresh ? '?refresh=1' : '')); } catch (e) { $('#bLoad').textContent = e.message; return; }
@@ -2012,7 +2046,12 @@ async function broadcastDialog(refresh) {
       ${d.debug ? `<div class="hint" style="color:var(--yellow)">ℹ️ ${esc(d.debug)}</div>` : ''}
       <label>חתימה בסוף ההודעות</label><input id="bSig" value="${esc(d.broadcastSig)}" placeholder="KC Group">
       ${d.error ? `<div class="hint" style="color:var(--red)">⚠️ ${esc(d.error)}</div>` : ''}</details>
-    <div class="seg" id="bMode" style="margin-bottom:8px"><button data-m="seg" class="${BC.mode === 'seg' ? 'on' : ''}">🏷️ לפי מוצר (לקוחות פעילים)</button><button data-m="nums" class="${BC.mode === 'nums' ? 'on' : ''}">📋 רשימת מספרים</button></div>
+    <div class="seg" id="bMode" style="margin-bottom:8px"><button data-m="seg" class="${BC.mode === 'seg' ? 'on' : ''}">🏷️ לפי מוצר (לקוחות פעילים)</button><button data-m="nums" class="${BC.mode === 'nums' ? 'on' : ''}">📋 רשימת מספרים</button><button data-m="groups" class="${BC.mode === 'groups' ? 'on' : ''}">👥 קבוצות</button></div>
+    <div id="bGrpBox" style="${BC.mode === 'groups' ? '' : 'display:none'}">
+      <div class="row" style="margin-top:0"><span class="hint">מספר הבוט (רק הקבוצות שהוא חבר בהן):</span><input id="bBot" dir="ltr" style="width:150px;margin:0" placeholder="05XXXXXXXX"><button id="bBotSave" class="ghost">💾</button></div>
+      <label class="check" style="margin:6px 0"><input type="checkbox" id="bGAll"> <b>כל הקבוצות</b> <span class="chip" id="bGCnt"></span></label>
+      <div id="bGList" style="max-height:200px;overflow-y:auto"><div class="hint">טוען קבוצות...</div></div>
+    </div>
     <div id="bSegBox" style="${BC.mode === 'seg' ? '' : 'display:none'}">
       <div class="pick" id="bSegs">${d.segments.map((g) => `<button data-k="${g.k}" class="${BC.seg === g.k ? 'on' : ''}">${esc(g.label)} <span class="chip">${g.count}</span></button>`).join('')}</div>
       <div class="hint">${d.connected ? `<a id="bRefresh" style="cursor:pointer">🔄 משוך מחדש מה-CRM</a>` : ''}${d.unknownPbx ? ` · ⚠️ ${d.unknownPbx} לקוחות מרכזייה בלי "סוג מרכזיה" ב-CRM – לא ייכללו ב-015/פיוזן` : ''}${d.noService ? ` · ${d.noService} לקוחות פעילים בלי "סוג שירות" ב-CRM` : ''}${d.optOutCount ? ` · ${d.optOutCount} ביקשו הסרה – לא יקבלו` : ''}</div>
@@ -2022,6 +2061,7 @@ async function broadcastDialog(refresh) {
       <label>מדביקים מספרים (בכל שורה, או מופרדים בפסיק/רווח)</label><textarea id="bNums" rows="4" dir="ltr" placeholder="0521234567, 0547654321">${esc(BC.numbers)}</textarea>
       <div class="hint" id="bNumCnt"></div>
     </div>
+    <div class="row" style="margin-top:8px"><button id="bFileBtn">📎 צרף תמונה / קובץ</button><input type="file" id="bFile" hidden><span id="bFileName" class="hint">${BC.file ? '📎 ' + esc(BC.file.name) + ' <a id="bFileX" style="cursor:pointer">✕</a>' : ''}</span></div>
     <label>נוסח ההודעה <span class="hint">(אפשר {name} לשם הפרטי; פתיח, ברכה וחתימה מתווספים ומשתנים אוטומטית – אין שתי הודעות זהות)</span></label>
     <textarea id="bText" rows="5" placeholder="רצינו לעדכן ש...">${esc(BC.text)}</textarea>
     <div class="row" style="align-items:center">
@@ -2060,20 +2100,44 @@ async function broadcastDialog(refresh) {
   };
   box.querySelectorAll('#bSegs button').forEach((b) => (b.onclick = () => { BC.seg = b.dataset.k; BC.exclude.clear(); box.querySelectorAll('#bSegs button').forEach((x) => x.classList.toggle('on', x === b)); drawList(); }));
   if (BC.mode === 'seg') drawList();
+  $('#bFileBtn').onclick = () => $('#bFile').click();
+  $('#bFile').onchange = (e) => { const f = e.target.files[0]; if (f) { keep(); BC.file = f; $('#bFileName').innerHTML = '📎 ' + esc(f.name) + ' <a id="bFileX" style="cursor:pointer">✕</a>'; $('#bFileX').onclick = () => { BC.file = null; $('#bFileName').textContent = ''; }; } };
+  if ($('#bFileX')) $('#bFileX').onclick = () => { BC.file = null; $('#bFileName').textContent = ''; };
+  if (BC.mode === 'groups') {
+    const drawGroups = () => {
+      const gs = BC.groups || [];
+      const on = gs.filter((g) => !BC.gOff.has(g.chatId)).length;
+      $('#bGAll').checked = gs.length && on === gs.length; $('#bGCnt').textContent = `${on} מתוך ${gs.length}`;
+      $('#bGList').innerHTML = gs.length ? gs.map((g) => `<label class="check" style="margin:2px 0"><input type="checkbox" data-g="${esc(g.chatId)}" ${BC.gOff.has(g.chatId) ? '' : 'checked'}> 👥 ${esc(g.name)} <span class="chip">${esc(g.instanceName)}</span></label>`).join('') : '<div class="hint">לא נמצאו קבוצות. בדוק את מספר הבוט.</div>';
+      $('#bGList').querySelectorAll('[data-g]').forEach((c) => (c.onchange = () => { if (c.checked) BC.gOff.delete(c.dataset.g); else BC.gOff.add(c.dataset.g); drawGroups(); }));
+    };
+    $('#bGAll').onchange = (e) => { if (e.target.checked) BC.gOff.clear(); else (BC.groups || []).forEach((g) => BC.gOff.add(g.chatId)); drawGroups(); };
+    const load = async () => {
+      const r = await api('GET', '/api/admin/broadcast/groups').catch((e) => ({ groups: [], notes: [e.message], bot: '' }));
+      BC.groups = r.groups; if ($('#bBot')) $('#bBot').value = r.bot ? localPhone(normLocal(r.bot)).replace(/-/g, '') : '';
+      drawGroups(); if (r.notes && r.notes.length) toast(r.notes.join(' · '), true, 7000);
+    };
+    $('#bBotSave').onclick = async () => { await api('POST', '/api/admin/broadcast/bot', { phone: $('#bBot').value }); BC.groups = null; BC.gOff.clear(); $('#bGList').innerHTML = '<div class="hint">טוען קבוצות...</div>'; load(); };
+    if (BC.groups) { drawGroups(); api('GET', '/api/admin/broadcast/groups').then((r) => { if ($('#bBot')) $('#bBot').value = r.bot ? localPhone(normLocal(r.bot)).replace(/-/g, '') : ''; }).catch(() => {}); } else load();
+  }
   $('#bSample').onclick = async () => {
     keep(); if (BC.text.trim().length < 3) return toast('כתוב קודם את נוסח ההודעה', true);
-    const ex = await api('POST', '/api/admin/broadcast/sample', { text: BC.text, optOutLine: BC.optOut }).catch(() => []);
+    const ex = await api('POST', '/api/admin/broadcast/sample', { text: BC.text, optOutLine: BC.optOut && BC.mode !== 'groups', group: BC.mode === 'groups' }).catch(() => []);
     $('#bSamples').innerHTML = `<div class="hint" style="margin-top:8px">כך זה ייראה אצל 3 לקוחות שונים:</div>` + ex.map((t) => `<div class="msg out" style="max-width:none;margin:6px 0;white-space:pre-wrap">${waFormat(t)}</div>`).join('');
   };
   $('#bSend').onclick = async () => {
     keep();
-    if (BC.text.trim().length < 3) return toast('כתוב את נוסח ההודעה', true);
+    if (BC.text.trim().length < 3 && !BC.file) return toast('כתוב את נוסח ההודעה או צרף תמונה', true);
     const body = { text: BC.text, optOutLine: BC.optOut, delaySec: BC.delay, instanceId: BC.inst, vary: true };
-    if (BC.mode === 'seg') { if (!BC.seg) return toast('בחר מוצר', true); body.segment = BC.seg; body.exclude = [...BC.exclude]; }
+    if (BC.mode === 'groups') { const gs = (BC.groups || []).filter((g) => !BC.gOff.has(g.chatId)); if (!gs.length) return toast('לא נבחרו קבוצות', true); body.groups = gs; }
+    else if (BC.mode === 'seg') { if (!BC.seg) return toast('בחר מוצר', true); body.segment = BC.seg; body.exclude = [...BC.exclude]; }
     else { if (!BC.numbers.trim()) return toast('הדבק מספרים', true); body.numbers = BC.numbers; }
     const b = $('#bSend');
     if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = '⚠️ בטוח? לחץ שוב לשליחה'; setTimeout(() => { if (b.isConnected) { delete b.dataset.sure; b.textContent = '📤 שלח'; } }, 5000); return; }
-    try { S.bjob = await api('POST', '/api/admin/broadcast/send', body); drawBcastJob(); toast('📣 ההפצה התחילה'); } catch (e) { toast(e.message, true, 7000); }
+    try {
+      if (BC.file) { toast('מעלה את הקובץ...'); const up = await api('POST', '/api/admin/broadcast/upload', BC.file, { 'Content-Type': BC.file.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(BC.file.name) }); body.fileId = up.fileId; }
+      S.bjob = await api('POST', '/api/admin/broadcast/send', body); drawBcastJob(); toast('📣 ההפצה התחילה');
+    } catch (e) { toast(e.message, true, 7000); }
   };
   drawBcastJob();
 }
