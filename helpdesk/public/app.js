@@ -1193,12 +1193,13 @@ function adminUsers() {
       ${u ? `<label class="check"><input type="checkbox" id="uactive" ${u.active ? 'checked' : ''}> פעיל (אפשר להיכנס ולקבל קריאות)</label>` : ''}
       <label class="check"><input type="checkbox" id="uquick" ${u?.quickClose ? 'checked' : ''}> ✅ יכול לסגור קריאה בלי לכתוב "מה בוצע"</label>
       <label class="check"><input type="checkbox" id="ugpop" ${u?.groupPop ? 'checked' : ''}> 👥 חלון קופץ כשנפתחת קריאה חדשה בקבוצה</label>
+      <label class="check"><input type="checkbox" id="ucpop" ${u?.callPopAll ? 'checked' : ''}> 📞 חלון קופץ על כל שיחה נכנסת למשרד (גם כשהשלוחה שלי לא מצלצלת)</label>
       <label class="check"><input type="checkbox" id="uwa" ${u?.waAccess ? 'checked' : ''}> 💬 גישה למסך "וואטסאפ" – רואה את כל הצ׳אטים של המספרים ויכול לכתוב בהם (למנהל תמיד יש)</label>
       <div class="row"><button class="primary" id="usave">💾 שמור</button>${u ? '<button id="unew">+ עובד חדש</button>' : ''}</div>`;
     if ($('#unew')) $('#unew').onclick = () => form(null);
     $('#usave').onclick = async () => {
       try {
-        await api('POST', '/api/admin/users', { id: u?.id, name: $('#uname').value, username: $('#uuser').value, password: $('#upass').value, phone: $('#uphone').value, role: $('#urole').value, active: u ? $('#uactive').checked : true, waAccess: $('#uwa').checked, ext: $('#uext').value, quickClose: $('#uquick').checked, groupPop: $('#ugpop').checked });
+        await api('POST', '/api/admin/users', { id: u?.id, name: $('#uname').value, username: $('#uuser').value, password: $('#upass').value, phone: $('#uphone').value, role: $('#urole').value, active: u ? $('#uactive').checked : true, waAccess: $('#uwa').checked, ext: $('#uext').value, quickClose: $('#uquick').checked, groupPop: $('#ugpop').checked, callPopAll: $('#ucpop').checked });
         A = await api('GET', '/api/admin/config'); S.users = await api('GET', '/api/users'); fillUserFilter();
         toast('נשמר ✓'); draw();
       } catch (e) { toast(e.message, true); }

@@ -28,7 +28,7 @@ function checkPassword(user, password) {
   const { hash } = hashPassword(password, user.salt);
   return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(user.hash, 'hex'));
 }
-const publicUser = (u) => u && { id: u.id, name: u.name, username: u.username, role: u.role, active: u.active !== false, phone: u.phone || '', waAccess: canWa(u), ext: u.ext || '', quickClose: !!u.quickClose, groupPop: !!u.groupPop, seenVersion: u.seenVersion || 0 };
+const publicUser = (u) => u && { id: u.id, name: u.name, username: u.username, role: u.role, active: u.active !== false, phone: u.phone || '', waAccess: canWa(u), ext: u.ext || '', quickClose: !!u.quickClose, groupPop: !!u.groupPop, callPopAll: !!u.callPopAll, seenVersion: u.seenVersion || 0 };
 // מי רואה את מסך "💬 וואטסאפ" (כל הצ'אטים של המספרים): מנהלים, ועובדים שקיבלו הרשאה
 const canWa = (u) => !!u && (u.role === 'admin' || u.waAccess === true);
 // איפוס סיסמה מקומי: reset-password.bat כותב data/reset-password.json והשרת מחיל אותו
@@ -1321,7 +1321,8 @@ function pbxSchedule(ms) { clearTimeout(pbxTimer); pbxTimer = setTimeout(pbxPoll
 const { Esl } = require('./lib/esl');
 const esl = new Esl();
 let eslKey = '';
-const fusionCalls = new Map(); // Unique-ID -> { phone, targets }
+const fusionCalls = new Map(); // Unique-ID -> { phone, targets, all }
+const popAllCalls = new Map(); // phone -> Set(Unique-ID) – לעובדים עם "פופאפ על כל שיחה": חלון אחד לשיחה, גם כשכמה שלוחות מצלצלות
 // שיחה נכנסת אמיתית מתחילה ברגל "inbound" מבחוץ (מהספק). חיוג Click-to-Call (גם מהתוסף בכרום) – אין לו רגל כזו
 const fusionInbound = new Map(); // phone -> ts
 esl.on('status', (state, text) => { if ((db.config.pbx || {}).type === 'fusion') pbxStatus = { state, at: now(), text }; });
@@ -1354,16 +1355,32 @@ esl.on('event', (e) => {
     const people = db.users.filter((u) => u.active !== false);
     let targets = people.filter((u) => u.ext && (u.ext === ext || ext.endsWith(u.ext)));
     if (!targets.length && !people.some((u) => u.ext)) targets = people;
-    if (!targets.length) return;
-    fusionCalls.set(uid, { phone: from, targets: targets.map((u) => u.id) });
+    // 📞 "פופאפ על כל שיחה": מקבלים חלון גם כשהשלוחה שלהם לא מצלצלת
+    const popAll = people.filter((u) => u.callPopAll && !targets.includes(u));
+    if (!targets.length && !popAll.length) return;
+    const prev = popAllCalls.get(from);
+    const firstLeg = !prev || now() - prev.at > 300000; // שיחה "תקועה" מלפני 5 דק׳ – נחשבת שיחה חדשה
+    if (firstLeg) popAllCalls.set(from, Object.assign(new Set(), { at: now() }));
+    popAllCalls.get(from).add(uid);
+    if (popAllCalls.size > 200) for (const [k, v] of popAllCalls) if (now() - v.at > 300000) popAllCalls.delete(k);
+    fusionCalls.set(uid, { phone: from, targets: targets.map((u) => u.id), all: popAll.map((u) => u.id) });
     log(`📞 fusion call from ${from} to ext ${ext}`);
     const info = callInfo(from, { callId: uid, to: ext });
-    for (const u of targets) sendTo(u.id, { type: 'call', call: info });
-    sendCallWaInfo(info, targets).catch(() => {});
+    const send = [...targets, ...(firstLeg ? popAll : [])];
+    for (const u of send) sendTo(u.id, { type: 'call', call: info });
+    sendCallWaInfo(info, send).catch(() => {});
   } else if ((name === 'CHANNEL_ANSWER' || name === 'CHANNEL_HANGUP_COMPLETE') && fusionCalls.has(uid)) {
     const c = fusionCalls.get(uid);
-    if (name === 'CHANNEL_HANGUP_COMPLETE') fusionCalls.delete(uid);
-    for (const id of c.targets) sendTo(id, { type: 'call-end', phone: c.phone, callId: uid, answered: name === 'CHANNEL_ANSWER' });
+    const answered = name === 'CHANNEL_ANSWER';
+    if (!answered) fusionCalls.delete(uid);
+    for (const id of c.targets) sendTo(id, { type: 'call-end', phone: c.phone, callId: uid, answered });
+    // לעובדי "כל שיחה": החלון נסגר כשמישהו ענה, או כשכל השלוחות הפסיקו לצלצל
+    const legs = popAllCalls.get(c.phone);
+    if (legs) legs.delete(uid);
+    if (answered || !legs || !legs.size) {
+      if (answered || legs) popAllCalls.delete(c.phone);
+      if (answered || legs) for (const id of c.all || []) sendTo(id, { type: 'call-end', phone: c.phone, callId: uid, answered });
+    }
   }
 });
 function fusionSync() {
@@ -2251,7 +2268,7 @@ route('POST', /^\/api\/admin\/users$/, async (req, res, { user }) => {
     db.users.push(u);
   }
   if (u.id === user.id && b.role !== 'admin') return send(res, 400, { error: 'אי אפשר להוריד לעצמך הרשאת מנהל' });
-  Object.assign(u, { name: String(b.name || username), username, role: b.role === 'admin' ? 'admin' : 'agent', active: b.active !== false, phone: normPhone(b.phone), waAccess: !!b.waAccess, ext: String(b.ext || '').replace(/\D/g, ''), quickClose: !!b.quickClose, groupPop: !!b.groupPop });
+  Object.assign(u, { name: String(b.name || username), username, role: b.role === 'admin' ? 'admin' : 'agent', active: b.active !== false, phone: normPhone(b.phone), waAccess: !!b.waAccess, ext: String(b.ext || '').replace(/\D/g, ''), quickClose: !!b.quickClose, groupPop: !!b.groupPop, callPopAll: !!b.callPopAll });
   if (b.password) Object.assign(u, hashPassword(b.password));
   store.saveUsers();
   send(res, 200, publicUser(u));
@@ -2444,6 +2461,12 @@ if (!db.config.quickCloseMigrated) {
 if (!db.config.groupPopMigrated) {
   const who = db.users.filter((u) => u.active !== false && /^(חיים|נועה)(\s|$)/.test(u.name || ''));
   if (who.length) { for (const u of who) u.groupPop = true; db.config.groupPopMigrated = true; store.saveUsers(); store.saveConfig(); log('groupPop →', who.map((u) => u.name).join(', ')); }
+}
+// חד-פעמי (גרסה 76): פופאפ על כל שיחה נכנסת למשרד – לחיים
+if (!db.config.callPopAllMigrated) {
+  const who = db.users.filter((u) => u.active !== false && u.role === 'admin' && /^חיים(\s|$)/.test(u.name || ''));
+  for (const u of who) u.callPopAll = true;
+  db.config.callPopAllMigrated = true; store.saveUsers(); store.saveConfig(); log('callPopAll →', who.map((u) => u.name).join(', ') || '-');
 }
 if (!db.config.pbxKey) { db.config.pbxKey = crypto.randomBytes(12).toString('hex'); store.saveConfig(); }
 
