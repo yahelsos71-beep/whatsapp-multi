@@ -387,6 +387,7 @@ async function sendText(t, text, user, { auto = false, byName = null, aiBot = fa
 // ---------- הודעות מהטכנאי / מקבוצת השירות ----------
 // "טופל" → סוגר את הקריאה. כל דבר אחר → הערה בקריאה. לא נפתחת קריאה חדשה מהטכנאי
 const DONE_RE = /(טופל|בוצע|סגרתי|נסגר|הסתדר|✅)/;
+const STATUS_CLOSED_RE = /סטטוס:\s*קריאה נסגרה/; // הודעת בוט התמיכה בקבוצת הלקוח
 async function handleTechMessage(inst, chatId, m, body, sd) {
   const tgt = (db.config.serviceTargets || []).find((x) => (x.chatId && x.chatId === chatId) || (x.phone && chatId === x.phone + '@c.us'));
   if (!tgt) return false;
@@ -574,6 +575,9 @@ async function handleNotification(inst, body) {
   }
   if (await handleTechMessage(inst, chatId, m, body, sd)) return;
   let t = openTicketFor(inst.id, chatId);
+  // 🔒 עדכון מבוט התמיכה בקבוצה "סטטוס: קריאה נסגרה" – סוגרים גם אצלנו (ובלי קריאה פתוחה – לא פותחים חדשה)
+  const remoteClosed = isGroup && STATUS_CLOSED_RE.test(m.text || '');
+  if (remoteClosed && !t) return;
   const isNew = !t;
   const rule = ruleFor(inst.id, chatId);
   const pinned = rule && userById(rule.userId);
@@ -618,6 +622,18 @@ async function handleNotification(inst, body) {
   const senderPhone = String(sd.sender || '').split('@')[0];
   const staff = isGroup && staffByPhone(senderPhone);
   addMessage(t, { ...m, dir: 'in', ts, idMessage: body.idMessage, ...(isGroup ? { senderName: staff ? staff.name : sd.senderContactName || sd.senderName || senderPhone, senderPhone, staff: !!staff } : {}) });
+  if (remoteClosed) {
+    const who = staff ? staff.name : sd.senderContactName || sd.senderName || senderPhone;
+    const subj = (/נושא:\s*(.*?)\s*(?:סטטוס:|$)/.exec(m.text) || [])[1] || '';
+    const tech = (/טכנאי:[ \t]*(.*?)[ \t]*$/m.exec(m.text) || [])[1] || '';
+    if (t.status === 'routing') clearRouting(t);
+    t.status = 'closed'; t.closedAt = now(); t.closedBy = null; t.awaiting = false; t.snoozeUntil = null;
+    t.resolution = `🔒 נסגר אצל ${who}${subj ? ` – ${subj}` : ''}${tech ? ` (טכנאי: ${tech})` : ''}`;
+    note(t, `✅ הקריאה נסגרה אוטומטית – ${who} שלח/ה "קריאה נסגרה"\n📝 מה בוצע: ${t.resolution}`);
+    emitTicket(t, { sound: 'msg' });
+    log(`ticket #${t.id} closed by status message from ${who}`);
+    return;
+  }
   const peer = pinnedPeer(t, staff ? staff.id : null);
   if (peer) {
     // קבוצה משותפת עם עובד: מי שכתב – התור עובר לשני (חני כתבה → לחיים; חיים כתב → לחני)
