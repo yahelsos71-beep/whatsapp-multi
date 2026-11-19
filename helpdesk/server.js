@@ -407,6 +407,7 @@ async function handleTechMessage(inst, chatId, m, body, sd) {
     note(t, `✅ ${who} סגר/ה את הקריאה מהוואטסאפ\n📝 מה בוצע: ${text}`);
     emitTicket(t, { sound: 'msg' });
     log(`ticket #${t.id} closed by technician ${tgt.name}`);
+    if (t.isGroup) mondayCloseOnTopal(t.customerName, '', t, true);
     try { const r = await ga.sendMessage(inst, chatId, `👍 קריאה #${t.id} נסגרה. תודה!`, body.idMessage); if (r && r.idMessage) sentIds.add(r.idMessage); } catch {}
   } else {
     addMessage(t, { dir: 'note', type: 'text', text: `💬 ${who}: ${text || '[' + m.type + ']'}`, internal: true, byName: who });
@@ -1054,6 +1055,7 @@ route('POST', /^\/api\/tickets\/(\d+)\/close$/, async (req, res, { user, params 
   t.resolution = resolution;
   note(t, `✅ הקריאה נסגרה על ידי ${user.name}${resolution ? `\n📝 מה בוצע: ${resolution}` : ''}`);
   emitTicket(t);
+  if (t.isGroup) mondayCloseOnTopal(t.customerName, '', t, true);
   send(res, 200, summary(t));
 });
 
@@ -2033,13 +2035,14 @@ const TOPAL_RE = /(^|[^\p{L}])טופל(?![\p{L}?])/u;
 const TOPAL_NOT_RE = /(לא|טרם)\s+טופל/;
 const isTopal = (text) => TOPAL_RE.test(text || '') && !TOPAL_NOT_RE.test(text || '');
 const mondayCloseBusy = new Map(); // שם קבוצה -> זמן – לא שולחים פעמיים תוך 2 דקות
-function mondayCloseOnTopal(group, text, t) {
-  if (!group || !isTopal(text) || !mondayOk) return;
+// גם: קריאה מקבוצת לקוח שנסגרת במוקד (כפתור סגירה / טכנאי כתב "טופל") → אותו דבר (force)
+function mondayCloseOnTopal(group, text, t, force = false) {
+  if (!group || !(force || isTopal(text)) || !mondayOk) return;
   if (now() - (mondayCloseBusy.get(group) || 0) < 2 * 60 * 1000) return;
   mondayCloseBusy.set(group, now());
   mondayCall('/close', { group }, 15 * 60 * 1000).then((r) => {
     const ok = r.closed || [], bad = r.failed || [];
-    log(`monday close "${group}" (טופל) → ${ok.length} closed, ${bad.length} failed`);
+    log(`monday close "${group}" (${force ? 'נסגרה במוקד' : 'טופל'}) → ${ok.length} closed, ${bad.length} failed`);
     if (!t || (!ok.length && !bad.length)) return;
     note(t, [...ok.map((x) => `✅ מאנדיי: "${x.name}" ← סיים טיפול`), ...bad.map((x) => `⚠️ מאנדיי: "${x.name}" לא נסגרה – ${x.error}`)].join('\n'));
     emitTicket(t);
