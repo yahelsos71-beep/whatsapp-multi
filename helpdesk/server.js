@@ -520,7 +520,7 @@ const instLastNotif = {}; // instId -> {at, type} – מתי הגיעה הודע
 async function handleNotification(inst, body) {
   const type = body && body.typeWebhook;
   instLastNotif[inst.id] = { at: now(), type };
-  if (type === 'stateInstanceChanged') { instState[inst.id] = body.stateInstance; emitAll({ type: 'instances', list: instancesStatus() }); return; }
+  if (type === 'stateInstanceChanged') { setInstState(inst.id, body.stateInstance, 'webhook'); return; }
   if (type === 'outgoingMessageStatus') {
     const f = findMessageByIdMessage(body.idMessage);
     if (f) { f.m.status = body.status; store.saveMessages(f.t.id); emitToTicket(f.t, { type: 'status', ticketId: f.t.id, msgId: f.m.id, status: body.status }); }
@@ -679,12 +679,12 @@ async function pollLoop(instId, ctl) {
     if (!inst) break;
     try {
       const n = await ga.receiveNotification(inst);
-      if (instState[inst.id] && String(instState[inst.id]).startsWith('error')) { instState[inst.id] = 'authorized'; }
+      if (instState[inst.id] && String(instState[inst.id]).startsWith('error')) setInstState(inst.id, 'authorized', 'poll');
       if (!n || !n.receiptId) continue;
       try { await handleNotification(inst, n.body); } catch (e) { log('handle error', e.message); }
       await ga.deleteNotification(inst, n.receiptId);
     } catch (e) {
-      instState[instId] = 'error: ' + e.message.slice(0, 120);
+      setInstState(instId, 'error: ' + e.message.slice(0, 120), 'poll');
       await sleep(5000);
     }
   }
@@ -693,11 +693,33 @@ async function pollLoop(instId, ctl) {
 function instancesStatus() {
   return db.config.instances.map((i) => ({ id: i.id, name: i.name, enabled: i.enabled !== false, state: instState[i.id] || 'unknown' }));
 }
+// 🔌 מצב חיבור: כל שינוי נרשם ביומן ומתעדכן מיד במסך
+function setInstState(id, state, why = '') {
+  const prev = instState[id];
+  instState[id] = state;
+  if (prev === state) return;
+  const inst = instById(id);
+  log(`whatsapp ${inst ? inst.name : id}: ${prev || '-'} → ${state}${why ? ' (' + why + ')' : ''}`);
+  emitAll({ type: 'instances', list: instancesStatus() });
+}
+// 🔁 התאוששות: מספר לא מחובר בשתי בדיקות ברצף (~4 דק׳) → כמו "בדוק חיבור" (שמירת הגדרות = אתחול ב-Green API + הפעלה מחדש של המשיכה)
+// לכל היותר פעם ב-15 דקות לכל מספר
+const instBad = {}, instFixAt = {};
+async function autoReconnect(inst) {
+  if (now() - (instFixAt[inst.id] || 0) < 15 * 60 * 1000) return;
+  instFixAt[inst.id] = now();
+  log(`whatsapp ${inst.name}: לא מחובר ${instBad[inst.id]} בדיקות ברצף – מנסה להתחבר מחדש`);
+  try { await ga.enableNotifications(inst); } catch (e) { log(`whatsapp ${inst.name}: חיבור מחדש נכשל – ${e.message}`); return; }
+  const ctl = pollers.get(inst.id); if (ctl) { ctl.stop = true; pollers.delete(inst.id); }
+  startPollers();
+}
 async function refreshStates() {
   for (const inst of db.config.instances) {
     if (inst.enabled === false || !inst.idInstance || !inst.token) continue;
-    try { const s = await ga.getStateInstance(inst); instState[inst.id] = s && s.stateInstance || 'unknown'; }
-    catch (e) { instState[inst.id] = 'error: ' + e.message.slice(0, 120); }
+    try { const s = await ga.getStateInstance(inst); setInstState(inst.id, s && s.stateInstance || 'unknown', 'check'); }
+    catch (e) { setInstState(inst.id, 'error: ' + e.message.slice(0, 120), 'check'); }
+    instBad[inst.id] = instState[inst.id] === 'authorized' ? 0 : (instBad[inst.id] || 0) + 1;
+    if (instBad[inst.id] >= 2 && !TEST_MODE) autoReconnect(inst).catch((e) => log('autoReconnect', e.message));
   }
   emitAll({ type: 'instances', list: instancesStatus() });
 }
