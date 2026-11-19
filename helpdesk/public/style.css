@@ -454,3 +454,4 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .grppop .gp-x{margin-inline-start:auto;cursor:pointer;opacity:.7}
 .grppop .gp-g{font-size:17px;font-weight:700;margin:6px 0 2px}
 .grppop .gp-t{white-space:pre-wrap;margin-bottom:10px;opacity:.9}
+#fsort.on { background: var(--green); color: #fff; }

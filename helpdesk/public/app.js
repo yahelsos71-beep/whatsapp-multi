@@ -140,7 +140,8 @@ async function startMain() {
       <div class="tabs" id="tabs"></div>
       <div class="search" style="display:flex;gap:6px"><input id="q" placeholder="🔍 חיפוש לפי שם או טלפון" style="flex:2;min-width:130px">
         ${S.me.role === 'admin' ? '<select id="fuser" title="סינון לפי עובד" style="flex:1;min-width:0;width:auto;max-width:110px"></select>' : ''}
-        <select id="fdate" title="סינון לפי תאריך" style="flex:1;min-width:0;width:auto;max-width:90px"><option value="">📅 הכל</option><option value="today">היום</option><option value="yesterday">אתמול</option><option value="week">7 ימים אחרונים</option><option value="month">30 ימים אחרונים</option><option value="custom">📅 טווח תאריכים...</option></select></div>
+        <select id="fdate" title="סינון לפי תאריך" style="flex:1;min-width:0;width:auto;max-width:90px"><option value="">📅 הכל</option><option value="today">היום</option><option value="yesterday">אתמול</option><option value="week">7 ימים אחרונים</option><option value="month">30 ימים אחרונים</option><option value="custom">📅 טווח תאריכים...</option></select>
+        <button id="fsort" class="btn ghost" type="button" style="flex:0 0 auto;padding:4px 8px;white-space:nowrap"></button></div>
       <div class="search" id="fdateRange" style="display:none;gap:6px;align-items:center;padding-top:0"><span class="hint">מ-</span><input type="date" id="fdFrom" style="flex:1"><span class="hint">עד</span><input type="date" id="fdTo" style="flex:1"></div>
       <div class="list" id="list"></div>
     </div>
@@ -157,6 +158,11 @@ async function startMain() {
   api('GET', '/api/staff/unread').then((u) => { S.staff.unread = u; staffBadge(); }).catch(() => {});
   if ($('#waBtn')) $('#waBtn').onclick = () => (S.mode === 'wa' ? leaveWa() : enterWa());
   $('#q').oninput = (e) => { S.q = e.target.value.trim(); renderList(); };
+  // ⇅ מיון לפי תאריך: רגיל (ממתינים למעלה) → חדש לישן → ישן לחדש
+  try { S.fsort = localStorage.getItem('hd-sort') || ''; } catch { S.fsort = ''; }
+  const sortLabel = () => { const b = $('#fsort'); b.textContent = { '': '⇅ מיון', new: '⬇ חדש→ישן', old: '⬆ ישן→חדש' }[S.fsort]; b.title = 'מיון לפי תאריך פתיחה (בסגורות – תאריך סגירה). לחיצה מחליפה'; b.classList.toggle('on', !!S.fsort); };
+  sortLabel();
+  $('#fsort').onclick = () => { S.fsort = { '': 'new', new: 'old', old: '' }[S.fsort]; try { localStorage.setItem('hd-sort', S.fsort); } catch {} sortLabel(); renderList(); };
   const dateChanged = async () => { if (S.tab === 'closed') await loadClosed(); renderList(); };
   $('#fdate').onchange = (e) => { S.fdate = e.target.value; $('#fdateRange').style.display = S.fdate === 'custom' ? 'flex' : 'none'; dateChanged(); };
   $('#fdFrom').onchange = (e) => { S.fdFrom = e.target.value; dateChanged(); };
@@ -346,6 +352,10 @@ function currentList() {
   if (S.q) {
     const q = S.q.toLowerCase();
     list = list.filter((t) => String(t.customerName).toLowerCase().includes(q) || String(t.company || '').toLowerCase().includes(q) || String(t.phone).includes(q.replace(/\D/g, '') || '§') || String(t.id) === q.replace('#', ''));
+  }
+  if (S.fsort) {
+    const d = (t) => (S.tab === 'closed' ? t.closedAt || t.updatedAt : t.createdAt) || 0;
+    list.sort((a, b) => (S.fsort === 'new' ? d(b) - d(a) : d(a) - d(b)));
   }
   return list;
 }

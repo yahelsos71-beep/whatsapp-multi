@@ -679,13 +679,17 @@ async function pollLoop(instId, ctl) {
     if (!inst) break;
     try {
       const n = await ga.receiveNotification(inst);
+      ctl.fails = 0;
       if (instState[inst.id] && String(instState[inst.id]).startsWith('error')) setInstState(inst.id, 'authorized', 'poll');
       if (!n || !n.receiptId) continue;
       try { await handleNotification(inst, n.body); } catch (e) { log('handle error', e.message); }
       await ga.deleteNotification(inst, n.receiptId);
     } catch (e) {
-      setInstState(instId, 'error: ' + e.message.slice(0, 120), 'poll');
+      // תקלה רגעית במשיכה (timeout) – לא מסמנים "שגיאה" מיד; רק אחרי 3 כשלונות ברצף
+      ctl.fails = (ctl.fails || 0) + 1;
+      if (ctl.fails >= 3) setInstState(instId, 'error: ' + e.message.slice(0, 120), 'poll');
       await sleep(5000);
+      continue;
     }
   }
   log('polling stopped', instId);
