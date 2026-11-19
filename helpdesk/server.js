@@ -369,10 +369,20 @@ async function finishRouting(t, departmentId, reason, summary, aiReply, { silent
 // שליחה
 // =====================================================================
 const sentIds = new Set();
-async function sendText(t, text, user, { auto = false, byName = null, aiBot = false, quoted = null } = {}) {
+async function sendText(t, text, user, { auto = false, byName = null, aiBot = false, quoted = null, retry = true } = {}) {
   const inst = instById(t.instanceId);
   if (!inst) throw new Error('המספר של הקריאה לא מוגדר');
-  const r = await ga.sendMessage(inst, t.chatId, text, quoted && quoted.id);
+  const started = now();
+  let r;
+  try { r = await ga.sendMessage(inst, t.chatId, text, quoted && quoted.id); }
+  catch (e) {
+    // Green API איטי (timeout) – בודקים אחרי דקה אם ההודעה בכל זאת יצאה; אם לא – שולחים שוב פעם אחת
+    if (retry && !aiBot && /abort|timeout/i.test(e.message)) {
+      setTimeout(() => retrySend(t, text, user, { auto, byName, aiBot, quoted }, started).catch((x) => log('retrySend', x.message)), 60000);
+      e.message += ' – ננסה שוב אוטומטית בעוד דקה';
+    }
+    throw e;
+  }
   if (r && r.idMessage) sentIds.add(r.idMessage);
   const msg = addMessage(t, { dir: 'out', type: 'text', text, idMessage: r && r.idMessage, byUserId: user ? user.id : null, byName: user ? user.name : byName || 'מענה אוטומטי', auto, aiBot, status: 'sent',
     ...(quoted ? { quoted: { id: quoted.id, text: quoted.text || '', from: quoted.from || '' } } : {}) });
@@ -380,6 +390,23 @@ async function sendText(t, text, user, { auto = false, byName = null, aiBot = fa
   emitTicket(t);
   if (t.isGroup && !auto) mondayCloseOnTopal(t.customerName, text, t);
   return msg;
+}
+
+async function retrySend(t, text, user, opts, started) {
+  const inst = instById(t.instanceId);
+  if (!inst) return;
+  const sameText = (x) => String(x || '').trim() === String(text).trim();
+  // כבר נקלטה אצלנו (הודעה יוצאת מה-API שהגיעה בהתראה)?
+  if (store.messages(t.id).some((m) => m.dir === 'out' && m.ts >= started - 5000 && sameText(m.text))) { log(`retrySend #${t.id}: כבר נשלחה`); return; }
+  try {
+    const h = await ga.getChatHistory(inst, t.chatId, 15);
+    if ((h || []).some((m) => m.type === 'outgoing' && m.timestamp * 1000 >= started - 5000 && sameText(m.textMessage || (m.extendedTextMessage || {}).text))) {
+      note(t, '✅ ההודעה ללקוח בכל זאת יצאה (Green API היה איטי) – לא נשלחה שוב'); emitTicket(t); return;
+    }
+  } catch (e) { note(t, '⚠️ לא הצלחתי לבדוק אם ההודעה יצאה – לא שולחים שוב (למנוע כפילות): ' + e.message); emitTicket(t); return; }
+  try { await sendText(t, text, user, { ...opts, retry: false }); note(t, '✅ ההודעה ללקוח נשלחה בניסיון חוזר'); }
+  catch (e) { note(t, '⚠️ גם הניסיון החוזר נכשל – לשלוח ידנית: ' + e.message); }
+  emitTicket(t);
 }
 
 // =====================================================================
