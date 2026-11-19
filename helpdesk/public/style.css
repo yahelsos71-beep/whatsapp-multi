@@ -455,3 +455,45 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .grppop .gp-g{font-size:17px;font-weight:700;margin:6px 0 2px}
 .grppop .gp-t{white-space:pre-wrap;margin-bottom:10px;opacity:.9}
 #fsort.on { background: var(--green); color: #fff; }
+
+/* ===================== ✨ רענון עיצוב (v82) ===================== */
+/* סינון: חיפוש בשורה מלאה, ומתחת – עובד / תאריך / מיון באותו רוחב */
+#tSide > .search:not(#fdateRange) { flex-wrap: wrap; gap: 6px !important; padding: 10px; }
+#tSide #q { flex: 1 1 100% !important; min-width: 0 !important; }
+#tSide #fuser, #tSide #fdate { flex: 1 1 0 !important; max-width: none !important; }
+#tSide #fsort { flex: 0 0 auto !important; border-radius: 10px; padding: 6px 12px !important; }
+.search input, .search select { border-radius: 10px; height: 36px; }
+/* לשוניות: שורה אחת נקייה */
+.tabs { gap: 6px; padding: 10px; }
+.tabs button { padding: 6px 12px; font-size: 13px; font-weight: 600; }
+/* רשימת קריאות: כרטיסים מרווחים */
+.list { padding: 6px 0 10px; }
+.item { margin: 5px 8px; padding: 10px 12px; border: 1px solid var(--line) !important; border-right-width: 4px !important; border-radius: 12px; gap: 12px; }
+.item:hover { background: var(--hover); }
+.item .name { font-size: 15px; }
+.item .last { margin-top: 2px; }
+.item .row3 { margin-top: 7px; gap: 4px; }
+.chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; line-height: 16px; }
+.av { width: 40px; height: 40px; font-size: 14px; }
+/* ראש הקריאה: כפתורים קומפקטיים */
+.chat-head button { padding: 6px 11px; font-size: 13px; border-radius: 10px; }
+/* טכנולוגי: רקע רגוע יותר, ניאון עדין */
+:root[data-skin="tech"] body {
+  background:
+    radial-gradient(900px 500px at 85% -10%, rgba(139,92,246,.14), transparent 60%),
+    radial-gradient(800px 500px at -10% 110%, rgba(0,229,255,.10), transparent 60%),
+    #070b18;
+}
+:root[data-skin="tech"] .item { background: rgba(255,255,255,.015); border-color: rgba(0,229,255,.10) !important; }
+:root[data-skin="tech"] .item:hover { background: rgba(0,229,255,.05); }
+:root[data-skin="tech"] .item.sel { border-color: rgba(0,229,255,.45) !important; border-right-color: var(--neon) !important; }
+:root[data-skin="tech"] .item.wait { border-right-color: var(--green2) !important; }
+:root[data-skin="tech"] .item.wait.mid { border-right-color: var(--yellow) !important; }
+:root[data-skin="tech"] .item.wait.late { border-right-color: var(--red) !important; }
+:root[data-skin="tech"] .av { box-shadow: 0 0 0 2px rgba(0,229,255,.22); }
+:root[data-skin="tech"] .chip { border-color: rgba(0,229,255,.12); }
+/* בהיר/כהה: צבע פס ההמתנה גם בכרטיס */
+.item.wait { border-right-color: var(--green2) !important; }
+.item.wait.mid { border-right-color: var(--yellow) !important; }
+.item.wait.late { border-right-color: var(--red) !important; }
+.item.sel { border-color: var(--green) !important; }

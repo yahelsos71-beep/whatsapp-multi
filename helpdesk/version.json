@@ -1,5 +1,5 @@
 {
-  "version": 81,
+  "version": 82,
   "files": {
     "server.js": "6f0a65050ea0f2db57a0c23a230538bda4c86e5ef9e65dcb40cef7da72d8be1a",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
@@ -15,10 +15,10 @@
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "67c3f7771298c520fff27587f171e05195209a2bbfcd9aae7414fba949f04dbd",
     "public/app.js": "978e4547219a208a6981bb446b5e0beb6ae7eab2fa9223ded747f7cd3721f3e2",
-    "public/changelog.json": "352d983b19f62b1e0765e00a786f203759cf466e9da0567c4c2b2f0e4833caeb",
+    "public/changelog.json": "8cdc6ac13ddc9f72c24a82831acde66678465ed99ef5f791664761a3c069060a",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
-    "public/style.css": "2b1252c4cf15e9367b99bf48b4c32ddb8294cbe8d32deb0bd71bfd45f78b012a"
+    "public/style.css": "e4420f7267b8ff7f307dcc8381dd729dcc084d528f1abb16c9edc33d46f79394"
   },
-  "notes": "🔁 הודעה ללקוח שנכשלה בגלל איטיות של Green API – נבדקת אחרי דקה ונשלחת שוב פעם אחת (בלי כפילות)"
+  "notes": "✨ רענון עיצוב: שורת סינון מסודרת (חיפוש / עובד / תאריך / מיון), קריאות בכרטיסים, כפתורים קומפקטיים בראש הקריאה, רקע רגוע יותר בערכה הטכנולוגית"
 }
