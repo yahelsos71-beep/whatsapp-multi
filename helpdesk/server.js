@@ -378,6 +378,7 @@ async function sendText(t, text, user, { auto = false, byName = null, aiBot = fa
     ...(quoted ? { quoted: { id: quoted.id, text: quoted.text || '', from: quoted.from || '' } } : {}) });
   if (!auto) { t.awaiting = false; t.lastOutAt = now(); }
   emitTicket(t);
+  if (t.isGroup && !auto) mondayCloseOnTopal(t.customerName, text, t);
   return msg;
 }
 
@@ -550,6 +551,7 @@ async function handleNotification(inst, body) {
     // הודעה יוצאת: נשלחה מהטלפון או מה-API
     if (sentIds.has(body.idMessage) || findMessageByIdMessage(body.idMessage)) return;
     const t = openTicketFor(inst.id, chatId);
+    if (isGroup) mondayCloseOnTopal(sd.chatName || (t && t.customerName), m.text, t);
     if (!t) {
       // אין קריאה פתוחה: לא פותחים קריאה על הודעה יוצאת, אבל שומרים אותה –
       // כשהלקוח יענה תיפתח קריאה (בלי בוט, אצל מי שטיפל בו לאחרונה) וההודעה שלנו תופיע בה
@@ -622,6 +624,7 @@ async function handleNotification(inst, body) {
   const senderPhone = String(sd.sender || '').split('@')[0];
   const staff = isGroup && staffByPhone(senderPhone);
   addMessage(t, { ...m, dir: 'in', ts, idMessage: body.idMessage, ...(isGroup ? { senderName: staff ? staff.name : sd.senderContactName || sd.senderName || senderPhone, senderPhone, staff: !!staff } : {}) });
+  if (isGroup) mondayCloseOnTopal(sd.chatName || t.customerName, m.text, t);
   if (remoteClosed) {
     const who = staff ? staff.name : sd.senderContactName || sd.senderName || senderPhone;
     const subj = (/נושא:\s*(.*?)\s*(?:סטטוס:|$)/.exec(m.text) || [])[1] || '';
@@ -1990,13 +1993,31 @@ const MONDAY_BOT = process.env.MONDAY_BOT_URL || 'http://127.0.0.1:8099';
 let mondayOk = false;
 const checkMonday = () => fetch(MONDAY_BOT + '/health', { signal: AbortSignal.timeout(3000) }).then((r) => { mondayOk = r.ok; }).catch(() => { mondayOk = false; });
 checkMonday(); setInterval(checkMonday, 2 * 60 * 1000);
-async function mondayCall(p, body) {
+async function mondayCall(p, body, ms = 150000) {
   let r;
-  try { r = await fetch(MONDAY_BOT + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(150000) }); }
+  try { r = await fetch(MONDAY_BOT + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(ms) }); }
   catch (e) { throw new Error('רובוט המאנדיי לא זמין (systemctl status monday-bot)'); }
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || 'מאנדיי: שגיאה ' + r.status);
   return j;
+}
+// ✅ "טופל" בקבוצת לקוח (מכל אחד) → במאנדיי: כל קריאות הלקוח ב"תקלה נפתחה" → "סיים טיפול"
+// לא: "לא/טרם/עוד לא/עדיין לא טופל", "טופל?". קריאות בסטטוס אחר (בטיפול ויקאט) – הרובוט לא נוגע. הקריאה במוקד – בלי שינוי
+const TOPAL_RE = /(^|[^\p{L}])טופל(?![\p{L}?])/u;
+const TOPAL_NOT_RE = /(לא|טרם)\s+טופל/;
+const isTopal = (text) => TOPAL_RE.test(text || '') && !TOPAL_NOT_RE.test(text || '');
+const mondayCloseBusy = new Map(); // שם קבוצה -> זמן – לא שולחים פעמיים תוך 2 דקות
+function mondayCloseOnTopal(group, text, t) {
+  if (!group || !isTopal(text) || !mondayOk) return;
+  if (now() - (mondayCloseBusy.get(group) || 0) < 2 * 60 * 1000) return;
+  mondayCloseBusy.set(group, now());
+  mondayCall('/close', { group }, 15 * 60 * 1000).then((r) => {
+    const ok = r.closed || [], bad = r.failed || [];
+    log(`monday close "${group}" (טופל) → ${ok.length} closed, ${bad.length} failed`);
+    if (!t || (!ok.length && !bad.length)) return;
+    note(t, [...ok.map((x) => `✅ מאנדיי: "${x.name}" ← סיים טיפול`), ...bad.map((x) => `⚠️ מאנדיי: "${x.name}" לא נסגרה – ${x.error}`)].join('\n'));
+    emitTicket(t);
+  }).catch((e) => { log('monday close', e.message); if (t) { note(t, '⚠️ מאנדיי: סגירה אחרי "טופל" נכשלה – ' + e.message); emitTicket(t); } });
 }
 route('POST', /^\/api\/tickets\/(\d+)\/monday-vcat$/, async (req, res, { user, params }) => {
   const t = visibleTicket(user, params[0]);

@@ -1,7 +1,7 @@
 {
-  "version": 76,
+  "version": 77,
   "files": {
-    "server.js": "a4e7459b3210fb07d0257da2aee3c711fa0fdbf1907ee14d20e1cd11e96ecc76",
+    "server.js": "f1302c965878dd1392dca9ad262cdd50842950df7d6292bb8544d82cc1ab53b6",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
     "reset-password.bat": "662bfbec8b94b264fd7b585a365f389415b8ec66bea540e876418e7a3f805187",
     "README-HE.txt": "df99092cc82f3de6e6d685ca604d95e154879a4a75ba6a0854e4134dd27e5cf3",
@@ -15,10 +15,10 @@
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "67c3f7771298c520fff27587f171e05195209a2bbfcd9aae7414fba949f04dbd",
     "public/app.js": "29c698b924c7d21676752e28977c22fdbab1ee7b6b53a75526b7f04d9d62fdc9",
-    "public/changelog.json": "bb5976183df9a69f090f09689b9377cfdf7c0b89d685e90528d5b71992162e4f",
+    "public/changelog.json": "bed7cdb7d6ecec3171b293267df9da60a2bffbc5026fbcfac984fc74d1afc0c0",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "fe743a2aecf83da44fae8f31faadfa6c97ba33c48a771efeaeb74d86de91a9e6"
   },
-  "notes": "📞 הגדרה חדשה לעובד: חלון קופץ על כל שיחה נכנסת למשרד, גם כשהשלוחה שלו לא מצלצלת (הופעל לחיים)"
+  "notes": "✅ \"טופל\" בקבוצת לקוח → במאנדיי כל קריאות הלקוח ב\"תקלה נפתחה\" עוברות ל\"סיים טיפול\" (קריאות בטיפול ויקאט – בלי שינוי)"
 }
