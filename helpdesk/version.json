@@ -1,24 +1,24 @@
 {
-  "version": 82,
+  "version": 83,
   "files": {
-    "server.js": "6f0a65050ea0f2db57a0c23a230538bda4c86e5ef9e65dcb40cef7da72d8be1a",
+    "server.js": "bedf146cf17e2f9a3857246ffa63a734f812de89db00045343e044d393745db3",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
     "reset-password.bat": "662bfbec8b94b264fd7b585a365f389415b8ec66bea540e876418e7a3f805187",
     "README-HE.txt": "df99092cc82f3de6e6d685ca604d95e154879a4a75ba6a0854e4134dd27e5cf3",
     "start-linux.sh": "adf8f346650fd976fa724eedbb7c016d087839242c804536da5c6e6c8ab9873d",
     "start-linux-test.sh": "2532e7b94a74bb03639a2501ea99a89ef9b209c5cc2bee55b96365db12aad500",
     "new-client.sh": "8024b33cb77409101b048cdf9e6680fbd9866da39e756ba395a9fd9c6f1100b6",
-    "lib/ai.js": "a86761c5735519efe6d73fff0f2450800a36a5a8ed816ca41ef898fbe53a80c3",
+    "lib/ai.js": "0bb5df75f4f1cdfeb1600060c87590f44c7662fcbae54dd09e319ce480021ea2",
     "lib/crm.js": "3c201305184905cdc974ec9616ff4bc56304dba7b81847bd2ef5f3765658c078",
     "lib/esl.js": "203d1b9b5c6f81cffebc115d67fd01b640fc2afd1fa0006cfb0c656bf86098b9",
     "lib/greenapi.js": "ac42b3418b86fcca4b0ee8a82116a5a1b1a97fcc206d91d3b5b5338051ba25a3",
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "67c3f7771298c520fff27587f171e05195209a2bbfcd9aae7414fba949f04dbd",
-    "public/app.js": "978e4547219a208a6981bb446b5e0beb6ae7eab2fa9223ded747f7cd3721f3e2",
-    "public/changelog.json": "8cdc6ac13ddc9f72c24a82831acde66678465ed99ef5f791664761a3c069060a",
+    "public/app.js": "ac4829e67851ed47628f1d92912dd3ab3e79063f7c04557103e9d5e2cecf7e21",
+    "public/changelog.json": "622a0900f3ee287143508de96fb2f9b545760a087af6d390c6388f2ef31331bb",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "e4420f7267b8ff7f307dcc8381dd729dcc084d528f1abb16c9edc33d46f79394"
   },
-  "notes": "✨ רענון עיצוב: שורת סינון מסודרת (חיפוש / עובד / תאריך / מיון), קריאות בכרטיסים, כפתורים קומפקטיים בראש הקריאה, רקע רגוע יותר בערכה הטכנולוגית"
+  "notes": "✍️ בסגירת קריאה – Claude מציע לבד מה בוצע לפי השיחה (אפשר לתקן או לאשר)"
 }

@@ -721,6 +721,14 @@ function closeTicket() {
   $('#resol').focus();
   $('#cancel').onclick = closeModal;
   $('#rclose').onclick = () => doCloseTicket(t, $('#resol').value.trim());
+  // Claude מנסח הצעה לפי השיחה – רק אם עוד לא התחלת לכתוב
+  const box = $('#resol'), ph = box.placeholder;
+  box.placeholder = '⏳ Claude מנסח הצעה לפי השיחה...';
+  api('POST', `/api/tickets/${t.id}/suggest-resolution`, {}).then((r) => {
+    if (!document.body.contains(box)) return;
+    box.placeholder = ph;
+    if (r && r.text && !box.value.trim()) { box.value = r.text; box.select(); }
+  }).catch(() => { if (document.body.contains(box)) box.placeholder = ph; });
 }
 async function doCloseTicket(t, resolution) {
   if (resolution.length < 3 && !S.me.quickClose) { toast('כתוב בקצרה מה בוצע', true); $('#resol').focus(); return; }

@@ -7,7 +7,7 @@ const path = require('path');
 const crypto = require('crypto');
 const store = require('./lib/store');
 const ga = require('./lib/greenapi');
-const { routeTicket, intake } = require('./lib/ai');
+const { routeTicket, intake, suggestResolution } = require('./lib/ai');
 const { parseSheet, fixMojibake } = require('./lib/sheet');
 
 const { db } = store;
@@ -1072,6 +1072,20 @@ setInterval(() => {
     if (t.assigneeId) sendTo(t.assigneeId, { type: 'reminder', ticket: summary(t) });
   }
 }, 20000);
+
+// הצעה ל"מה בוצע" לפי השיחה (לא נשלח ללקוח)
+route('POST', /^\/api\/tickets\/(\d+)\/suggest-resolution$/, async (req, res, { user, params }) => {
+  const t = myTicket(user, params[0], res); if (!t) return;
+  const kinds = { image: 'תמונה', video: 'וידאו', audio: 'הקלטה קולית', file: 'קובץ', location: 'מיקום' };
+  const transcript = store.messages(t.id).slice(-60).map((m) => {
+    const who = m.dir === 'in' ? 'לקוח' : m.dir === 'note' ? 'הערה פנימית' : m.aiBot ? 'עוזר' : 'נציג';
+    return `${who}: ${m.text || `[${kinds[m.type] || m.type}]`}`;
+  }).join('\n');
+  if (!transcript) return send(res, 200, { text: '' });
+  const r = await suggestResolution(db.config, { customerName: whoIs(t), transcript });
+  if (r.error) log(`suggest-resolution #${t.id}: ${r.error}`);
+  send(res, 200, r);
+});
 
 route('POST', /^\/api\/tickets\/(\d+)\/close$/, async (req, res, { user, params }) => {
   const t = myTicket(user, params[0], res); if (!t) return;
