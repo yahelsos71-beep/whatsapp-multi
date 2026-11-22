@@ -1005,6 +1005,14 @@ async function dashboardDialog(period = localStorage.getItem('hd-dash') || 'toda
   const waitCls = (ms) => (ms > 15 * 60000 ? 'late' : ms > 5 * 60000 ? 'mid' : '');
   const periods = [['today', 'היום'], ['week', '7 ימים'], ['month', '30 יום'], ['all', 'הכל']];
   const max = Math.max(1, ...p.byUser.map((u) => u.closed));
+  // יעד סגירה יומי: היום – "X מתוך Y"; 7/30 יום – ממוצע ליום מול היעד
+  const goal = (u) => {
+    if (!u.target) return '—';
+    if (!p.days) return `${u.target} ליום`;
+    const v = p.days === 1 ? u.closed : Math.round((u.closed / p.days) * 10) / 10;
+    const ok = v >= u.target;
+    return `<span class="chip" style="font-weight:600;${ok ? 'background:#dcfce7;color:#166534' : 'background:#fee2e2;color:#991b1b'}">${ok ? '✅' : '🎯'} ${v} / ${u.target}${p.days === 1 ? '' : ' ממוצע ליום'}</span>`;
+  };
   const tile = (label, value, sub = '', cls = '') => `<div class="tile ${cls}"><div class="tl">${label}</div><div class="tv">${value}</div>${sub ? `<div class="ts">${sub}</div>` : ''}</div>`;
   const html = `<div id="dash">
     <div class="row" style="margin:0 0 12px;justify-content:space-between"><h3 style="margin:0">📊 דשבורד</h3>
@@ -1024,10 +1032,10 @@ async function dashboardDialog(period = localStorage.getItem('hd-dash') || 'toda
     ${n.byDept.length ? `<div class="hint" style="margin-top:6px">לפי מחלקה: ${n.byDept.map((d) => `${esc(d.name)} <b>${d.open}</b>`).join(' · ')}${n.noDept ? ` · בלי מחלקה <b>${n.noDept}</b>` : ''}</div>` : ''}
     <h4>${periods.find((x) => x[0] === period)[1]}</h4>
     <div class="tiles">${tile('קריאות שנפתחו', p.opened)}${tile('קריאות שנסגרו', p.closed)}</div>
-    <table class="dtable"><tr><th>עובד</th><th style="width:40%">קריאות שסגר/ה</th><th>זמן טיפול ממוצע</th><th>זמן תגובה ראשונה ממוצע</th></tr>
+    <table class="dtable"><tr><th>עובד</th><th style="width:40%">קריאות שסגר/ה</th><th>יעד יומי</th><th>זמן טיפול ממוצע</th><th>זמן תגובה ראשונה ממוצע</th></tr>
       ${p.byUser.map((u) => `<tr><td>${esc(u.name)}</td>
         <td><div class="bar" title="${esc(u.name)}: ${u.closed} קריאות נסגרו">${u.closed ? `<i style="width:${(u.closed / max) * 100}%"></i>` : ""}<b>${u.closed}</b></div></td>
-        <td>${dur(u.avgHandleMs)}</td><td>${dur(u.avgFirstResponseMs)}</td></tr>`).join('')}</table>
+        <td>${goal(u)}</td><td>${dur(u.avgHandleMs)}</td><td>${dur(u.avgFirstResponseMs)}</td></tr>`).join('')}</table>
     <div class="export-row"><b>⬇ הורדת דוח לאקסל</b>
       <select id="exPeriod"><option value="week">7 ימים אחרונים</option><option value="month" selected>30 יום אחרונים</option><option value="today">היום</option><option value="all">הכל</option></select>
       <select id="exScope"><option value="closed">קריאות שנסגרו</option><option value="all">כל הקריאות שנפתחו</option></select>

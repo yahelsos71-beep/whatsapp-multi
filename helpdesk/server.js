@@ -247,6 +247,75 @@ function isOpenNow(at = new Date()) {
   return (h.days || []).includes(day) && mins >= toM(h.start) && mins < toM(h.end);
 }
 const offHoursSent = new Map(); // chatKey -> ts (פעם אחת בכמה שעות לכל לקוח)
+// ---------- ניתוב ערב: מ-start עד end (גם דרך חצות) כל פנייה פרטית חדשה נפתחת ישר אצל עובד אחד ----------
+// config.eveningRoute = { enabled, start: "HH:MM", end: "HH:MM", userId, days?: [0..6] } (בלי days = כל יום)
+function eveningUser(at = new Date()) {
+  const r = db.config.eveningRoute;
+  if (!r || !r.enabled || !r.userId) return null;
+  const u = userById(r.userId);
+  if (!u || u.active === false) return null;
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: (db.config.hours && db.config.hours.tz) || 'Asia/Jerusalem', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    .formatToParts(at).map((x) => [x.type, x.value]));
+  const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(parts.weekday);
+  const mins = Number(parts.hour) * 60 + Number(parts.minute);
+  const toM = (s) => { const [a, b] = String(s || '0:0').split(':').map(Number); return a * 60 + (b || 0); };
+  const s = toM(r.start), e = toM(r.end);
+  const inWin = s <= e ? mins >= s && mins < e : mins >= s || mins < e;
+  const winDay = s > e && mins < e ? (day + 6) % 7 : day; // אחרי חצות שייך ליום הקודם
+  if (Array.isArray(r.days) && r.days.length && !r.days.includes(winDay)) return null;
+  return inWin ? u : null;
+}
+// החזרה מניתוב ערב: בכל שעה ב-eveningRoute.returnAt (למשל ["18:00","08:15"]) – קריאות ערב שעדיין פתוחות אצל העובד
+// ונפתחו לפני אותה שעה חוזרות למי שהניתוב הרגיל היה בוחר (עובד קבוע/מי שענה לאחרונה/לפי מחלקה)
+function ilNowParts() {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: (db.config.hours && db.config.hours.tz) || 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
+    .formatToParts(new Date()).map((x) => [x.type, x.value]));
+  return { mins: Number(p.hour) * 60 + Number(p.minute), secs: Number(p.second) };
+}
+async function eveningOwner(t) {
+  const o = t.eveningOrig && userById(t.eveningOrig);
+  if (o && o.active !== false) return { u: o, why: 'העובד הקבוע / מי שענה ללקוח לאחרונה' };
+  const pr = await personRuleFor(t).catch(() => null);
+  if (pr && userById(pr.userId)) return { u: userById(pr.userId), why: 'לפי איש הקשר' };
+  const texts = store.messages(t.id).filter((m) => m.dir === 'in').map((m) => m.text || `[${m.type}]`).slice(0, 10);
+  const r = await routeTicket(db.config, { customerName: whoIs(t), texts }).catch(() => ({}));
+  const dep = r.departmentId ? depById(r.departmentId) : null;
+  const u = dep && userById(dep.userId);
+  if (u && u.active !== false) return { u, dep, why: 'לפי מחלקה: ' + dep.name };
+  return { u: admins().find((x) => x.id !== t.eveningBy) || admins()[0] || null, why: 'לא זוהתה מחלקה' };
+}
+let eveningBusy = false;
+async function eveningReturn() {
+  const r = db.config.eveningRoute;
+  if (eveningBusy || !r || !r.enabled || !Array.isArray(r.returnAt) || !r.returnAt.length) return;
+  eveningBusy = true;
+  try {
+    const { mins, secs } = ilNowParts();
+    const toM = (s) => { const [a, b] = String(s || '0:0').split(':').map(Number); return a * 60 + (b || 0); };
+    for (const at of r.returnAt) {
+      const m = toM(at);
+      if (mins < m) continue;
+      const cut = now() - ((mins - m) * 60 + secs) * 1000; // הרגע של השעה הזו היום
+      const due = db.tickets.filter((x) => x.eveningBy && !x.eveningReturned && x.status !== 'closed' && x.assigneeId === x.eveningBy && x.createdAt < cut);
+      for (const x of due) {
+        x.eveningReturned = true;
+        const { u, dep, why } = await eveningOwner(x);
+        if (!u || u.id === x.assigneeId) { note(x, `🌆 ${at} – הקריאה לא נסגרה, ונשארת אצל ${userById(x.assigneeId)?.name || ''}`); emitTicket(x); continue; }
+        const from = userById(x.assigneeId);
+        x.assigneeId = u.id;
+        const d = dep || db.config.departments.find((dd) => dd.userId === u.id);
+        if (d) x.departmentId = d.id;
+        x.snoozeUntil = null;
+        note(x, `🌆 ${at} – הקריאה לא נסגרה אצל ${from ? from.name : ''} וחזרה ל${u.name} (${why})`);
+        if (from && from.role !== 'admin') sendTo(from.id, { type: 'remove', id: x.id });
+        emitTicket(x, { sound: 'new' });
+        log(`evening return #${x.id} -> ${u.name}`);
+      }
+    }
+  } catch (e) { log('evening return', e.message); }
+  eveningBusy = false;
+}
+setInterval(eveningReturn, 60 * 1000);
 // ---------- הבוט שותק אחרי שעובד ענה ----------
 const quietMark = new Map(); // "inst|chat" -> {at,userId} – עובד כתב מהמסך "וואטסאפ" בלי קריאה פתוחה
 function recentHumanReply(instanceId, chatId) {
@@ -611,9 +680,23 @@ async function handleNotification(inst, body) {
   const isNew = !t;
   const rule = ruleFor(inst.id, chatId);
   const pinned = rule && userById(rule.userId);
+  let ringNew = false;
   if (!t) {
     const name = isGroup ? (sd.chatName || 'קבוצה') : (sd.senderContactName || sd.senderName || sd.chatName);
-    if (pinned && pinned.active !== false) {
+    const evening = !isGroup && eveningUser();
+    if (evening) {
+      // ניתוב ערב – בלי AI ובלי ניתוב; קריאות שכבר פתוחות נשארות אצל מי שהן
+      t = createTicket(inst, chatId, name, { status: 'open', assigneeId: evening.id });
+      const dep = db.config.departments.find((d) => d.userId === evening.id);
+      if (dep) t.departmentId = dep.id;
+      if (!isOpenNow()) t.silent = true;
+      ringNew = true;
+      t.eveningBy = evening.id;
+      const q = isQuiet(inst.id, chatId);
+      const orig = (pinned && pinned.active !== false && pinned) || (q && q.userId && userById(q.userId)?.active !== false && userById(q.userId)) || null;
+      t.eveningOrig = orig ? orig.id : null;
+      note(t, `🌆 ניתוב ערב (${db.config.eveningRoute.start}–${db.config.eveningRoute.end}) – נפתח ישר אצל ${evening.name}`);
+    } else if (pinned && pinned.active !== false) {
       // צ'אט/קבוצה שמשויכים קבוע לעובד – בלי AI ובלי מענה אוטומטי
       t = createTicket(inst, chatId, name, { status: 'open', assigneeId: pinned.id });
       const dep = db.config.departments.find((d) => d.userId === pinned.id);
@@ -681,7 +764,7 @@ async function handleNotification(inst, body) {
   t.awaiting = true;
   t.lastInAt = ts;
   if (t.snoozeUntil) { t.snoozeUntil = null; note(t, '▶ הלקוח כתב – הקריאה חזרה מהשהיה'); }
-  emitTicket(t, { sound: isNew ? null : 'msg' });
+  emitTicket(t, { sound: isNew ? (ringNew ? 'new' : null) : 'msg' });
   if (t.status === 'routing') scheduleRouting(t, t.aiTurns ? Math.max(2, Number(db.config.ai.replyDelaySec ?? 8)) * 1000 : undefined);
 }
 
@@ -2370,7 +2453,9 @@ route('GET', /^\/api\/admin\/export$/, (req, res, { query }) => {
   const period = query.get('period') || 'month';
   const scope = query.get('scope') || 'closed';
   const d = new Date();
-  const start = period === 'today' ? new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  void d;
+  const { mins: ilM, secs: ilS } = ilNowParts();
+  const start = period === 'today' ? now() - (ilM * 60 + ilS) * 1000 // חצות בשעון ישראל
     : period === 'week' ? now() - 7 * 864e5 : period === 'month' ? now() - 30 * 864e5 : 0;
   const list = db.tickets.filter((t) => scope === 'closed' ? t.status === 'closed' && (t.closedAt || 0) >= start : (t.createdAt || 0) >= start)
     .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
@@ -2402,7 +2487,9 @@ route('GET', /^\/api\/admin\/export$/, (req, res, { query }) => {
 route('GET', /^\/api\/admin\/stats$/, (req, res, { query }) => {
   const period = query.get('period') || 'today';
   const d = new Date();
-  const start = period === 'today' ? new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  void d;
+  const { mins: ilM, secs: ilS } = ilNowParts();
+  const start = period === 'today' ? now() - (ilM * 60 + ilS) * 1000 // חצות בשעון ישראל
     : period === 'week' ? now() - 7 * 864e5 : period === 'month' ? now() - 30 * 864e5 : 0;
   const open = db.tickets.filter((t) => t.status !== 'closed');
   const waiting = open.filter((t) => t.awaiting && t.status !== 'routing');
@@ -2426,7 +2513,7 @@ route('GET', /^\/api\/admin\/stats$/, (req, res, { query }) => {
   const closedByUser = people.map((u) => {
     const mine = closed.filter((t) => t.closedBy === u.id);
     return {
-      id: u.id, name: u.name, closed: mine.length,
+      id: u.id, name: u.name, closed: mine.length, target: Number((db.config.closeTargets || {})[u.id]) || null,
       avgHandleMs: avg(mine.map((t) => t.closedAt - t.createdAt)),
       avgFirstResponseMs: avg(mine.map(firstResponse).filter((x) => x != null)),
     };
@@ -2444,6 +2531,7 @@ route('GET', /^\/api\/admin\/stats$/, (req, res, { query }) => {
       opened: db.tickets.filter((t) => t.createdAt >= start).length,
       closed: closed.length,
       byUser: closedByUser,
+      days: { today: 1, week: 7, month: 30 }[period] || null,
     },
   });
 }, { auth: 'admin' });

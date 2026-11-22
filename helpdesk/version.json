@@ -1,7 +1,7 @@
 {
-  "version": 84,
+  "version": 85,
   "files": {
-    "server.js": "bedf146cf17e2f9a3857246ffa63a734f812de89db00045343e044d393745db3",
+    "server.js": "a2f6dbbc9da86b92b39532f56ad23c78fb3931f66b4857b675e5222edba955e5",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
     "reset-password.bat": "662bfbec8b94b264fd7b585a365f389415b8ec66bea540e876418e7a3f805187",
     "README-HE.txt": "df99092cc82f3de6e6d685ca604d95e154879a4a75ba6a0854e4134dd27e5cf3",
@@ -14,11 +14,11 @@
     "lib/greenapi.js": "ac42b3418b86fcca4b0ee8a82116a5a1b1a97fcc206d91d3b5b5338051ba25a3",
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "67c3f7771298c520fff27587f171e05195209a2bbfcd9aae7414fba949f04dbd",
-    "public/app.js": "ac4829e67851ed47628f1d92912dd3ab3e79063f7c04557103e9d5e2cecf7e21",
-    "public/changelog.json": "61d999bdb3e181f052d1e30b5f369abed815cfe3bbff1745c634308d3a50e0fe",
+    "public/app.js": "b133fe1742ee4bf8fba581477eec6b818eabde789562de3ae02028d12400c832",
+    "public/changelog.json": "2a31b9ceeaeddcf6fa52e3695415dfb8d02db0e133e9ff7763b265e07baa236e",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
     "public/style.css": "e4420f7267b8ff7f307dcc8381dd729dcc084d528f1abb16c9edc33d46f79394"
   },
-  "notes": "✂️ הצעת \"מה בוצע\" בסגירה – שורה אחת קצרה"
+  "notes": "🌆 ניתוב ערב: פניות פרטיות חדשות לעובד אחד בשעות שמוגדרות, והחזרה לעובד המקור בשעות שמוגדרות | 🎯 דשבורד: יעד סגירה יומי לכל עובד | 📊 'היום' בדשבורד לפי שעון ישראל"
 }
