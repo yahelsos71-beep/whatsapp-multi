@@ -497,3 +497,39 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .item.wait.mid { border-right-color: var(--yellow) !important; }
 .item.wait.late { border-right-color: var(--red) !important; }
 .item.sel { border-color: var(--green) !important; }
+
+/* ---------- 🎫 משימות צוות ---------- */
+#svcBtn { position: relative; }
+#svcBtn .badge { position: absolute; top: -4px; left: -4px; }
+.svc-who { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.svc-who button { padding: 14px 10px; font-size: 17px; font-weight: 700; border: 2px solid var(--hc); color: var(--hc); background: var(--panel); }
+.svc-who button.on { background: var(--hc); color: #fff; }
+.svc-err { color: var(--err); font-weight: 600; min-height: 20px; margin-top: 8px; }
+.svc-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.svc-top h3 { margin: 0; }
+.svc-top .spacer { flex: 1; }
+.svc-tabs, .svc-filter { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.svc-tabs button { border-bottom: 3px solid var(--hc, var(--line)); }
+.svc-tabs button.on { background: var(--hc, var(--green)); color: #fff; }
+.svc-filter button { padding: 4px 10px; font-size: 13px; }
+.svc-filter button.on { background: var(--green); color: #fff; }
+.svc-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; max-height: 62vh; overflow-y: auto; }
+.svc-card { background: var(--panel2); border-radius: var(--radius); border-inline-start: 5px solid var(--hc); padding: 10px 12px; }
+.svc-card.closed { opacity: .65; }
+.svc-h { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.svc-subj { font-weight: 600; flex: 1; min-width: 120px; }
+.svc-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-top: 4px; }
+.svc-who-chip { color: var(--hc); font-weight: 700; }
+.svc-det { white-space: pre-wrap; margin-top: 6px; font-size: 14px; }
+.svc-acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; align-items: center; }
+.svc-acts button { padding: 5px 10px; font-size: 13px; }
+.svc-acts select { width: auto; padding: 4px 8px; font-size: 13px; }
+.svc-hist { font-size: 12px; color: var(--muted); margin-top: 6px; border-top: 1px dashed var(--line); padding-top: 6px; }
+.chip.svc-urg { background: var(--red); color: #fff; font-weight: 700; }
+.chip.svc-st.new { background: var(--blue); color: #fff; }
+.chip.svc-st.progress { background: var(--yellow); color: #3b2a00; }
+.chip.svc-st.closed { background: var(--green); color: #fff; }
+@media (max-width: 800px) {
+  .svc-list { max-height: none; }
+  .svc-acts button, .svc-acts select { flex: 1 1 auto; }
+}

@@ -32,7 +32,7 @@ function toast(msg, err = false, ms = 3500) {
 }
 const modal = $('#modal'), box = $('#box');
 function openModal(html, wide = false) { box.className = 'box' + (wide ? ' wide' : ''); box.innerHTML = html; modal.classList.add('on'); }
-function closeModal() { modal.classList.remove('on'); }
+function closeModal() { modal.classList.remove('on'); if (S.svc) S.svc.open = false; }
 modal.addEventListener('mousedown', (e) => { if (e.target === modal) closeModal(); });
 
 const localPhone = (p) => { p = String(p || ''); if (!p.startsWith('972')) return p ? '+' + p : ''; const d = '0' + p.slice(3); return d.length === 10 ? d.slice(0, 3) + '-' + d.slice(3) : d.length === 9 ? d.slice(0, 2) + '-' + d.slice(2) : d; };
@@ -126,6 +126,8 @@ async function startMain() {
       <a id="multiBtn" href="whatsappmulti://open" style="display:none"><button tabindex="-1" title="פתיחת התוכנה WhatsApp Multi (הוואטסאפים הרגילים, כולל הפרטי)">📱<span class="lbl"> WhatsApp Multi</span></button></a>
       ${S.me.waAccess ? '<button id="waBtn" title="כל הצ׳אטים של מספרי המשרד – כמו בוואטסאפ (לא רק קריאות)">💬<span class="lbl"> וואטסאפ</span></button>' : ''}
       <button id="taskBtn" title="הודעה בקבוצה המשותפת – פותחת קריאה אצל הצד השני">📋<span class="lbl"> ${S.me.role === 'admin' ? 'קריאה לעובד' : 'פנייה למנהל'}</span></button>
+      <button id="svcBtn" title="משימות צוות – קריאות פנימיות לטל, חני, חיים ונועה (Alt+N = משימה חדשה)">🎫<span class="lbl"> משימות</span><span class="badge on" id="svcBadge" style="display:none"></span></button>
+      <button id="svcNewBtn" title="משימה חדשה (Alt+N)">➕</button>
       <button id="staffBtn" title="צ׳אט פנימי עם הצוות">💭<span class="lbl"> צוות</span><span class="badge on" id="staffBadge" style="display:none"></span></button>
       <button id="newChat" title="שליחת הודעה ללקוח חדש">✉️<span class="lbl"> שיחה חדשה</span></button>
       <button id="muteBtn"></button>
@@ -154,6 +156,8 @@ async function startMain() {
   $('#newChat').onclick = newChatDialog;
   try { if (localStorage.getItem('hd-multi') !== '0') $('#multiBtn').style.display = ''; } catch {}
   $('#taskBtn').onclick = taskDialog;
+  $('#svcBtn').onclick = svcOpen;
+  $('#svcNewBtn').onclick = () => svcNewDialog(false);
   $('#staffBtn').onclick = () => (S.staff.open ? staffClose() : staffOpen(null));
   api('GET', '/api/staff/unread').then((u) => { S.staff.unread = u; staffBadge(); }).catch(() => {});
   if ($('#waBtn')) $('#waBtn').onclick = () => (S.mode === 'wa' ? leaveWa() : enterWa());
@@ -176,6 +180,7 @@ async function startMain() {
   S.tickets = new Map(list.map((t) => [t.id, t]));
   S.users = users; S.instances = insts;
   loadTemplates();
+  svcLoad();
   fillUserFilter();
   renderInstances(); renderTabs(); renderList(); renderChat();
   connectEvents();
@@ -197,11 +202,13 @@ function notify(title, body) {
 }
 
 function onEvent(ev) {
+  if (ev.type && ev.type.startsWith('svc')) return svcOnEvent(ev);
   if (ev.type === 'hello') {
     if (ev.version && S.version && ev.version !== S.version) location.reload();
     S.instances = ev.instances; renderInstances();
     // חיבור מחדש – מרעננים את הרשימה
     api('GET', '/api/tickets').then((list) => { S.tickets = new Map(list.map((t) => [t.id, t])); renderList(); }).catch(() => {});
+    svcLoad();
   } else if (ev.type === 'instances') { S.instances = ev.list; renderInstances(); }
   else if (ev.type === 'ticket') {
     const t = ev.ticket;
@@ -1447,6 +1454,173 @@ function adminGeneral() {
     ignoreGroupNames: $('#gIgnNames').value.split('\n').map((x) => x.trim()).filter(Boolean),
     serviceTargets: targets });
 }
+
+
+// =====================================================================
+// 🎫 משימות צוות: פתיחת משימה לאיש צוות + חלון משימות
+// =====================================================================
+S.svc = { handlers: [], calls: [], canManage: false, isAdmin: false, whatsapp: false, open: false, tab: null, filter: 'open' };
+const SVC_ST = { new: 'חדשה', progress: 'בטיפול', closed: 'סגורה' };
+const svcColor = (userId) => (S.svc.handlers.find((h) => h.userId === userId) || {}).color || '#687482';
+const svcIsHandler = () => S.svc.handlers.some((h) => h.userId === S.me.id);
+async function svcLoad() {
+  try { Object.assign(S.svc, await api('GET', '/api/svc')); } catch { return; }
+  svcBadge(); if (S.svc.open) svcRender();
+}
+function svcBadge() {
+  const b = $('#svcBadge'); if (!b) return;
+  const n = S.svc.calls.filter((c) => c.status === 'new' && c.assigneeId === S.me.id).length;
+  b.textContent = n; b.style.display = n ? '' : 'none';
+}
+function svcOnEvent(ev) {
+  if (ev.type === 'svc') {
+    const i = S.svc.calls.findIndex((c) => c.id === ev.call.id);
+    if (i >= 0) S.svc.calls[i] = ev.call; else S.svc.calls.push(ev.call);
+  } else if (ev.type === 'svc-del') S.svc.calls = S.svc.calls.filter((c) => c.id !== ev.id);
+  else if (ev.type === 'svc-handlers') S.svc.handlers = ev.handlers;
+  else if (ev.type === 'svc-new') {
+    const c = ev.call, what = ev.kind === 'transfer' ? 'הועברה אליך משימה' : 'משימה חדשה בשבילך';
+    Sounds.newMessage();
+    toast(`🎫 ${what} #${c.id}${c.urgent ? ' 🔴 דחוף' : ''}: ${c.subject} (מאת ${ev.byName})`, false, 8000);
+    notify(`🎫 ${what} #${c.id}${c.urgent ? ' – דחוף' : ''}`, `${c.subject}${c.customer ? ' · ' + c.customer : ''}`);
+    return;
+  } else return;
+  svcBadge(); if (S.svc.open) svcRender();
+}
+
+// ---------- מסך 1: פתיחת משימה ----------
+function svcNewDialog(back) {
+  if (!S.svc.handlers.length) {
+    openModal(`<h3>🎫 משימה חדשה</h3><div class="hint">עוד לא הוגדרו מטפלים.${S.svc.isAdmin ? ' מגדירים ב"🎫 משימות" ← ⚙️ מטפלים.' : ' מנהל צריך להגדיר אותם.'}</div><div class="row"><button id="cancel">סגור</button></div>`);
+    $('#cancel').onclick = closeModal; return;
+  }
+  let who = null;
+  openModal(`<h3>🎫 משימה חדשה</h3>
+    <label>למי? <b style="color:var(--red)">*</b></label>
+    <div class="svc-who" id="svcWho">${S.svc.handlers.map((h) => `<button type="button" data-u="${esc(h.userId)}" style="--hc:${esc(h.color)}">${esc(h.name)}</button>`).join('')}</div>
+    <label>נושא <b style="color:var(--red)">*</b></label><input id="svcSubj" maxlength="120" placeholder="למשל: להתקשר ללקוח לגבי החשבונית">
+    <div class="grid2"><div><label>לקוח / איש קשר</label><input id="svcCust" maxlength="120"></div>
+      <div><label>טלפון</label><input id="svcPhone" maxlength="20" inputmode="tel" dir="ltr" style="text-align:right"></div></div>
+    <label>פרטים</label><textarea id="svcDet" rows="3" maxlength="2000"></textarea>
+    <label class="check"><input type="checkbox" id="svcUrg"> 🔴 דחוף</label>
+    <div class="svc-err" id="svcErr"></div>
+    <div class="row"><button class="primary" id="svcSave">פתח קריאה</button><button id="cancel">ביטול</button></div>`);
+  const mark = () => box.querySelectorAll('#svcWho button').forEach((b) => b.classList.toggle('on', b.dataset.u === who));
+  box.querySelectorAll('#svcWho button').forEach((b) => (b.onclick = () => { who = b.dataset.u; mark(); $('#svcErr').textContent = ''; }));
+  $('#svcSubj').focus();
+  $('#cancel').onclick = () => (back ? svcOpen() : closeModal());
+  $('#svcSave').onclick = async () => {
+    const err = (m, el) => { $('#svcErr').textContent = '⚠️ ' + m; if (el) el.focus(); };
+    const subject = $('#svcSubj').value.trim();
+    if (!who) return err('צריך לבחור למי להעביר את הקריאה');
+    if (subject.length < 2) return err('חסר נושא לקריאה', $('#svcSubj'));
+    $('#svcSave').disabled = true;
+    try {
+      const c = await api('POST', '/api/svc/calls', { assigneeId: who, subject, customer: $('#svcCust').value, phone: $('#svcPhone').value, details: $('#svcDet').value, urgent: $('#svcUrg').checked });
+      if (!S.svc.calls.some((x) => x.id === c.id)) S.svc.calls.push(c);
+      toast(`קריאה #${c.id} הועברה ל${c.assigneeName} ✓`, false, 5000);
+      if (back) svcOpen(); else closeModal();
+      svcBadge();
+    } catch (e) { err(e.message); $('#svcSave').disabled = false; }
+  };
+}
+
+// ---------- מסך 2: חלון המשימות ----------
+function svcOpen() {
+  if (S.svc.tab === null) S.svc.tab = svcIsHandler() ? S.me.id : 'all';
+  S.svc.open = true;
+  openModal('<div id="svcWin"></div>', true);
+  svcRender();
+  svcLoad();
+}
+function svcSort(list) {
+  return list.sort((a, b) => (a.status === 'closed') - (b.status === 'closed') || (a.status === 'closed' ? (b.closedAt || 0) - (a.closedAt || 0) : (b.urgent - a.urgent) || (b.createdAt - a.createdAt)));
+}
+function svcCard(c) {
+  const others = S.svc.handlers.filter((h) => h.userId !== c.assigneeId);
+  const m = S.svc.canManage, closed = c.status === 'closed';
+  return `<div class="svc-card ${closed ? 'closed' : ''}" style="--hc:${esc(svcColor(c.assigneeId))}" data-id="${c.id}">
+    <div class="svc-h"><b>#${c.id}</b> <span class="svc-subj">${esc(c.subject)}</span>
+      ${c.urgent ? '<span class="chip svc-urg">🔴 דחוף</span>' : ''}<span class="chip svc-st ${c.status}">${SVC_ST[c.status] || ''}</span></div>
+    <div class="svc-meta"><span class="svc-who-chip">👤 ${esc(c.assigneeName)}</span>
+      ${c.customer ? `<span>🏢 ${esc(c.customer)}</span>` : ''}${c.phone ? `<span>📞 <a href="tel:${esc(c.phone.replace(/[^0-9+]/g, ''))}" dir="ltr">${esc(c.phone)}</a></span>` : ''}
+      <span>🕒 ${fmtWhen(c.createdAt)} · ${esc(c.createdByName)}</span>${closed && c.closedAt ? `<span>✅ ${fmtWhen(c.closedAt)}</span>` : ''}</div>
+    ${c.details ? `<div class="svc-det">${esc(c.details)}</div>` : ''}
+    <div class="svc-acts">
+      ${m && c.status === 'new' ? '<button data-a="start">▶ התחלתי לטפל</button>' : ''}
+      ${m && !closed ? '<button class="primary" data-a="close">✅ סגור קריאה</button>' : ''}
+      ${m && closed ? '<button data-a="reopen">🔄 פתח מחדש</button>' : ''}
+      ${m && others.length ? `<select data-a="transfer"><option value="">↪️ העבר ל...</option>${others.map((h) => `<option value="${esc(h.userId)}">${esc(h.name)}</option>`).join('')}</select>` : ''}
+      <button class="ghost" data-a="hist">🕘 היסטוריה</button>
+      ${S.svc.isAdmin ? '<button class="ghost" data-a="del" title="מחיקה">🗑️</button>' : ''}
+    </div>
+    <div class="svc-hist" style="display:none">${(c.history || []).map((h) => `<div>${fmtWhen(h.ts)} · ${esc(h.byName)}: ${h.kind === 'open' ? 'פתח/ה את הקריאה' : h.kind === 'assign' ? `העביר/ה מ${esc(h.fromName)} ל${esc(h.toName)}` : `סטטוס ${SVC_ST[h.from] || ''} ← ${SVC_ST[h.to] || ''}`}</div>`).join('')}</div>
+  </div>`;
+}
+function svcRender() {
+  const w = $('#svcWin'); if (!w) { S.svc.open = false; return; }
+  const all = S.svc.calls, F = S.svc.filter;
+  if (S.svc.tab !== 'all' && !S.svc.handlers.some((h) => h.userId === S.svc.tab)) S.svc.tab = 'all';
+  const openOf = (id) => all.filter((c) => c.status !== 'closed' && (id === 'all' || c.assigneeId === id)).length;
+  let list = all.filter((c) => S.svc.tab === 'all' || c.assigneeId === S.svc.tab);
+  list = list.filter((c) => F === 'all' || (F === 'open' ? c.status !== 'closed' : c.status === F));
+  svcSort(list);
+  const tabs = [...S.svc.handlers.map((h) => ({ id: h.userId, name: h.userId === S.me.id ? 'הקריאות שלי' : h.name, color: h.color })), { id: 'all', name: 'כולם', color: '' }];
+  w.innerHTML = `<div class="svc-top"><h3>🎫 משימות צוות</h3><span class="spacer"></span>
+      <button class="primary" id="svcAdd" title="Alt+N">➕ משימה חדשה</button>${S.svc.isAdmin ? '<button id="svcCfg">⚙️ מטפלים</button>' : ''}<button class="ghost" id="svcX">✕</button></div>
+    <div class="svc-tabs">${tabs.map((t) => `<button data-t="${esc(t.id)}" class="${S.svc.tab === t.id ? 'on' : ''}" ${t.color ? `style="--hc:${esc(t.color)}"` : ''}>${esc(t.name)} <span class="chip">${openOf(t.id)}</span></button>`).join('')}</div>
+    <div class="svc-filter">${[['open', 'פתוחות'], ['new', 'חדשות'], ['progress', 'בטיפול'], ['closed', 'סגורות'], ['all', 'הכול']].map(([k, n]) => `<button data-f="${k}" class="${F === k ? 'on' : ''}">${n}</button>`).join('')}</div>
+    <div class="svc-list">${list.map(svcCard).join('') || '<div class="empty">אין משימות כאן 🎉</div>'}</div>`;
+  $('#svcX').onclick = () => { S.svc.open = false; closeModal(); };
+  $('#svcAdd').onclick = () => svcNewDialog(true);
+  if ($('#svcCfg')) $('#svcCfg').onclick = svcHandlersDialog;
+  w.querySelectorAll('[data-t]').forEach((b) => (b.onclick = () => { S.svc.tab = b.dataset.t; svcRender(); }));
+  w.querySelectorAll('[data-f]').forEach((b) => (b.onclick = () => { S.svc.filter = b.dataset.f; svcRender(); }));
+  w.querySelectorAll('.svc-card').forEach((card) => {
+    const id = Number(card.dataset.id);
+    const run = async (body) => {
+      try { const c = await api('POST', `/api/svc/calls/${id}`, body); const i = S.svc.calls.findIndex((x) => x.id === id); if (i >= 0) S.svc.calls[i] = c; svcRender(); svcBadge(); return c; }
+      catch (e) { toast(e.message, true); }
+    };
+    card.querySelectorAll('button[data-a]').forEach((b) => (b.onclick = async () => {
+      const a = b.dataset.a;
+      if (a === 'hist') { const h = card.querySelector('.svc-hist'); h.style.display = h.style.display === 'none' ? '' : 'none'; return; }
+      if (a === 'del') {
+        if (!confirm(`למחוק את קריאה #${id}? אי אפשר לבטל.`)) return;
+        try { await api('DELETE', `/api/svc/calls/${id}`); S.svc.calls = S.svc.calls.filter((x) => x.id !== id); svcRender(); svcBadge(); toast(`קריאה #${id} נמחקה`); } catch (e) { toast(e.message, true); }
+        return;
+      }
+      b.disabled = true; await run({ action: a });
+    }));
+    const sel = card.querySelector('select[data-a="transfer"]');
+    if (sel) sel.onchange = async () => { if (!sel.value) return; const c = await run({ action: 'transfer', to: sel.value }); if (c) toast(`קריאה #${id} הועברה ל${c.assigneeName} ✓`); };
+  });
+}
+
+// ---------- ⚙️ עריכת רשימת המטפלים (מנהל) ----------
+function svcHandlersDialog() {
+  const COLORS = ['#2b7de9', '#d6336c', '#2f9e44', '#f08c00', '#7048e8', '#0c8599', '#e8590c', '#5c940d'];
+  const cur = new Map(S.svc.handlers.map((h) => [h.userId, h.color]));
+  const order = [...S.svc.handlers.map((h) => h.userId), ...S.users.filter((u) => !cur.has(u.id)).map((u) => u.id)];
+  openModal(`<h3>⚙️ מטפלים במשימות צוות</h3><div class="hint">מסמנים מי מקבל משימות ובוחרים לו צבע.</div>
+    <div id="svcHl">${order.map((id, i) => { const u = S.users.find((x) => x.id === id); if (!u) return ''; return `<div class="row svc-hrow" style="margin-top:6px">
+      <label class="check" style="flex:1;margin:0"><input type="checkbox" data-u="${esc(id)}" ${cur.has(id) ? 'checked' : ''}> ${esc(u.name)}</label>
+      <input type="color" data-c="${esc(id)}" value="${esc(cur.get(id) || COLORS[i % COLORS.length])}" style="width:48px;padding:2px"></div>`; }).join('')}</div>
+    <label class="check"><input type="checkbox" id="svcWa" ${S.svc.whatsapp ? 'checked' : ''}> לשלוח למטפל גם הודעת וואטסאפ לטלפון שמוגדר אצלו (ניהול ← משתמשים)</label>
+    <div class="row"><button class="primary" id="svcHSave">שמור</button><button id="cancel">ביטול</button></div>`);
+  $('#cancel').onclick = svcOpen;
+  $('#svcHSave').onclick = async () => {
+    const handlers = [...box.querySelectorAll('#svcHl input[type=checkbox]')].filter((x) => x.checked).map((x) => ({ userId: x.dataset.u, color: box.querySelector(`[data-c="${x.dataset.u}"]`).value }));
+    try { const r = await api('PUT', '/api/svc/handlers', { handlers, whatsapp: $('#svcWa').checked }); S.svc.handlers = r.handlers; S.svc.whatsapp = r.whatsapp; toast('נשמר ✓'); svcOpen(); }
+    catch (e) { toast(e.message, true); }
+  };
+}
+
+// Alt+N – משימה חדשה מכל מקום בתוכנה
+document.addEventListener('keydown', (e) => {
+  if (!S.me || !$('#svcBtn') || !e.altKey || e.ctrlKey || e.metaKey || e.code !== 'KeyN') return;
+  e.preventDefault(); svcNewDialog(S.svc.open);
+});
 
 boot();
 

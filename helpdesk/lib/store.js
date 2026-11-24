@@ -23,7 +23,7 @@ function writeJson(file, value) {
 }
 function flushAll() {
   for (const f of Object.keys(timers)) clearTimeout(timers[f]);
-  try { writeJsonNow('config.json', db.config); writeJsonNow('users.json', db.users); writeJsonNow('tickets.json', db.tickets); writeJsonNow('sessions.json', db.sessions); writeJsonNow('contacts.json', db.contacts); writeJsonNow('wachats.json', db.waChats); writeJsonNow('staffchat.json', db.staffChat); } catch {}
+  try { writeJsonNow('config.json', db.config); writeJsonNow('users.json', db.users); writeJsonNow('tickets.json', db.tickets); writeJsonNow('sessions.json', db.sessions); writeJsonNow('contacts.json', db.contacts); writeJsonNow('wachats.json', db.waChats); writeJsonNow('staffchat.json', db.staffChat); writeJsonNow('service_calls.json', db.serviceCalls); } catch {}
 }
 
 const DEFAULT_CONFIG = {
@@ -72,6 +72,7 @@ const db = {
   sessions: readJson('sessions.json', {}),
   contacts: readJson('contacts.json', []), // { id, company, name, phones: ['9725...'], source: 'import'|'manual' }
   staffChat: readJson('staffchat.json', []), // צ'אט פנימי בין העובדים: { id, from, to, text, ts, read, ticketId }
+  serviceCalls: readJson('service_calls.json', null), // 🎫 משימות צוות: { seq, calls: [...] }
   waChats: readJson('wachats.json', {}), // "instId|chatId" -> { instanceId, chatId, name, ts, text, dir, isGroup } – למסך "וואטסאפ"
 };
 db.config.ai = Object.assign({}, DEFAULT_CONFIG.ai, db.config.ai);
@@ -98,6 +99,20 @@ db.config.personRules = db.config.personRules || [];
 if (!db.config.ignoreGroupNames) db.config.ignoreGroupNames = ['פורום מתקינים', 'מתח נמוך'];
 db.config.hours = Object.assign({}, DEFAULT_CONFIG.hours, db.config.hours);
 if (db.config.quietMinutes === undefined) db.config.quietMinutes = 30;
+
+// ---------- מיגרציה: משימות צוות (גרסה 86) ----------
+// יוצר את data/service_calls.json עם מונה שמתחיל ב-101, ורשימת מטפלים ראשונית מהמשתמשים טל / חני / חיים / נועה
+if (!db.serviceCalls || !Array.isArray(db.serviceCalls.calls)) {
+  db.serviceCalls = { seq: 100, calls: [] };
+  try { writeJsonNow('service_calls.json', db.serviceCalls); } catch (e) { console.error('migrate service_calls', e.message); }
+}
+if (!Array.isArray(db.config.svcHandlers)) {
+  const colors = ['#2b7de9', '#d6336c', '#2f9e44', '#f08c00'];
+  db.config.svcHandlers = FRESH || db.config.cleanInstall ? [] : ['טל', 'חני', 'חיים', 'נועה']
+    .map((n) => db.users.find((u) => u.active !== false && new RegExp('^' + n + '(\\s|$)').test(String(u.name || '').trim())))
+    .filter(Boolean).map((u, i) => ({ userId: u.id, color: colors[i % colors.length] }));
+  if (!FRESH) { try { writeJsonNow('config.json', db.config); } catch {} }
+}
 
 const newId = () => crypto.randomBytes(6).toString('hex');
 
@@ -140,5 +155,6 @@ module.exports = {
   saveContacts: () => writeJson('contacts.json', db.contacts),
   saveWaChats: () => writeJson('wachats.json', db.waChats),
   saveStaffChat: () => writeJson('staffchat.json', db.staffChat),
+  saveServiceCalls: () => writeJson('service_calls.json', db.serviceCalls),
   flushAll,
 };

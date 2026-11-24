@@ -946,6 +946,52 @@ route('GET', /^\/api\/events$/, (req, res, { user }) => {
   req.on('close', () => { clearInterval(ka); clients.get(user.id)?.delete(res); });
 });
 
+// ---------- 🎫 משימות צוות ----------
+const svc = require('./lib/svccalls')({ db, save: () => store.saveServiceCalls(), saveConfig: () => store.saveConfig(), userById, now });
+// התראה למטפל: אירוע חי (צלצול + התראת דפדפן) ולפי ההגדרה גם וואטסאפ לטלפון שלו
+function svcNotify(call, assignee, by, kind) {
+  sendTo(assignee.userId, { type: 'svc-new', call, kind, byName: by.name });
+  if (!db.config.svcWhatsApp || assignee.userId === by.id) return;
+  const phone = normPhone(assignee.user.phone || '');
+  const inst = db.config.instances.find((i) => i.enabled !== false);
+  if (!phone || !inst) return;
+  const text = [`🎫 *${kind === 'transfer' ? 'הועברה אליך' : 'משימה חדשה'}* #${call.id}${call.urgent ? ' 🔴 דחוף' : ''}`, `📝 ${call.subject}`,
+    call.customer ? `👤 ${call.customer}` : '', call.phone ? `📞 ${call.phone}` : '', `מאת: ${by.name}`].filter(Boolean).join('\n');
+  ga.sendMessage(inst, phone + '@c.us', text).then((r) => { if (r && r.idMessage) sentIds.add(r.idMessage); }).catch((e) => log('svc whatsapp', e.message));
+}
+const svcReply = (res, r, okCode = 200) => (r.error ? send(res, r.code || 400, { error: r.error }) : send(res, okCode, r.call || { ok: true }));
+route('GET', /^\/api\/svc$/, (req, res, { user }) => send(res, 200, svc.state(user)));
+route('POST', /^\/api\/svc\/calls$/, async (req, res, { user }) => {
+  const r = svc.create(user, await readJson(req));
+  if (r.error) return svcReply(res, r);
+  log(`svc #${r.call.id} opened by ${user.name} → ${r.call.assigneeName}`);
+  emitAll({ type: 'svc', call: r.call });
+  svcNotify(r.call, r.assignee, user, 'new');
+  send(res, 200, r.call);
+});
+route('POST', /^\/api\/svc\/calls\/(\d+)$/, async (req, res, { user, params }) => {
+  const b = await readJson(req);
+  const r = svc.act(user, params[0], b);
+  if (r.error) return svcReply(res, r);
+  log(`svc #${r.call.id} ${b.action} by ${user.name}${r.assignee ? ' → ' + r.call.assigneeName : ''}`);
+  emitAll({ type: 'svc', call: r.call });
+  if (r.assignee) svcNotify(r.call, r.assignee, user, 'transfer');
+  send(res, 200, r.call);
+});
+route('DELETE', /^\/api\/svc\/calls\/(\d+)$/, (req, res, { user, params }) => {
+  const r = svc.remove(user, params[0]);
+  if (r.error) return svcReply(res, r);
+  log(`svc #${params[0]} deleted by ${user.name}`);
+  emitAll({ type: 'svc-del', id: Number(params[0]) });
+  send(res, 200, { ok: true });
+});
+route('PUT', /^\/api\/svc\/handlers$/, async (req, res, { user }) => {
+  const r = svc.setHandlers(user, await readJson(req));
+  if (r.error) return svcReply(res, r);
+  emitAll({ type: 'svc-handlers', handlers: svc.handlersView() });
+  send(res, 200, { ok: true, handlers: svc.handlersView(), whatsapp: !!db.config.svcWhatsApp });
+}, { auth: 'admin' });
+
 // ---------- קריאות ----------
 // ---------- 💭 צ'אט פנימי בין העובדים ----------
 const staffPair = (m, a, b) => (m.from === a && m.to === b) || (m.from === b && m.to === a);
