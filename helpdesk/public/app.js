@@ -2374,3 +2374,39 @@ function groupPop(ev) {
   el.querySelector('.gp-open').onclick = () => { el.remove(); if (S.mode === 'wa' && typeof leaveWa === 'function') leaveWa(); openTicket(ev.ticketId); };
   clearTimeout(el._t); el._t = setTimeout(() => el.remove(), 60000);
 }
+
+// ---------- ⏰ קריאות חורגות (גרסה 89) ----------
+// קריאה פתוחה יותר מ-30 דק׳ מפתיחתה (לא מושהית) → חלון גדול באמצע המסך: למנהל – כל החורגות, לעובד – שלו.
+// "הבנתי" / פתיחת קריאה → לא קופץ שוב על אותה קריאה 15 דק׳.
+const OVERDUE_MIN = 30, OVERDUE_AGAIN_MIN = 15;
+const overdueAck = (() => { try { return JSON.parse(localStorage.getItem('hd-overdue-ack') || '{}'); } catch { return {}; } })();
+const saveOverdueAck = () => { try { localStorage.setItem('hd-overdue-ack', JSON.stringify(overdueAck)); } catch {} };
+function overdueCheck() {
+  if (!S.me || !S.tickets) return;
+  const now = Date.now();
+  const all = [...S.tickets.values()].filter((t) => t.status !== 'closed' && !(t.snoozeUntil && t.snoozeUntil > now)
+    && t.createdAt && now - t.createdAt >= OVERDUE_MIN * 60000
+    && (S.me.role === 'admin' || t.assigneeId === S.me.id));
+  for (const id of Object.keys(overdueAck)) if (!S.tickets.has(id)) delete overdueAck[id];
+  const el = document.getElementById('overduePop');
+  const fresh = all.filter((t) => !overdueAck[t.id] || now - overdueAck[t.id] >= OVERDUE_AGAIN_MIN * 60000);
+  if (el) { if (!all.length) el.remove(); else if (fresh.some((t) => !el.dataset.ids.split(',').includes(t.id))) showOverdue(all); return; }
+  if (fresh.length) showOverdue(all);
+}
+function showOverdue(list) {
+  list.sort((a, b) => a.createdAt - b.createdAt);
+  document.getElementById('overduePop')?.remove();
+  const el = document.createElement('div');
+  el.id = 'overduePop'; el.dataset.ids = list.map((t) => t.id).join(',');
+  const mins = (t) => { const m = Math.floor((Date.now() - t.createdAt) / 60000); return m < 120 ? m + ' דק׳' : Math.floor(m / 60) + ' שע׳ ' + (m % 60) + ' דק׳'; };
+  el.innerHTML = `<div class="op-box"><div class="op-title">⏰ ${list.length === 1 ? 'קריאה פתוחה' : list.length + ' קריאות פתוחות'} יותר מחצי שעה</div>
+    <div class="op-list">${list.map((t) => `<button class="op-row" data-id="${t.id}"><b>${esc(t.customerName || '')}</b><span>${t.isGroup ? '👥 ' : ''}#${t.id}${S.me.role === 'admin' ? ' · ' + esc(t.assigneeName || 'לא משויך') : ''}</span><span class="op-age">${mins(t)}</span></button>`).join('')}</div>
+    <button class="primary op-ok">הבנתי</button></div>`;
+  const ack = () => { const n = Date.now(); for (const t of list) overdueAck[t.id] = n; saveOverdueAck(); el.remove(); };
+  el.querySelector('.op-ok').onclick = ack;
+  el.querySelectorAll('.op-row').forEach((b) => (b.onclick = () => { ack(); openTicket(b.dataset.id); }));
+  document.body.appendChild(el);
+  notify('⏰ קריאות פתוחות יותר מחצי שעה', list.map((t) => t.customerName).slice(0, 5).join(', '));
+}
+setInterval(overdueCheck, 30000);
+setTimeout(overdueCheck, 5000);

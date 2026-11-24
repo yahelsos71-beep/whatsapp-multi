@@ -1,5 +1,5 @@
 {
-  "version": 88,
+  "version": 89,
   "files": {
     "server.js": "02990859fcccf721642711e06525c0e39a8da7240dcdcc695461306b31725d99",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
@@ -15,11 +15,11 @@
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "230b5a6411950c62fe982851cf21d2ed7326e1a5b533db47d7a6e10d8543380b",
     "lib/svccalls.js": "71ef3591f6fcd93f6fe7c6e39d825fbbf84f799b08dbafe3ac0357c89f687239",
-    "public/app.js": "70e7e44b3072cf92a6b3817e4d01cd5f903a908f2b0400d962c0532c2d3e7d27",
-    "public/changelog.json": "2fb474bc9738ce0adafbd2e25dfd011334afb37d6f132e40c9fa2c13a7e1ef34",
+    "public/app.js": "0e22a054f64a615a96c0df2f7f9568eb240847d05c6a5219d4b1a631a5abd00c",
+    "public/changelog.json": "2d0672a0d6a3ed998a2c16404a0341576faffaede8056cd1bb269d009a8a4cb7",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "682d2fbb4946501c4c87f28a8386b7aadd81744069ea58f3a4c02c59397affea",
-    "public/style.css": "66d3a9349fe08a9d818102bf050f20c77639aefe37425f66c4478c890f8d4dea"
+    "public/style.css": "ecd90dfd9d8186017c5226036e5a0a1a5a917d06f63dccffcb5220f4de933f50"
   },
-  "notes": "🔕 הצלצולים במוקד בוטלו לגמרי (כולל כפתור 🔔 והגדרות הצלצול). התראות קופצות נשארו"
+  "notes": "⏰ קריאה פתוחה יותר מחצי שעה (לא מושהית) קופצת בגדול באמצע המסך – למנהל כל החורגות, לעובד שלו. 'הבנתי' → שוב אחרי 15 דק׳"
 }
