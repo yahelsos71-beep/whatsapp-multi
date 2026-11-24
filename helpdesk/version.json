@@ -1,5 +1,5 @@
 {
-  "version": 86,
+  "version": 87,
   "files": {
     "server.js": "02990859fcccf721642711e06525c0e39a8da7240dcdcc695461306b31725d99",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
@@ -15,11 +15,11 @@
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "230b5a6411950c62fe982851cf21d2ed7326e1a5b533db47d7a6e10d8543380b",
     "lib/svccalls.js": "71ef3591f6fcd93f6fe7c6e39d825fbbf84f799b08dbafe3ac0357c89f687239",
-    "public/app.js": "06cec666467bc80e3eff92ce461e00af85b78e51d47b116ee4ad883249efb396",
-    "public/changelog.json": "9f1a88f91669f9f2b14a4057841b70a067338146f5b3f698f2d7c997fb59be43",
+    "public/app.js": "3285599c06918fa6a8e0d45dba7558b9b7466cd03d5ac41eb4b8f3f226e32dd1",
+    "public/changelog.json": "cc26f919129cc72d023580945cb8e8c4837e4fb8789d1b38907720552c5c58a0",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "3a06fc4f782642542294f92fb93867c6ea501a76d79e3983f145e7de699b0eb8",
-    "public/style.css": "1955a4581703a3de59372c951d4da9224057ddbf4b691c6cc9f89535190d1942"
+    "public/style.css": "66d3a9349fe08a9d818102bf050f20c77639aefe37425f66c4478c890f8d4dea"
   },
-  "notes": "🎫 חדש: משימות צוות – פתיחת משימה לטל / חני / חיים / נועה (➕ או Alt+N) | חלון משימות עם לשונית לכל מטפל, סינון, דחופות קודם | התחלתי לטפל / סגור / פתח מחדש / העבר / מחק, עם היסטוריית שינויים | התראה עם צלצול למטפל (ואופציה לוואטסאפ)"
+  "notes": "🐞 תיקון: כפתור \"🎫 משימות\" פתח קריאת שירות כשעומדים על לקוח, וכפתור \"🛠 קריאת שירות\" לא הגיב"
 }

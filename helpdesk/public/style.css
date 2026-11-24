@@ -499,8 +499,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .item.sel { border-color: var(--green) !important; }
 
 /* ---------- 🎫 משימות צוות ---------- */
-#svcBtn { position: relative; }
-#svcBtn .badge { position: absolute; top: -4px; left: -4px; }
+#teamBtn { position: relative; }
+#teamBtn .badge { position: absolute; top: -4px; left: -4px; }
 .svc-who { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
 .svc-who button { padding: 14px 10px; font-size: 17px; font-weight: 700; border: 2px solid var(--hc); color: var(--hc); background: var(--panel); }
 .svc-who button.on { background: var(--hc); color: #fff; }

@@ -126,8 +126,8 @@ async function startMain() {
       <a id="multiBtn" href="whatsappmulti://open" style="display:none"><button tabindex="-1" title="פתיחת התוכנה WhatsApp Multi (הוואטסאפים הרגילים, כולל הפרטי)">📱<span class="lbl"> WhatsApp Multi</span></button></a>
       ${S.me.waAccess ? '<button id="waBtn" title="כל הצ׳אטים של מספרי המשרד – כמו בוואטסאפ (לא רק קריאות)">💬<span class="lbl"> וואטסאפ</span></button>' : ''}
       <button id="taskBtn" title="הודעה בקבוצה המשותפת – פותחת קריאה אצל הצד השני">📋<span class="lbl"> ${S.me.role === 'admin' ? 'קריאה לעובד' : 'פנייה למנהל'}</span></button>
-      <button id="svcBtn" title="משימות צוות – קריאות פנימיות לטל, חני, חיים ונועה (Alt+N = משימה חדשה)">🎫<span class="lbl"> משימות</span><span class="badge on" id="svcBadge" style="display:none"></span></button>
-      <button id="svcNewBtn" title="משימה חדשה (Alt+N)">➕</button>
+      <button id="teamBtn" title="משימות צוות – קריאות פנימיות לטל, חני, חיים ונועה (Alt+N = משימה חדשה)">🎫<span class="lbl"> משימות</span><span class="badge on" id="teamBadge" style="display:none"></span></button>
+      <button id="teamNewBtn" title="משימה חדשה (Alt+N)">➕</button>
       <button id="staffBtn" title="צ׳אט פנימי עם הצוות">💭<span class="lbl"> צוות</span><span class="badge on" id="staffBadge" style="display:none"></span></button>
       <button id="newChat" title="שליחת הודעה ללקוח חדש">✉️<span class="lbl"> שיחה חדשה</span></button>
       <button id="muteBtn"></button>
@@ -156,8 +156,8 @@ async function startMain() {
   $('#newChat').onclick = newChatDialog;
   try { if (localStorage.getItem('hd-multi') !== '0') $('#multiBtn').style.display = ''; } catch {}
   $('#taskBtn').onclick = taskDialog;
-  $('#svcBtn').onclick = svcOpen;
-  $('#svcNewBtn').onclick = () => svcNewDialog(false);
+  $('#teamBtn').onclick = svcOpen;
+  $('#teamNewBtn').onclick = () => svcNewDialog(false);
   $('#staffBtn').onclick = () => (S.staff.open ? staffClose() : staffOpen(null));
   api('GET', '/api/staff/unread').then((u) => { S.staff.unread = u; staffBadge(); }).catch(() => {});
   if ($('#waBtn')) $('#waBtn').onclick = () => (S.mode === 'wa' ? leaveWa() : enterWa());
@@ -1468,7 +1468,7 @@ async function svcLoad() {
   svcBadge(); if (S.svc.open) svcRender();
 }
 function svcBadge() {
-  const b = $('#svcBadge'); if (!b) return;
+  const b = $('#teamBadge'); if (!b) return;
   const n = S.svc.calls.filter((c) => c.status === 'new' && c.assigneeId === S.me.id).length;
   b.textContent = n; b.style.display = n ? '' : 'none';
 }
@@ -1618,7 +1618,7 @@ function svcHandlersDialog() {
 
 // Alt+N – משימה חדשה מכל מקום בתוכנה
 document.addEventListener('keydown', (e) => {
-  if (!S.me || !$('#svcBtn') || !e.altKey || e.ctrlKey || e.metaKey || e.code !== 'KeyN') return;
+  if (!S.me || !$('#teamBtn') || !e.altKey || e.ctrlKey || e.metaKey || e.code !== 'KeyN') return;
   e.preventDefault(); svcNewDialog(S.svc.open);
 });
 
