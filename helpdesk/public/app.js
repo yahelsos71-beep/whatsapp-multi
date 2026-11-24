@@ -130,8 +130,7 @@ async function startMain() {
       <button id="teamNewBtn" title="משימה חדשה (Alt+N)">➕</button>
       <button id="staffBtn" title="צ׳אט פנימי עם הצוות">💭<span class="lbl"> צוות</span><span class="badge on" id="staffBadge" style="display:none"></span></button>
       <button id="newChat" title="שליחת הודעה ללקוח חדש">✉️<span class="lbl"> שיחה חדשה</span></button>
-      <button id="muteBtn"></button>
-      <button id="mySettings" title="צלצולים וסיסמה">⚙️</button>
+      <button id="mySettings" title="ההגדרות שלי">⚙️</button>
       ${S.me.role === 'admin' ? '<button id="bcastBtn" title="הפצת וואטסאפ ללקוחות לפי מוצר או לרשימת מספרים">📣<span class="lbl"> הפצה</span></button>' : ''}
       ${S.me.role === 'admin' ? '<button id="dashBtn" title="דשבורד">📊<span class="lbl"> דשבורד</span></button><button id="adminBtn" title="ניהול">🛠️<span class="lbl"> ניהול</span></button>' : ''}
       <span class="me">${esc(S.me.name)} · v${S.version}</span>
@@ -172,9 +171,6 @@ async function startMain() {
   $('#fdFrom').onchange = (e) => { S.fdFrom = e.target.value; dateChanged(); };
   $('#fdTo').onchange = (e) => { S.fdTo = e.target.value; dateChanged(); };
   if ($('#fuser')) $('#fuser').onchange = (e) => { S.fuser = e.target.value; try { localStorage.setItem('hd-fuser', S.fuser); } catch {} renderList(); };
-  const paintMute = () => { $('#muteBtn').textContent = Sounds.settings.muted ? '🔕' : '🔔'; $('#muteBtn').title = Sounds.settings.muted ? 'הצלצולים כבויים' : 'הצלצולים פעילים'; };
-  $('#muteBtn').onclick = () => { Sounds.settings.muted = !Sounds.settings.muted; Sounds.save(); paintMute(); };
-  paintMute();
 
   const [list, users, insts] = await Promise.all([api('GET', '/api/tickets'), api('GET', '/api/users'), api('GET', '/api/instances')]);
   S.tickets = new Map(list.map((t) => [t.id, t]));
@@ -430,8 +426,7 @@ function renderChat() {
   const el = $('#chat'); if (!el) return;
   if (!S.view) {
     el.innerHTML = `<div class="welcome"><h2>שלום ${esc(S.me.name)} 👋</h2><div>בחר קריאה מהרשימה כדי להתחיל.</div>
-      <div class="hint">קריאות שמחכות לתשובה שלך מסומנות בנקודה ירוקה ומופיעות למעלה.<br>כל עוד יש לקוח שמחכה – יהיה צלצול תזכורת.</div>
-      ${Sounds.unlocked() ? '' : '<button class="primary" onclick="Sounds.play(Sounds.settings.newTone)">🔊 הפעל צלילים</button>'}</div>`;
+      <div class="hint">קריאות שמחכות לתשובה שלך מסומנות בנקודה ירוקה ומופיעות למעלה.<br>כל עוד יש לקוח שמחכה – תקפוץ התראת תזכורת.</div></div>`;
     return;
   }
   el.innerHTML = `<div class="chat-head" id="chead"></div><div id="hist"></div><div class="msgs" id="msgs"></div><div id="comp"></div>`;
@@ -898,7 +893,7 @@ function snoozeDialog(t) {
   ];
   const local = new Date(Date.now() + 3600e3 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   openModal(`<h3>⏸ השהיית הקריאה עם ${esc(t.customerName)}</h3>
-    <div class="hint">הקריאה עוברת לרשימת "⏸ מושהות" ולא מופיעה בין הפתוחות. כשמגיע הזמן – קופצת תזכורת ${t.assigneeName ? 'ל' + esc(t.assigneeName) : ''} עם צלצול, והקריאה חוזרת לרשימה.<br>אם הלקוח כותב בינתיים – הקריאה חוזרת מיד.</div>
+    <div class="hint">הקריאה עוברת לרשימת "⏸ מושהות" ולא מופיעה בין הפתוחות. כשמגיע הזמן – קופצת תזכורת ${t.assigneeName ? 'ל' + esc(t.assigneeName) : ''}, והקריאה חוזרת לרשימה.<br>אם הלקוח כותב בינתיים – הקריאה חוזרת מיד.</div>
     <div class="pick" style="margin-top:10px">${opts.map(([l, ts], i) => `<button data-i="${i}"><b style="flex:1">⏰ ${l}</b><span class="chip">${fmtWhen(ts)}</span></button>`).join('')}</div>
     <label>או בחר תאריך ושעה</label><div class="row" style="margin:0"><input type="datetime-local" id="sdt" value="${local}" style="flex:1"><button class="primary" id="sgo">השהה עד</button></div>
     <div class="row"><button id="cancel">ביטול</button></div>`);
@@ -1093,7 +1088,7 @@ async function taskDialog() {
     return;
   }
   openModal(`<h3>📋 ${isAdmin ? 'קריאה לעובד' : 'פנייה למנהל'}</h3>
-    <div class="hint">ההודעה נשלחת לקבוצה המשותפת בוואטסאפ, ונפתחת קריאה עם צלצול אצל ${isAdmin ? 'העובד' : 'הצד השני'} – עד שיענה או יסגור.</div>
+    <div class="hint">ההודעה נשלחת לקבוצה המשותפת בוואטסאפ, ונפתחת קריאה אצל ${isAdmin ? 'העובד' : 'הצד השני'} – עד שיענה או יסגור.</div>
     <label>למי?</label><div class="pick" id="tpick">${list.map((x, i) => `<button data-i="${i}"><b>${esc(x.userName)}</b><span class="chip">👥 ${esc(x.group)}</span></button>`).join('')}</div>
     <label>מה לכתוב?</label><textarea id="ttext" rows="4" placeholder="${isAdmin ? 'למשל: להתקשר ללקוח משה כהן לגבי החשבונית מאוקטובר' : 'למשל: לקוח מבקש הנחה – מאשר?'}"></textarea>
     <div class="row"><button class="primary" id="tsend" disabled>שלח</button><button id="cancel">ביטול</button></div>`);
@@ -1110,14 +1105,7 @@ async function taskDialog() {
 
 // ---------- הגדרות אישיות ----------
 function mySettingsDialog() {
-  const s = Sounds.settings;
-  const opts = (cur) => Object.entries(Sounds.TONES).map(([k, t]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${t.name}</option>`).join('');
   openModal(`<h3>⚙️ ההגדרות שלי <a id="newsAll" style="font-size:13px;cursor:pointer;float:left">🆕 מה חדש</a></h3>
-    <h4>צלצולים</h4>
-    <label>צליל להודעה / קריאה חדשה</label><div class="row" style="margin:0"><select id="sNew" style="flex:1">${opts(s.newTone)}</select><button id="tNew">▶</button></div>
-    <label>צלצול תזכורת (כשלקוח מחכה לתשובה)</label><div class="row" style="margin:0"><select id="sRem" style="flex:1">${opts(s.remindTone)}</select><button id="tRem">▶</button></div>
-    <label>כל כמה זמן לצלצל תזכורת</label><select id="sSec">${[[15, '15 שניות'], [30, 'חצי דקה'], [60, 'דקה'], [120, '2 דקות'], [300, '5 דקות']].map(([v, n]) => `<option value="${v}" ${v === s.remindSec ? 'selected' : ''}>${n}</option>`).join('')}</select>
-    <label>עוצמה</label><input id="sVol" type="range" min="0" max="1" step="0.05" value="${s.vol}">
     <h4>תצוגה</h4>
     <div class="seg" id="sTheme">${[['tech', '✨ טכנולוגי'], ['light', '☀️ בהיר'], ['dark', '🌙 כהה']].map(([k, n]) => `<button data-t="${k}" class="${currentTheme() === k ? 'on' : ''}">${n}</button>`).join('')}</div>
     <h4>תוכנת WhatsApp Multi</h4>
@@ -1125,18 +1113,12 @@ function mySettingsDialog() {
     <h4>שינוי סיסמה</h4>
     <div class="grid2"><div><label>סיסמה נוכחית</label><input id="pOld" type="password"></div><div><label>סיסמה חדשה</label><input id="pNew" type="password"></div></div>
     <div class="row"><button id="pSave">שנה סיסמה</button><span class="spacer" style="flex:1"></span><button class="primary" id="done">סגור</button></div>`);
-  $('#sNew').onchange = (e) => { s.newTone = e.target.value; Sounds.save(); Sounds.play(s.newTone); };
-  $('#sRem').onchange = (e) => { s.remindTone = e.target.value; Sounds.save(); Sounds.play(s.remindTone); };
-  $('#tNew').onclick = () => Sounds.play(s.newTone);
   $('#newsAll').onclick = () => whatsNew(true);
-  $('#tRem').onclick = () => Sounds.play(s.remindTone);
-  $('#sSec').onchange = (e) => { s.remindSec = Number(e.target.value); Sounds.save(); };
   box.querySelectorAll('#sTheme button').forEach((b) => (b.onclick = () => {
     try { localStorage.setItem('hd-theme', b.dataset.t); } catch {}
     applyTheme(b.dataset.t); box.querySelectorAll('#sTheme button').forEach((x) => x.classList.toggle('on', x === b));
   }));
   $('#sMulti').onchange = (e) => { try { localStorage.setItem('hd-multi', e.target.checked ? '1' : '0'); } catch {} $('#multiBtn').style.display = e.target.checked ? '' : 'none'; };
-  $('#sVol').oninput = (e) => { s.vol = Number(e.target.value); Sounds.save(); };
   $('#pSave').onclick = async () => {
     try { await api('POST', '/api/me/password', { old: $('#pOld').value, password: $('#pNew').value }); toast('הסיסמה שונתה ✓'); $('#pOld').value = $('#pNew').value = ''; }
     catch (e) { toast(e.message, true); }

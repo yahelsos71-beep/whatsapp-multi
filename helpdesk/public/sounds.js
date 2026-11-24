@@ -1,4 +1,4 @@
-// צלצולים – נוצרים בקוד, בלי קבצים. הגדרות נשמרות לכל משתמש בדפדפן.
+// צלצולים – בוטלו לחלוטין (גרסה 88): play() לא משמיע כלום.
 const Sounds = (() => {
   let ctx = null;
   const TONES = {
@@ -23,6 +23,7 @@ const Sounds = (() => {
     } catch {}
   }
   function play(key) {
+    return; // גרסה 88: הצלצולים בוטלו
     unlock();
     if (!ctx) return;
     const v = settings.vol;
