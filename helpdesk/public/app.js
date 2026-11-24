@@ -2377,7 +2377,7 @@ function groupPop(ev) {
 
 // ---------- ⏰ קריאות חורגות (גרסה 90) ----------
 // קריאה שלי (assigneeId = אני) פתוחה יותר מ-30 דק׳ מפתיחתה ולא מושהית → חלון גדול באמצע המסך, קריאה אחת בכל פעם (הוותיקה קודם).
-// רק למטפל עצמו – לא למנהלים. "כנס לסגירה" → פותח את הצ'אט + חלון הסגירה והתיעוד. "התעלם" (או כניסה בלי סגירה) → חוזר אחרי 5 דק׳.
+// רק למטפל עצמו. קריאה שלא שויכה (פרטית או קבוצה) – קופצת למנהלים (גרסה 91). "כנס לסגירה" → פותח את הצ'אט + חלון הסגירה והתיעוד. "התעלם" (או כניסה בלי סגירה) → חוזר אחרי 5 דק׳.
 // לא קופץ כשחלון אחר פתוח (למשל באמצע כתיבת תיעוד).
 const OVERDUE_MIN = 30, OVERDUE_AGAIN_MIN = 5;
 const overdueAck = (() => { try { return JSON.parse(localStorage.getItem('hd-overdue-ack') || '{}'); } catch { return {}; } })();
@@ -2386,7 +2386,7 @@ function overdueCheck() {
   if (!S.me || !S.tickets) return;
   const now = Date.now();
   for (const id of Object.keys(overdueAck)) if (!S.tickets.has(id)) delete overdueAck[id];
-  const mine = [...S.tickets.values()].filter((t) => t.status !== 'closed' && t.assigneeId === S.me.id
+  const mine = [...S.tickets.values()].filter((t) => t.status !== 'closed' && (t.assigneeId === S.me.id || (!t.assigneeId && S.me.role === 'admin'))
     && !(t.snoozeUntil && t.snoozeUntil > now) && t.createdAt && now - t.createdAt >= OVERDUE_MIN * 60000);
   const el = document.getElementById('overduePop');
   if (el) { if (!mine.some((t) => t.id === el.dataset.id)) el.remove(); return; }
@@ -2401,7 +2401,7 @@ function showOverdue(t, total) {
   const age = m < 120 ? m + ' דקות' : Math.floor(m / 60) + ' שעות ו-' + (m % 60) + ' דקות';
   el.innerHTML = `<div class="op-box"><div class="op-title">⏰ קריאה פתוחה ${age}</div>
     <div class="op-name">${t.isGroup ? '👥 ' : ''}${esc(t.customerName || '')}</div>
-    <div class="op-sub">קריאה #${t.id}${t.lastText ? ' · ' + esc(String(t.lastText).slice(0, 80)) : ''}</div>
+    <div class="op-sub">${t.assigneeId ? '' : '⚠️ לא שויכה לאף עובד · '}קריאה #${t.id}${t.lastText ? ' · ' + esc(String(t.lastText).slice(0, 80)) : ''}</div>
     ${total > 1 ? `<div class="op-sub">יש לך עוד ${total === 2 ? 'קריאה אחת שחרגה – תקפוץ אחרי זו' : (total - 1) + ' קריאות שחרגו – יקפצו אחת אחרי השנייה'}</div>` : ''}
     <button class="primary op-go">💬 כנס לסגירה ותיעוד</button>
     <button class="op-skip">התעלם – הזכר לי בעוד 5 דקות</button></div>`;
