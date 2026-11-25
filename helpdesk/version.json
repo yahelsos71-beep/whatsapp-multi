@@ -1,7 +1,7 @@
 {
-  "version": 91,
+  "version": 92,
   "files": {
-    "server.js": "02990859fcccf721642711e06525c0e39a8da7240dcdcc695461306b31725d99",
+    "server.js": "84813d0eddc632d883fa679e674f30ccec882eb63db07cd9fde84d695dd1b520",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
     "reset-password.bat": "662bfbec8b94b264fd7b585a365f389415b8ec66bea540e876418e7a3f805187",
     "README-HE.txt": "df99092cc82f3de6e6d685ca604d95e154879a4a75ba6a0854e4134dd27e5cf3",
@@ -15,11 +15,11 @@
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "230b5a6411950c62fe982851cf21d2ed7326e1a5b533db47d7a6e10d8543380b",
     "lib/svccalls.js": "71ef3591f6fcd93f6fe7c6e39d825fbbf84f799b08dbafe3ac0357c89f687239",
-    "public/app.js": "966753188f9532143db80efeea3fe1abebb11d28aad4e7ac2a776182ea18186e",
-    "public/changelog.json": "3e697eb9510eff9c99c8859a548ab2cc3b800b298fb9550739f34fb9ccb78ccf",
+    "public/app.js": "8774e2a02b78302840d7dcd194811aebe1a7fe681a9b8d3fa9b0f905a7a809a5",
+    "public/changelog.json": "da8d6bcb55f956c916f5599654760de2cf5eac227490a71712d56ad6989a307c",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "682d2fbb4946501c4c87f28a8386b7aadd81744069ea58f3a4c02c59397affea",
     "public/style.css": "1eac4e95ceb07ebd98ba2f73232064bb2dc1c45bb67ccc8b8715844f294b8a2c"
   },
-  "notes": "⏰ קריאה שלא שויכה לאף עובד (פרטית או קבוצה) ופתוחה יותר מחצי שעה – קופצת למנהלים"
+  "notes": "התראות קופצות רק לעובד שהקריאה שלו | בוטל חלון 'קריאה חדשה בקבוצה' | קריאה חורגת שלא שויכה – לא קופצת לאף אחד"
 }

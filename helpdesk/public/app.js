@@ -217,7 +217,7 @@ function onEvent(ev) {
       notify(ev.sound === 'new' ? 'קריאה חדשה' : 'הודעה חדשה', `${t.customerName}: ${t.lastText || ''}`);
     }
   } else if (ev.type === 'group-pop') {
-    groupPop(ev);
+    // גרסה 92: בוטל
   } else if (ev.type === 'staffmsg') {
     staffOnMessage(ev.message, ev.fromName);
   } else if (ev.type === 'staffread') {
@@ -2377,7 +2377,7 @@ function groupPop(ev) {
 
 // ---------- ⏰ קריאות חורגות (גרסה 90) ----------
 // קריאה שלי (assigneeId = אני) פתוחה יותר מ-30 דק׳ מפתיחתה ולא מושהית → חלון גדול באמצע המסך, קריאה אחת בכל פעם (הוותיקה קודם).
-// רק למטפל עצמו. קריאה שלא שויכה (פרטית או קבוצה) – קופצת למנהלים (גרסה 91). "כנס לסגירה" → פותח את הצ'אט + חלון הסגירה והתיעוד. "התעלם" (או כניסה בלי סגירה) → חוזר אחרי 5 דק׳.
+// רק למטפל עצמו. קריאה שלא שויכה – לא קופצת לאף אחד (גרסה 92). "כנס לסגירה" → פותח את הצ'אט + חלון הסגירה והתיעוד. "התעלם" (או כניסה בלי סגירה) → חוזר אחרי 5 דק׳.
 // לא קופץ כשחלון אחר פתוח (למשל באמצע כתיבת תיעוד).
 const OVERDUE_MIN = 30, OVERDUE_AGAIN_MIN = 5;
 const overdueAck = (() => { try { return JSON.parse(localStorage.getItem('hd-overdue-ack') || '{}'); } catch { return {}; } })();
@@ -2386,7 +2386,7 @@ function overdueCheck() {
   if (!S.me || !S.tickets) return;
   const now = Date.now();
   for (const id of Object.keys(overdueAck)) if (!S.tickets.has(id)) delete overdueAck[id];
-  const mine = [...S.tickets.values()].filter((t) => t.status !== 'closed' && (t.assigneeId === S.me.id || (!t.assigneeId && S.me.role === 'admin'))
+  const mine = [...S.tickets.values()].filter((t) => t.status !== 'closed' && t.assigneeId === S.me.id
     && !(t.snoozeUntil && t.snoozeUntil > now) && t.createdAt && now - t.createdAt >= OVERDUE_MIN * 60000);
   const el = document.getElementById('overduePop');
   if (el) { if (!mine.some((t) => t.id === el.dataset.id)) el.remove(); return; }

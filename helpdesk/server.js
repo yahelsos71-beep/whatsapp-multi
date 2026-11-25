@@ -717,7 +717,8 @@ async function handleNotification(inst, body) {
     log(`new ticket #${t.id} from ${t.phone} (${inst.name})`);
     if (isGroup) {
       const ev = { type: 'group-pop', ticketId: t.id, group: t.customerName || sd.chatName || 'קבוצה', sender: sd.senderContactName || sd.senderName || '', text: (m.text || ({ image: '📷 תמונה', video: '🎬 וידאו', file: '📎 קובץ', audio: '🎤 הקלטה' }[m.type] || '')).slice(0, 160), inst: inst.name };
-      for (const u of db.users) if (u.groupPop && u.active !== false) sendTo(u.id, ev);
+      // גרסה 92: חלון קריאה חדשה בקבוצה בוטל – לא קופץ לאף אחד
+      void ev;
     }
   }
   // מחוץ לשעות הפעילות: הודעת "המשרד סגור" – פעם אחת ב-12 שעות ללקוח, ולא אם עובד ענה לו לאחרונה
