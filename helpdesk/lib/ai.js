@@ -187,4 +187,62 @@ async function suggestResolution(config, { customerName, transcript }) {
   return { text };
 }
 
-module.exports = { routeTicket, intake, suggestResolution };
+/**
+ * 🎫 משימה מוואטסאפ של מנהל (גרסה 93): מבין מהודעה חופשית למי לפתוח משימה, מה ומתי
+ * @returns {Promise<{action:'create'|'ask', assigneeId:string, subject:string, customer:string, phone:string, details:string, due:string, urgent:boolean, question:string, error?:string}>}
+ */
+async function parseTask(config, { handlers, senderName, nowText, conversation }) {
+  if (!config.ai.apiKey) return { error: 'אין מפתח Claude מוגדר' };
+  const ids = handlers.map((h) => h.userId);
+  const system =
+    `You turn short Hebrew WhatsApp messages from ${senderName}, a manager at "${config.companyName}", into internal team tasks.\n` +
+    `Team members who can get tasks (id: name):\n` + handlers.map((h) => `- ${h.userId}: ${h.name}`).join('\n') +
+    `\n\nNow in Israel: ${nowText}.\n` +
+    `Rules:\n- action "create" only when it is clear who the task is for (one of the ids) and what to do. Otherwise action "ask" with a short friendly question in Hebrew in "question" (e.g. "למי לפתוח את המשימה?").\n` +
+    `- subject: short Hebrew title (max 80 chars). details: the full request in Hebrew.\n` +
+    `- customer / phone: only if mentioned, else "".\n` +
+    `- due: if a date/time is mentioned, Israel local time as "YYYY-MM-DD HH:MM" (date only → 09:00); else "".\n` +
+    `- urgent: true only if the manager says urgent (דחוף).\n` +
+    `- The conversation may include your earlier question and the manager's answer – combine them.`;
+  let response;
+  try {
+    response = await getClient(config.ai.apiKey).beta.messages.create({
+      model: config.ai.model || 'claude-opus-5-5',
+      max_tokens: 1024,
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+      output_config: {
+        effort: 'low',
+        format: {
+          type: 'json_schema',
+          schema: {
+            type: 'object',
+            properties: {
+              action: { type: 'string', enum: ['create', 'ask'] },
+              assigneeId: { type: 'string', enum: [...ids, ''] },
+              subject: { type: 'string' }, customer: { type: 'string' }, phone: { type: 'string' },
+              details: { type: 'string' }, due: { type: 'string' }, urgent: { type: 'boolean' }, question: { type: 'string' },
+            },
+            required: ['action', 'assigneeId', 'subject', 'customer', 'phone', 'details', 'due', 'urgent', 'question'],
+            additionalProperties: false,
+          },
+        },
+      },
+      system,
+      messages: [{ role: 'user', content: conversation.map((l) => `${l.role === 'bot' ? 'You asked' : senderName}: ${l.text}`).join('\n') }],
+    });
+  } catch (e) {
+    if (e instanceof Anthropic.AuthenticationError) return { error: 'מפתח ה-API של Claude לא תקין' };
+    if (e instanceof Anthropic.APIError) return { error: `שגיאת Claude ${e.status}` };
+    return { error: 'אין חיבור ל-Claude' };
+  }
+  if (response.stop_reason === 'refusal') return { error: 'Claude סירב' };
+  const block = response.content.find((b) => b.type === 'text');
+  try {
+    const r = JSON.parse(block ? block.text : '');
+    if (r.action === 'create' && !ids.includes(r.assigneeId)) { r.action = 'ask'; r.question = r.question || 'למי לפתוח את המשימה?'; }
+    return r;
+  } catch { return { error: 'תשובה לא תקינה מ-Claude' }; }
+}
+
+module.exports = { routeTicket, intake, suggestResolution, parseTask };

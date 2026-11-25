@@ -1,25 +1,25 @@
 {
-  "version": 92,
+  "version": 93,
   "files": {
-    "server.js": "84813d0eddc632d883fa679e674f30ccec882eb63db07cd9fde84d695dd1b520",
+    "server.js": "a86d4f23a727e541a00bbdc4f4a32a8e93d18aaa03fd455f4b700f008ef45d2f",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
     "reset-password.bat": "662bfbec8b94b264fd7b585a365f389415b8ec66bea540e876418e7a3f805187",
     "README-HE.txt": "df99092cc82f3de6e6d685ca604d95e154879a4a75ba6a0854e4134dd27e5cf3",
     "start-linux.sh": "adf8f346650fd976fa724eedbb7c016d087839242c804536da5c6e6c8ab9873d",
     "start-linux-test.sh": "2532e7b94a74bb03639a2501ea99a89ef9b209c5cc2bee55b96365db12aad500",
     "new-client.sh": "8024b33cb77409101b048cdf9e6680fbd9866da39e756ba395a9fd9c6f1100b6",
-    "lib/ai.js": "810269cf2f3adc8be0f8091bbe8574d73cdf2ba61d39de7e8439f92456db4f73",
+    "lib/ai.js": "11250017a0da15807e71c7236e292e7fb3cdec737c86d25dc46bc06862f5f521",
     "lib/crm.js": "3c201305184905cdc974ec9616ff4bc56304dba7b81847bd2ef5f3765658c078",
     "lib/esl.js": "203d1b9b5c6f81cffebc115d67fd01b640fc2afd1fa0006cfb0c656bf86098b9",
     "lib/greenapi.js": "ac42b3418b86fcca4b0ee8a82116a5a1b1a97fcc206d91d3b5b5338051ba25a3",
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "230b5a6411950c62fe982851cf21d2ed7326e1a5b533db47d7a6e10d8543380b",
-    "lib/svccalls.js": "71ef3591f6fcd93f6fe7c6e39d825fbbf84f799b08dbafe3ac0357c89f687239",
-    "public/app.js": "8774e2a02b78302840d7dcd194811aebe1a7fe681a9b8d3fa9b0f905a7a809a5",
-    "public/changelog.json": "da8d6bcb55f956c916f5599654760de2cf5eac227490a71712d56ad6989a307c",
+    "lib/svccalls.js": "106626521b849d3f551b14a316fc39496a73fff36a98802b1f6851ddfc1fb2c7",
+    "public/app.js": "e85c342ac880786aa49688ca6459acc4e56bea0b83e9dfbbb200420a814c4d0a",
+    "public/changelog.json": "2946e0e69652900a5db53c672dbc6c2f7cf4274514617ff3f1f14da5a5725023",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "682d2fbb4946501c4c87f28a8386b7aadd81744069ea58f3a4c02c59397affea",
     "public/style.css": "1eac4e95ceb07ebd98ba2f73232064bb2dc1c45bb67ccc8b8715844f294b8a2c"
   },
-  "notes": "התראות קופצות רק לעובד שהקריאה שלו | בוטל חלון 'קריאה חדשה בקבוצה' | קריאה חורגת שלא שויכה – לא קופצת לאף אחד"
+  "notes": "🎫 משימה מוואטסאפ: הודעה ממספר מנהל מוגדר → ה-AI פותח משימה צוות (לא ברור → שואל בחזרה) | שעת יעד למשימה + התראה למטפל כשמגיע הזמן"
 }

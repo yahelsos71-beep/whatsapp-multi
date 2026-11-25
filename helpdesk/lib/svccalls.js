@@ -26,7 +26,7 @@ module.exports = function createSvc({ db, save, saveConfig, userById, now }) {
 
   function view(c) {
     return {
-      id: c.id, subject: c.subject, customer: c.customer, phone: c.phone, details: c.details, urgent: c.urgent, status: c.status,
+      id: c.id, subject: c.subject, customer: c.customer, phone: c.phone, details: c.details, urgent: c.urgent, status: c.status, dueAt: c.dueAt || null,
       assigneeId: c.assigneeId, assigneeName: nameOf(c.assigneeId),
       createdAt: c.createdAt, createdBy: c.createdBy, createdByName: nameOf(c.createdBy), closedAt: c.closedAt || null,
       history: (c.history || []).map((h) => ({ ...h, byName: nameOf(h.by), fromName: h.kind === 'assign' ? nameOf(h.from) : undefined, toName: h.kind === 'assign' ? nameOf(h.to) : undefined })),
@@ -52,6 +52,7 @@ module.exports = function createSvc({ db, save, saveConfig, userById, now }) {
       id: ++db.serviceCalls.seq, // מספר רץ – נוצר כאן בשרת בלבד
       subject, customer: clean(b.customer, LIMITS.customer), phone, details: clean(b.details, LIMITS.details, true), urgent: b.urgent === true,
       status: 'new', assigneeId: assignee.userId, createdAt: t, createdBy: user.id, closedAt: null,
+      dueAt: Number(b.dueAt) > 0 ? Number(b.dueAt) : null, via: b.via === 'whatsapp' ? 'whatsapp' : undefined,
       history: [{ ts: t, by: user.id, kind: 'open', to: assignee.userId }],
     };
     db.serviceCalls.calls.push(c);

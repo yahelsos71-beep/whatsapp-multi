@@ -7,7 +7,7 @@ const path = require('path');
 const crypto = require('crypto');
 const store = require('./lib/store');
 const ga = require('./lib/greenapi');
-const { routeTicket, intake, suggestResolution } = require('./lib/ai');
+const { routeTicket, intake, suggestResolution, parseTask } = require('./lib/ai');
 const { parseSheet, fixMojibake } = require('./lib/sheet');
 
 const { db } = store;
@@ -485,6 +485,62 @@ async function retrySend(t, text, user, opts, started) {
 // "טופל" → סוגר את הקריאה. כל דבר אחר → הערה בקריאה. לא נפתחת קריאה חדשה מהטכנאי
 const DONE_RE = /(טופל|בוצע|סגרתי|נסגר|הסתדר|✅)/;
 const STATUS_CLOSED_RE = /סטטוס:\s*קריאה נסגרה/; // הודעת בוט התמיכה בקבוצת הלקוח
+// ---------- 🎫 משימה מוואטסאפ (גרסה 93) ----------
+// config.taskSenders = [{ phone, userId }]: הודעה פרטית מהמספר הזה לא פותחת קריאה ולא מופיעה במוקד –
+// ה-AI מבין ממנה משימה צוות ופותח אותה; לא ברור → שואל בחזרה בוואטסאפ (השיחה נזכרת 15 דק׳).
+const taskConvos = new Map();
+function taskSenderFor(chatId) {
+  if (!chatId.endsWith('@c.us')) return null;
+  const ph = chatId.split('@')[0];
+  return (db.config.taskSenders || []).find((x) => normPhone(x.phone) === ph && userById(x.userId)) || null;
+}
+const IL_TZ = 'Asia/Jerusalem';
+function ilNowText() {
+  return new Intl.DateTimeFormat('he-IL', { timeZone: IL_TZ, weekday: 'long', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date())
+    + ' (' + new Intl.DateTimeFormat('en-CA', { timeZone: IL_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()) + ')';
+}
+// "YYYY-MM-DD HH:MM" בשעון ישראל → timestamp
+function ilToTs(str) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/.exec(String(str || '').trim());
+  if (!m) return null;
+  const guess = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: IL_TZ, year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', hour12: false })
+    .formatToParts(new Date(guess)).map((x) => [x.type, x.value]));
+  const asIl = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute);
+  return guess - (asIl - guess);
+}
+const fmtIl = (ts) => new Intl.DateTimeFormat('he-IL', { timeZone: IL_TZ, weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(ts));
+async function handleTaskMessage(inst, chatId, body) {
+  const sender = userById(taskSenderFor(chatId).userId);
+  const m = ga.parseMessage(body.messageData);
+  const reply = async (text) => { try { const r = await ga.sendMessage(inst, chatId, text, body.idMessage); if (r && r.idMessage) sentIds.add(r.idMessage); } catch (e) { log('task reply', e.message); } };
+  if (['deleted', 'reaction'].includes(m.type)) return;
+  const text = String(m.text || '').trim();
+  if (!text) return reply('🎫 כרגע אני מבין רק הודעות טקסט. כתוב לי למי לפתוח משימה ומה לעשות.');
+  if (/^\s*(ביטול|בטל|עזוב|cancel)\s*[.!]?\s*$/i.test(text)) { taskConvos.delete(chatId); return reply('👍 בוטל.'); }
+  const prev = taskConvos.get(chatId);
+  const conv = prev && now() - prev.at < 15 * 60000 ? prev.lines : [];
+  conv.push({ role: 'me', text: text.slice(0, 1500) });
+  const handlers = svc.handlersView();
+  const r = await parseTask(db.config, { handlers, senderName: sender.name, nowText: ilNowText(), conversation: conv.slice(-8) });
+  if (r.error) { log(`task from ${sender.name}: ${r.error}`); return reply(`⚠️ לא הצלחתי לפתוח משימה (${r.error}). נסה שוב עוד רגע.`); }
+  if (r.action !== 'create') {
+    const q = r.question || 'למי לפתוח את המשימה?';
+    conv.push({ role: 'bot', text: q });
+    taskConvos.set(chatId, { lines: conv, at: now() });
+    return reply('🤔 ' + q + '\n(לביטול: "ביטול")');
+  }
+  taskConvos.delete(chatId);
+  const dueAt = ilToTs(r.due);
+  const c = svc.create(sender, { subject: r.subject, customer: r.customer, phone: r.phone, details: r.details, urgent: r.urgent === true, assigneeId: r.assigneeId, dueAt: dueAt && dueAt > now() ? dueAt : null, via: 'whatsapp' });
+  if (c.error) return reply('⚠️ ' + c.error);
+  log(`svc #${c.call.id} opened by ${sender.name} (whatsapp) → ${c.call.assigneeName}`);
+  emitAll({ type: 'svc', call: c.call });
+  svcNotify(c.call, c.assignee, sender, 'new');
+  reply([`✅ נפתחה משימה #${c.call.id} ל${c.call.assigneeName}`, `📝 ${c.call.subject}`, c.call.customer ? `👤 ${c.call.customer}` : '',
+    c.call.dueAt ? `⏰ ${fmtIl(c.call.dueAt)}` : '', c.call.urgent ? '🔴 דחוף' : ''].filter(Boolean).join('\n'));
+}
+
 async function handleTechMessage(inst, chatId, m, body, sd) {
   const tgt = (db.config.serviceTargets || []).find((x) => (x.chatId && x.chatId === chatId) || (x.phone && chatId === x.phone + '@c.us'));
   if (!tgt) return false;
@@ -628,6 +684,7 @@ async function handleNotification(inst, body) {
   const chatId = sd.chatId || '';
   if (!chatId || /broadcast|newsletter/.test(chatId)) return; // סטטוסים וערוצים – לא קריאות
   try { waTrack(inst, body, type, sd, chatId); } catch (e) { log('waTrack', e.message); }
+  if (type === 'incomingMessageReceived' && taskSenderFor(chatId)) { await handleTaskMessage(inst, chatId, body); return; } // 🎫 גרסה 93: לא נכנס למוקד בכלל
   const isGroup = chatId.endsWith('@g.us');
   if (isGroup && !db.config.groups.enabled) return;
   if (isIgnored(inst.id, chatId)) return;
@@ -960,6 +1017,17 @@ function svcNotify(call, assignee, by, kind) {
     call.customer ? `👤 ${call.customer}` : '', call.phone ? `📞 ${call.phone}` : '', `מאת: ${by.name}`].filter(Boolean).join('\n');
   ga.sendMessage(inst, phone + '@c.us', text).then((r) => { if (r && r.idMessage) sentIds.add(r.idMessage); }).catch((e) => log('svc whatsapp', e.message));
 }
+// ⏰ הגיע זמן המשימה (גרסה 93) → התראה למטפל, פעם אחת
+setInterval(() => {
+  let changed = false;
+  for (const c of db.serviceCalls.calls) {
+    if (!c.dueAt || c.dueNotified || c.status === 'closed' || c.dueAt > now()) continue;
+    c.dueNotified = true; changed = true;
+    const assignee = svc.handlersView().find((h) => h.userId === c.assigneeId);
+    if (assignee) sendTo(c.assigneeId, { type: 'svc-new', call: svc.view(c), kind: 'due', byName: (userById(c.createdBy) || {}).name || '' });
+  }
+  if (changed) store.saveServiceCalls();
+}, 30000);
 const svcReply = (res, r, okCode = 200) => (r.error ? send(res, r.code || 400, { error: r.error }) : send(res, okCode, r.call || { ok: true }));
 route('GET', /^\/api\/svc$/, (req, res, { user }) => send(res, 200, svc.state(user)));
 route('POST', /^\/api\/svc\/calls$/, async (req, res, { user }) => {

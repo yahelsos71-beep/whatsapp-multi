@@ -1461,7 +1461,7 @@ function svcOnEvent(ev) {
   } else if (ev.type === 'svc-del') S.svc.calls = S.svc.calls.filter((c) => c.id !== ev.id);
   else if (ev.type === 'svc-handlers') S.svc.handlers = ev.handlers;
   else if (ev.type === 'svc-new') {
-    const c = ev.call, what = ev.kind === 'transfer' ? 'הועברה אליך משימה' : 'משימה חדשה בשבילך';
+    const c = ev.call, what = ev.kind === 'transfer' ? 'הועברה אליך משימה' : ev.kind === 'due' ? '⏰ הגיע זמן המשימה' : 'משימה חדשה בשבילך';
     Sounds.newMessage();
     toast(`🎫 ${what} #${c.id}${c.urgent ? ' 🔴 דחוף' : ''}: ${c.subject} (מאת ${ev.byName})`, false, 8000);
     notify(`🎫 ${what} #${c.id}${c.urgent ? ' – דחוף' : ''}`, `${c.subject}${c.customer ? ' · ' + c.customer : ''}`);
@@ -1523,7 +1523,7 @@ function svcCard(c) {
   const m = S.svc.canManage, closed = c.status === 'closed';
   return `<div class="svc-card ${closed ? 'closed' : ''}" style="--hc:${esc(svcColor(c.assigneeId))}" data-id="${c.id}">
     <div class="svc-h"><b>#${c.id}</b> <span class="svc-subj">${esc(c.subject)}</span>
-      ${c.urgent ? '<span class="chip svc-urg">🔴 דחוף</span>' : ''}<span class="chip svc-st ${c.status}">${SVC_ST[c.status] || ''}</span></div>
+      ${c.dueAt ? `<span class="chip">⏰ ${fmtWhen(c.dueAt)}</span>` : ''}${c.urgent ? '<span class="chip svc-urg">🔴 דחוף</span>' : ''}<span class="chip svc-st ${c.status}">${SVC_ST[c.status] || ''}</span></div>
     <div class="svc-meta"><span class="svc-who-chip">👤 ${esc(c.assigneeName)}</span>
       ${c.customer ? `<span>🏢 ${esc(c.customer)}</span>` : ''}${c.phone ? `<span>📞 <a href="tel:${esc(c.phone.replace(/[^0-9+]/g, ''))}" dir="ltr">${esc(c.phone)}</a></span>` : ''}
       <span>🕒 ${fmtWhen(c.createdAt)} · ${esc(c.createdByName)}</span>${closed && c.closedAt ? `<span>✅ ${fmtWhen(c.closedAt)}</span>` : ''}</div>
