@@ -2379,7 +2379,10 @@ function groupPop(ev) {
 // קריאה שלי (assigneeId = אני) פתוחה יותר מ-30 דק׳ מפתיחתה ולא מושהית → חלון גדול באמצע המסך, קריאה אחת בכל פעם (הוותיקה קודם).
 // רק למטפל עצמו. קריאה שלא שויכה – לא קופצת לאף אחד (גרסה 92). "כנס לסגירה" → פותח את הצ'אט + חלון הסגירה והתיעוד. "התעלם" (או כניסה בלי סגירה) → חוזר אחרי 5 דק׳.
 // לא קופץ כשחלון אחר פתוח (למשל באמצע כתיבת תיעוד).
-const OVERDUE_MIN = 30, OVERDUE_AGAIN_MIN = 5;
+// גרסה 94: אם העובד כבר ענה ללקוח (lastOutAt) → קופץ רק שעה אחרי התשובה האחרונה; לא ענה בכלל → 30 דק׳ מפתיחה. לא קופץ לפני 09:00 (שעון ישראל).
+const OVERDUE_MIN = 30, OVERDUE_AGAIN_MIN = 5, OVERDUE_AFTER_REPLY_MIN = 60, OVERDUE_FROM_HOUR = 9;
+const ilHour = () => { try { return +new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', hour: '2-digit', hourCycle: 'h23' }).format(new Date()); } catch { return new Date().getHours(); } };
+const overdueDue = (t, now) => (t.lastOutAt ? now - t.lastOutAt >= OVERDUE_AFTER_REPLY_MIN * 60000 : now - t.createdAt >= OVERDUE_MIN * 60000);
 const overdueAck = (() => { try { return JSON.parse(localStorage.getItem('hd-overdue-ack') || '{}'); } catch { return {}; } })();
 const saveOverdueAck = () => { try { localStorage.setItem('hd-overdue-ack', JSON.stringify(overdueAck)); } catch {} };
 function overdueCheck() {
@@ -2387,8 +2390,9 @@ function overdueCheck() {
   const now = Date.now();
   for (const id of Object.keys(overdueAck)) if (!S.tickets.has(id)) delete overdueAck[id];
   const mine = [...S.tickets.values()].filter((t) => t.status !== 'closed' && t.assigneeId === S.me.id
-    && !(t.snoozeUntil && t.snoozeUntil > now) && t.createdAt && now - t.createdAt >= OVERDUE_MIN * 60000);
+    && !(t.snoozeUntil && t.snoozeUntil > now) && t.createdAt && overdueDue(t, now));
   const el = document.getElementById('overduePop');
+  if (ilHour() < OVERDUE_FROM_HOUR) { if (el) el.remove(); return; }
   if (el) { if (!mine.some((t) => t.id === el.dataset.id)) el.remove(); return; }
   if (modal.classList.contains('on')) return;
   const next = mine.filter((t) => !overdueAck[t.id] || now - overdueAck[t.id] >= OVERDUE_AGAIN_MIN * 60000).sort((a, b) => a.createdAt - b.createdAt)[0];
@@ -2412,7 +2416,7 @@ function showOverdue(t, total) {
     if (S.view && S.view.ticket && S.view.ticket.id === t.id && S.view.ticket.status !== 'closed') closeTicket();
   };
   document.body.appendChild(el);
-  notify('⏰ קריאה פתוחה יותר מחצי שעה', t.customerName || '');
+  notify(t.lastOutAt ? '⏰ קריאה פתוחה – עברה שעה מהתשובה שלך' : '⏰ קריאה פתוחה יותר מחצי שעה', t.customerName || '');
 }
 setInterval(overdueCheck, 20000);
 setTimeout(overdueCheck, 5000);

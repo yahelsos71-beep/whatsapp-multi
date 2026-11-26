@@ -1,5 +1,5 @@
 {
-  "version": 93,
+  "version": 94,
   "files": {
     "server.js": "a86d4f23a727e541a00bbdc4f4a32a8e93d18aaa03fd455f4b700f008ef45d2f",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
@@ -15,11 +15,11 @@
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "230b5a6411950c62fe982851cf21d2ed7326e1a5b533db47d7a6e10d8543380b",
     "lib/svccalls.js": "106626521b849d3f551b14a316fc39496a73fff36a98802b1f6851ddfc1fb2c7",
-    "public/app.js": "e85c342ac880786aa49688ca6459acc4e56bea0b83e9dfbbb200420a814c4d0a",
-    "public/changelog.json": "2946e0e69652900a5db53c672dbc6c2f7cf4274514617ff3f1f14da5a5725023",
+    "public/app.js": "a54e72ddcf989b21b0c54a35d8879f20b0db55989bfcb2ef0249653fad358e30",
+    "public/changelog.json": "a491000b719a1b53b288a9dc6a8225439d6f7ae3f3c90eed856f556b6593541d",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "682d2fbb4946501c4c87f28a8386b7aadd81744069ea58f3a4c02c59397affea",
     "public/style.css": "1eac4e95ceb07ebd98ba2f73232064bb2dc1c45bb67ccc8b8715844f294b8a2c"
   },
-  "notes": "🎫 משימה מוואטסאפ: הודעה ממספר מנהל מוגדר → ה-AI פותח משימה צוות (לא ברור → שואל בחזרה) | שעת יעד למשימה + התראה למטפל כשמגיע הזמן"
+  "notes": "⏰ קריאה שכבר ענית בה קופצת לסגירה רק שעה אחרי התשובה האחרונה שלך (לא ענית – אחרי 30 דק׳ כרגיל) | בבוקר חלונות הסגירה קופצים רק מ-09:00"
 }
