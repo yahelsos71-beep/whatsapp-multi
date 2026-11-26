@@ -580,6 +580,23 @@ function appendMessage(m, scroll) {
   if (scroll && (nearBottom || m.byUserId === S.me.id)) msgs.scrollTop = msgs.scrollHeight;
 }
 
+// ---------- טיוטות (גרסה 95) ----------
+// מה שמוקלד נשמר לכל קריאה / צ'אט – אם תיבת הכתיבה נבנית מחדש (חלון קופץ, פתיחה מחדש, רענון) הטקסט חוזר. נמחק רק אחרי שליחה.
+function draftsAll() { try { return JSON.parse(localStorage.getItem('hd-drafts') || '{}'); } catch { return {}; } }
+function draftGet(k) { return (draftsAll()[k] || {}).text || ''; }
+function draftSet(k, text) {
+  const d = draftsAll(); const now = Date.now();
+  if (text && text.trim()) d[k] = { text, at: now }; else delete d[k];
+  for (const x of Object.keys(d)) if (now - (d[x].at || 0) > 3 * 86400000) delete d[x];
+  try { localStorage.setItem('hd-drafts', JSON.stringify(d)); } catch {}
+}
+function markTyping() { window.__hdTypedAt = Date.now(); }
+// באמצע כתיבה: יש טקסט בתיבה, או שהוקלד משהו בדקה האחרונה
+function isTyping() {
+  const a = document.getElementById('txt'), b = document.getElementById('waTxt');
+  return !!((a && a.value.trim()) || (b && b.value.trim()) || Date.now() - (window.__hdTypedAt || 0) < 60000);
+}
+
 function renderComposer() {
   const c = $('#comp'); if (!c || !S.view) return;
   const t = S.view.ticket;
@@ -597,7 +614,9 @@ function renderComposer() {
     <button class="primary" id="sendBtn" title="שלח">➤</button></div>`;
   const txt = $('#txt');
   const grow = () => { txt.style.height = 'auto'; txt.style.height = Math.min(160, txt.scrollHeight) + 'px'; };
-  txt.oninput = grow;
+  const dk = 't:' + t.id;
+  txt.oninput = () => { grow(); markTyping(); draftSet(dk, txt.value); };
+  txt.value = draftGet(dk); if (txt.value) requestAnimationFrame(grow);
   txt.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); } };
   $('#sendBtn').onclick = sendText;
   $('#attach').onclick = () => $('#file').click();
@@ -687,16 +706,16 @@ async function sendText() {
   const txt = $('#txt'); const text = txt.value.trim();
   if (!text || !S.view) return;
   const id = S.view.ticket.id;
-  txt.value = ''; txt.style.height = '42px';
+  txt.value = ''; txt.style.height = '42px'; draftSet('t:' + id, '');
   if (S.noteMode) {
     try { await api('POST', `/api/tickets/${id}/note`, { text }); toast('🗒 ההערה נשמרה – לא נשלחה ללקוח'); }
-    catch (e) { toast(e.message, true); $('#txt').value = text; }
+    catch (e) { toast(e.message, true); if ($('#txt')) $('#txt').value = text; draftSet('t:' + id, text); }
     return;
   }
   const replyTo = S.replyTo && S.replyTo.ticketId === id ? S.replyTo.id : null;
   setReply(null);
   try { await api('POST', `/api/tickets/${id}/send`, { text, replyTo }); }
-  catch (e) { toast(e.message, true, 6000); if (!$('#txt').value) $('#txt').value = text; }
+  catch (e) { toast(e.message, true, 6000); if ($('#txt') && !$('#txt').value) $('#txt').value = text; draftSet('t:' + id, text); }
 }
 
 async function sendFile(file) {
@@ -710,6 +729,7 @@ async function sendFile(file) {
       'X-Caption': encodeURIComponent(caption),
     });
     if ($('#txt')) $('#txt').value = '';
+    draftSet('t:' + S.view.ticket.id, '');
     toast('נשלח ✓');
   } catch (e) { toast(e.message, true, 6000); }
 }
@@ -1721,7 +1741,10 @@ function renderWaComposer() {
     <div class="composer"><button id="waTpl" title="תבנית הודעה">📝</button><button id="waBold" title="הדגשה (בוואטסאפ: *טקסט*)"><b>B</b></button><button id="waAttach" title="שליחת קובץ / תמונה">📎</button><input type="file" id="waFile" hidden>
     <textarea id="waTxt" placeholder="כתוב הודעה... (Enter לשליחה, Shift+Enter לשורה חדשה)"></textarea><button class="primary" id="waSend" title="שלח">➤</button></div>`;
   const txt = $('#waTxt');
-  txt.oninput = () => { txt.style.height = 'auto'; txt.style.height = Math.min(160, txt.scrollHeight) + 'px'; };
+  const wdk = 'w:' + (S.wa.view && S.wa.view.chat ? S.wa.view.chat.key : '');
+  const wgrow = () => { txt.style.height = 'auto'; txt.style.height = Math.min(160, txt.scrollHeight) + 'px'; };
+  txt.oninput = () => { wgrow(); markTyping(); draftSet(wdk, txt.value); };
+  txt.value = draftGet(wdk); if (txt.value) requestAnimationFrame(wgrow);
   txt.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); waSendText(); } };
   $('#waSend').onclick = waSendText;
   $('#waBold').onclick = () => waWrap(txt, '*');
@@ -1753,12 +1776,12 @@ async function waSendText() {
   const txt = $('#waTxt'); const text = txt.value.trim();
   const v = S.wa.view; if (!text || !v) return;
   const q = S.wa.replyTo;
-  txt.value = ''; txt.style.height = '42px'; waSetReply(null);
+  txt.value = ''; txt.style.height = '42px'; waSetReply(null); draftSet('w:' + v.chat.key, '');
   try {
     const item = await api('POST', '/api/wa/send', { inst: v.chat.instanceId, chat: v.chat.chatId, text,
       ...(q ? { quotedId: q.id, quotedText: q.text || waPreview[q.type] || '', quotedFrom: q.dir === 'in' ? (q.senderName || v.chat.name || '') : (q.byName || 'אנחנו') } : {}) });
     waAddItem(v.chat.key, item);
-  } catch (e) { toast(e.message, true, 6000); if (!$('#waTxt').value) $('#waTxt').value = text; }
+  } catch (e) { toast(e.message, true, 6000); if ($('#waTxt') && !$('#waTxt').value) $('#waTxt').value = text; draftSet('w:' + v.chat.key, text); }
 }
 async function waSendFile(file) {
   const v = S.wa.view; if (!v) return;
@@ -1768,6 +1791,7 @@ async function waSendFile(file) {
     const item = await api('POST', `/api/wa/upload?inst=${encodeURIComponent(v.chat.instanceId)}&chat=${encodeURIComponent(v.chat.chatId)}`, file, {
       'Content-Type': file.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name), 'X-Caption': encodeURIComponent(caption) });
     if ($('#waTxt')) $('#waTxt').value = '';
+    draftSet('w:' + v.chat.key, '');
     waAddItem(v.chat.key, item); toast('נשלח ✓');
   } catch (e) { toast(e.message, true, 6000); }
 }
@@ -2378,7 +2402,7 @@ function groupPop(ev) {
 // ---------- ⏰ קריאות חורגות (גרסה 90) ----------
 // קריאה שלי (assigneeId = אני) פתוחה יותר מ-30 דק׳ מפתיחתה ולא מושהית → חלון גדול באמצע המסך, קריאה אחת בכל פעם (הוותיקה קודם).
 // רק למטפל עצמו. קריאה שלא שויכה – לא קופצת לאף אחד (גרסה 92). "כנס לסגירה" → פותח את הצ'אט + חלון הסגירה והתיעוד. "התעלם" (או כניסה בלי סגירה) → חוזר אחרי 5 דק׳.
-// לא קופץ כשחלון אחר פתוח (למשל באמצע כתיבת תיעוד).
+// לא קופץ כשחלון אחר פתוח (למשל באמצע כתיבת תיעוד), וגם לא באמצע כתיבת הודעה (גרסה 95).
 // גרסה 94: אם העובד כבר ענה ללקוח (lastOutAt) → קופץ רק שעה אחרי התשובה האחרונה; לא ענה בכלל → 30 דק׳ מפתיחה. לא קופץ לפני 09:00 (שעון ישראל).
 const OVERDUE_MIN = 30, OVERDUE_AGAIN_MIN = 5, OVERDUE_AFTER_REPLY_MIN = 60, OVERDUE_FROM_HOUR = 9;
 const ilHour = () => { try { return +new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', hour: '2-digit', hourCycle: 'h23' }).format(new Date()); } catch { return new Date().getHours(); } };
@@ -2394,7 +2418,7 @@ function overdueCheck() {
   const el = document.getElementById('overduePop');
   if (ilHour() < OVERDUE_FROM_HOUR) { if (el) el.remove(); return; }
   if (el) { if (!mine.some((t) => t.id === el.dataset.id)) el.remove(); return; }
-  if (modal.classList.contains('on')) return;
+  if (modal.classList.contains('on') || isTyping()) return;
   const next = mine.filter((t) => !overdueAck[t.id] || now - overdueAck[t.id] >= OVERDUE_AGAIN_MIN * 60000).sort((a, b) => a.createdAt - b.createdAt)[0];
   if (next) showOverdue(next, mine.length);
 }
