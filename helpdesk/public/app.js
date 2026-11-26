@@ -31,7 +31,7 @@ function toast(msg, err = false, ms = 3500) {
   clearTimeout(toast.h); toast.h = setTimeout(() => (t.style.display = 'none'), ms);
 }
 const modal = $('#modal'), box = $('#box');
-function openModal(html, wide = false) { box.className = 'box' + (wide ? ' wide' : ''); box.innerHTML = html; modal.classList.add('on'); }
+function openModal(html, wide = false) { { const op = document.getElementById('overduePop'); if (op) op.remove(); } box.className = 'box' + (wide ? ' wide' : ''); box.innerHTML = html; modal.classList.add('on'); }
 function closeModal() { modal.classList.remove('on'); if (S.svc) S.svc.open = false; }
 modal.addEventListener('mousedown', (e) => { if (e.target === modal) closeModal(); });
 
@@ -2418,7 +2418,7 @@ function overdueCheck() {
   const el = document.getElementById('overduePop');
   if (ilHour() < OVERDUE_FROM_HOUR) { if (el) el.remove(); return; }
   if (el) { if (!mine.some((t) => t.id === el.dataset.id)) el.remove(); return; }
-  if (modal.classList.contains('on') || isTyping()) return;
+  if (modal.classList.contains('on') || isTyping() || document.querySelector('#vcatBtn[disabled]')) return; // לא באמצע חלון / כתיבה / העברה לויקאט
   const next = mine.filter((t) => !overdueAck[t.id] || now - overdueAck[t.id] >= OVERDUE_AGAIN_MIN * 60000).sort((a, b) => a.createdAt - b.createdAt)[0];
   if (next) showOverdue(next, mine.length);
 }

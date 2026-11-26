@@ -70,7 +70,7 @@ const openTicketFor = (instanceId, chatId) =>
 const ruleFor = (instanceId, chatId) => (db.config.chatRules || []).find((x) => x.instanceId === instanceId && x.chatId === chatId);
 // בקבוצה משותפת עם עובד (חיים+חני): התור עובר למי שצריך לענות – מי שכתב, הקריאה עוברת לשני
 function pinnedPeer(t, fromUserId) {
-  const r = t.isGroup && ruleFor(t.instanceId, t.chatId);
+  const r = t.isGroup && !groupsUser() && ruleFor(t.instanceId, t.chatId);
   if (!r) return null;
   const emp = userById(r.userId);
   const boss = userById(r.ownerId) || admins()[0];
@@ -87,6 +87,11 @@ function handTo(t, peer) {
   t.awaiting = true; t.lastInAt = now(); t.snoozeUntil = null;
   return old !== peer.id;
 }
+// גרסה 97: כל קריאה מקבוצה משויכת לעובד "קבוצות" (אם קיים ופעיל). אפשר לקבוע מזהה ב-config.groupsUserId
+const groupsUser = () => {
+  const u = (db.config.groupsUserId && userById(db.config.groupsUserId)) || db.users.find((x) => x.active !== false && String(x.name || '').trim() === 'קבוצות');
+  return u && u.active !== false ? u : null;
+};
 const staffByPhone = (phone) => phone && db.users.find((u) => u.active !== false && u.phone && u.phone === phone);
 const isIgnored = (instanceId, chatId) => (db.config.ignoredChats || []).some((x) => x.instanceId === instanceId && x.chatId === chatId);
 const ignoredByName = (name) => !!name && (db.config.ignoreGroupNames || []).some((w) => w && String(name).includes(w));
@@ -409,7 +414,7 @@ async function doRouting(t, { force = false } = {}) {
 async function finishRouting(t, departmentId, reason, summary, aiReply, { silent = false, assigneeId = null } = {}) {
   clearRouting(t);
   const dep = departmentId ? depById(departmentId) : null;
-  let assignee = (assigneeId && userById(assigneeId)) || (dep && userById(dep.userId));
+  let assignee = (t.isGroup && groupsUser()) || (assigneeId && userById(assigneeId)) || (dep && userById(dep.userId));
   if (!assignee || assignee.active === false) assignee = admins()[0] || null;
   t.departmentId = dep ? dep.id : null;
   t.assigneeId = assignee ? assignee.id : null;
@@ -753,6 +758,13 @@ async function handleNotification(inst, body) {
       const orig = (pinned && pinned.active !== false && pinned) || (q && q.userId && userById(q.userId)?.active !== false && userById(q.userId)) || null;
       t.eveningOrig = orig ? orig.id : null;
       note(t, `🌆 ניתוב ערב (${db.config.eveningRoute.start}–${db.config.eveningRoute.end}) – נפתח ישר אצל ${evening.name}`);
+    } else if (isGroup && groupsUser()) {
+      // גרסה 97: כל קריאה מקבוצה → העובד "קבוצות" (גם קבוצה עם קיבוע), בלי AI
+      const gu = groupsUser();
+      t = createTicket(inst, chatId, name, { status: 'open', assigneeId: gu.id });
+      const dep = db.config.departments.find((d) => d.userId === gu.id);
+      if (dep) t.departmentId = dep.id;
+      note(t, `👥 קריאה מקבוצה – משויכת ל${gu.name.trim()}`);
     } else if (pinned && pinned.active !== false) {
       // צ'אט/קבוצה שמשויכים קבוע לעובד – בלי AI ובלי מענה אוטומטי
       t = createTicket(inst, chatId, name, { status: 'open', assigneeId: pinned.id });
@@ -813,8 +825,8 @@ async function handleNotification(inst, body) {
     emitTicket(t, { sound: changed ? 'new' : 'msg' });
     return;
   }
-  if (staff && staff.id === t.assigneeId) {
-    // העובד עצמו ענה בקבוצה מהטלפון שלו – נחשב כתשובה
+  if (staff && (staff.id === t.assigneeId || (t.isGroup && groupsUser() && t.assigneeId === groupsUser().id))) {
+    // העובד עצמו ענה בקבוצה מהטלפון שלו – נחשב כתשובה (קריאה של "קבוצות": כל עובד שעונה נחשב)
     t.awaiting = false; t.lastOutAt = ts;
     emitTicket(t);
     return;
@@ -2727,6 +2739,25 @@ process.on('SIGINT', () => { store.flushAll(); process.exit(0); });
 process.on('SIGTERM', () => { store.flushAll(); process.exit(0); });
 process.on('uncaughtException', (e) => log('uncaught', e.stack || e.message));
 process.on('unhandledRejection', (e) => log('unhandled', e && (e.stack || e.message)));
+
+// חד-פעמי (גרסה 97): כל הקריאות הפתוחות מקבוצות → העובד "קבוצות"
+(function migrateGroupsV97() {
+  if (db.config.groupsMigratedV97) return;
+  const gu = groupsUser();
+  if (!gu) { log('migration v97: no "קבוצות" user – skipped'); return; }
+  let n = 0;
+  for (const t of db.tickets.filter((x) => x.isGroup && x.status !== 'closed' && x.assigneeId !== gu.id)) {
+    const from = userById(t.assigneeId);
+    if (t.status === 'routing') { clearRouting(t); t.status = 'open'; }
+    t.assigneeId = gu.id;
+    const dep = db.config.departments.find((d) => d.userId === gu.id);
+    if (dep) t.departmentId = dep.id;
+    note(t, `👥 קריאה מקבוצה – הועברה מ${from ? from.name.trim() : 'ללא שיוך'} ל${gu.name.trim()} (גרסה 97)`);
+    n++;
+  }
+  db.config.groupsMigratedV97 = true; store.saveConfig(); store.saveTickets && store.saveTickets();
+  log(`migration v97: ${n} open group tickets → ${gu.name.trim()}`);
+})();
 
 // עדכון חד-פעמי (גרסה 11): מחלקת מכירות → נועה
 (function migrateV11() {

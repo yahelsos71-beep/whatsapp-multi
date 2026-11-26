@@ -1,7 +1,7 @@
 {
-  "version": 96,
+  "version": 97,
   "files": {
-    "server.js": "a86d4f23a727e541a00bbdc4f4a32a8e93d18aaa03fd455f4b700f008ef45d2f",
+    "server.js": "ca6d0bb051fdcd1c82074706684f7de7f1053aae291e0f1922e642f67c95f7f1",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
     "reset-password.bat": "662bfbec8b94b264fd7b585a365f389415b8ec66bea540e876418e7a3f805187",
     "README-HE.txt": "df99092cc82f3de6e6d685ca604d95e154879a4a75ba6a0854e4134dd27e5cf3",
@@ -15,11 +15,11 @@
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "230b5a6411950c62fe982851cf21d2ed7326e1a5b533db47d7a6e10d8543380b",
     "lib/svccalls.js": "106626521b849d3f551b14a316fc39496a73fff36a98802b1f6851ddfc1fb2c7",
-    "public/app.js": "eb982e9b0dc0b6791a10dd3b9567af14658960dc7da2e218940227db53ddcf95",
-    "public/changelog.json": "c5a6395088febdd242dfb6267fa4e0be144d7f66015024e33e87e44f1d36aa58",
+    "public/app.js": "f14b469708dc0f3c8d7cdd9d4ea37af336b955c337b6881828d080a3f2225c19",
+    "public/changelog.json": "c28640abf1e30910a19ffbe739656eb4b2bd04d3b14afdbd4fa75fa3c89871b2",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "682d2fbb4946501c4c87f28a8386b7aadd81744069ea58f3a4c02c59397affea",
     "public/style.css": "1eac4e95ceb07ebd98ba2f73232064bb2dc1c45bb67ccc8b8715844f294b8a2c"
   },
-  "notes": "⏰ חלון הקריאה החורגת קופץ פעם אחת – אחרי \"התעלם\" חוזר רק אחרי שעה (במקום 5 דקות)"
+  "notes": "👥 כל קריאה מקבוצה משויכת לעובד \"קבוצות\" – חדשות וגם הפתוחות, גם קבוצות עם קיבוע; כל עובד שעונה בקבוצה נחשב כתשובה | 🔁 חלון ⏰ לא קופץ בזמן העברה לויקאט ונסגר כשנפתח חלון אחר – לא מבטל יותר את בחירת הקריאה במאנדיי"
 }
