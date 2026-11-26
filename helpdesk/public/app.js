@@ -2401,10 +2401,10 @@ function groupPop(ev) {
 
 // ---------- ⏰ קריאות חורגות (גרסה 90) ----------
 // קריאה שלי (assigneeId = אני) פתוחה יותר מ-30 דק׳ מפתיחתה ולא מושהית → חלון גדול באמצע המסך, קריאה אחת בכל פעם (הוותיקה קודם).
-// רק למטפל עצמו. קריאה שלא שויכה – לא קופצת לאף אחד (גרסה 92). "כנס לסגירה" → פותח את הצ'אט + חלון הסגירה והתיעוד. "התעלם" (או כניסה בלי סגירה) → חוזר אחרי 5 דק׳.
+// רק למטפל עצמו. קריאה שלא שויכה – לא קופצת לאף אחד (גרסה 92). "כנס לסגירה" → פותח את הצ'אט + חלון הסגירה והתיעוד. "התעלם" (או כניסה בלי סגירה) → חוזר אחרי שעה (גרסה 96; קודם 5 דק׳).
 // לא קופץ כשחלון אחר פתוח (למשל באמצע כתיבת תיעוד), וגם לא באמצע כתיבת הודעה (גרסה 95).
 // גרסה 94: אם העובד כבר ענה ללקוח (lastOutAt) → קופץ רק שעה אחרי התשובה האחרונה; לא ענה בכלל → 30 דק׳ מפתיחה. לא קופץ לפני 09:00 (שעון ישראל).
-const OVERDUE_MIN = 30, OVERDUE_AGAIN_MIN = 5, OVERDUE_AFTER_REPLY_MIN = 60, OVERDUE_FROM_HOUR = 9;
+const OVERDUE_MIN = 30, OVERDUE_AGAIN_MIN = 60, OVERDUE_AFTER_REPLY_MIN = 60, OVERDUE_FROM_HOUR = 9;
 const ilHour = () => { try { return +new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', hour: '2-digit', hourCycle: 'h23' }).format(new Date()); } catch { return new Date().getHours(); } };
 const overdueDue = (t, now) => (t.lastOutAt ? now - t.lastOutAt >= OVERDUE_AFTER_REPLY_MIN * 60000 : now - t.createdAt >= OVERDUE_MIN * 60000);
 const overdueAck = (() => { try { return JSON.parse(localStorage.getItem('hd-overdue-ack') || '{}'); } catch { return {}; } })();
@@ -2432,7 +2432,7 @@ function showOverdue(t, total) {
     <div class="op-sub">${t.assigneeId ? '' : '⚠️ לא שויכה לאף עובד · '}קריאה #${t.id}${t.lastText ? ' · ' + esc(String(t.lastText).slice(0, 80)) : ''}</div>
     ${total > 1 ? `<div class="op-sub">יש לך עוד ${total === 2 ? 'קריאה אחת שחרגה – תקפוץ אחרי זו' : (total - 1) + ' קריאות שחרגו – יקפצו אחת אחרי השנייה'}</div>` : ''}
     <button class="primary op-go">💬 כנס לסגירה ותיעוד</button>
-    <button class="op-skip">התעלם – הזכר לי בעוד 5 דקות</button></div>`;
+    <button class="op-skip">התעלם – הזכר לי בעוד שעה</button></div>`;
   const ack = () => { overdueAck[t.id] = Date.now(); saveOverdueAck(); el.remove(); };
   el.querySelector('.op-skip').onclick = ack;
   el.querySelector('.op-go').onclick = async () => {

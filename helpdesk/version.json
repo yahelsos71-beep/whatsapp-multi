@@ -1,5 +1,5 @@
 {
-  "version": 95,
+  "version": 96,
   "files": {
     "server.js": "a86d4f23a727e541a00bbdc4f4a32a8e93d18aaa03fd455f4b700f008ef45d2f",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
@@ -15,11 +15,11 @@
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "230b5a6411950c62fe982851cf21d2ed7326e1a5b533db47d7a6e10d8543380b",
     "lib/svccalls.js": "106626521b849d3f551b14a316fc39496a73fff36a98802b1f6851ddfc1fb2c7",
-    "public/app.js": "522e08fcc82aa6ab534855fc7d3ff8d0c85b757f5869356e3c3e191f4f2def28",
-    "public/changelog.json": "bb9537d433d974fe2dbef9b590e3ae8b1efc1869556bbe37a4d13a6681abeb04",
+    "public/app.js": "eb982e9b0dc0b6791a10dd3b9567af14658960dc7da2e218940227db53ddcf95",
+    "public/changelog.json": "c5a6395088febdd242dfb6267fa4e0be144d7f66015024e33e87e44f1d36aa58",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "682d2fbb4946501c4c87f28a8386b7aadd81744069ea58f3a4c02c59397affea",
     "public/style.css": "1eac4e95ceb07ebd98ba2f73232064bb2dc1c45bb67ccc8b8715844f294b8a2c"
   },
-  "notes": "✍️ טקסט שבאמצע כתיבה לא נמחק יותר – נשמר כטיוטה לכל קריאה/צ'אט ונמחק רק אחרי שליחה | ⏰ חלון הקריאה החורגת לא קופץ בזמן שאתה כותב הודעה"
+  "notes": "⏰ חלון הקריאה החורגת קופץ פעם אחת – אחרי \"התעלם\" חוזר רק אחרי שעה (במקום 5 דקות)"
 }
