@@ -804,7 +804,8 @@ async function handleNotification(inst, body) {
   if (isGroup && sd.chatName && t.customerName !== sd.chatName) t.customerName = sd.chatName;
   const senderPhone = String(sd.sender || '').split('@')[0];
   const staff = isGroup && staffByPhone(senderPhone);
-  addMessage(t, { ...m, dir: 'in', ts, idMessage: body.idMessage, ...(isGroup ? { senderName: staff ? staff.name : sd.senderContactName || sd.senderName || senderPhone, senderPhone, staff: !!staff } : {}) });
+  const inMsg = addMessage(t, { ...m, dir: 'in', ts, idMessage: body.idMessage, ...(isGroup ? { senderName: staff ? staff.name : sd.senderContactName || sd.senderName || senderPhone, senderPhone, staff: !!staff } : {}) });
+  if (!isGroup) { try { vendorBot.onIncoming(t, inMsg || m); } catch (e) { log('vendorbot', e.message); } }
   if (isGroup) mondayCloseOnTopal(sd.chatName || t.customerName, m.text, t);
   if (remoteClosed) {
     const who = staff ? staff.name : sd.senderContactName || sd.senderName || senderPhone;
@@ -2299,6 +2300,14 @@ function mondayCloseOnTopal(group, text, t, force = false) {
     emitTicket(t);
   }).catch((e) => { log('monday close', e.message); if (t) { note(t, '⚠️ מאנדיי: סגירה אחרי "טופל" נכשלה – ' + e.message); emitTicket(t); } });
 }
+// 🏢 קריאת שירות לספק (גרסה 98) – המוקד מתכתב לבד עם בוט הספק עד נציג אנושי. הגדרות: data/vendorbots.json
+const vendorBot = require('./lib/vendorbot')({ dataDir: store.DATA_DIR, log, note, sendText, ga, instById, instPhone, emitTicket, sendTo, userById });
+route('GET', /^\/api\/vendor-bots$/, (req, res) => send(res, 200, vendorBot.list()));
+route('POST', /^\/api\/vendor-bots\/start$/, async (req, res, { user }) => {
+  const b = await readJson(req);
+  try { send(res, 200, await vendorBot.start({ vendorId: b.vendorId, fault: String(b.fault || ''), values: b.values || {}, user })); }
+  catch (e) { send(res, 400, { error: e.message }); }
+});
 route('POST', /^\/api\/tickets\/(\d+)\/monday-vcat$/, async (req, res, { user, params }) => {
   const t = visibleTicket(user, params[0]);
   if (!t) return send(res, 404, { error: 'לא נמצא' });

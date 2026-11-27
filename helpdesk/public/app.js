@@ -129,6 +129,7 @@ async function startMain() {
       <button id="teamBtn" title="משימות צוות – קריאות פנימיות לטל, חני, חיים ונועה (Alt+N = משימה חדשה)">🎫<span class="lbl"> משימות</span><span class="badge on" id="teamBadge" style="display:none"></span></button>
       <button id="teamNewBtn" title="משימה חדשה (Alt+N)">➕</button>
       <button id="staffBtn" title="צ׳אט פנימי עם הצוות">💭<span class="lbl"> צוות</span><span class="badge on" id="staffBadge" style="display:none"></span></button>
+      <button id="vendorBtn" title="קריאת שירות לספק (בזק, הוט...) – המוקד מתכתב עם הבוט שלהם עד שמגיע נציג אנושי">🏢<span class="lbl"> ספקים</span></button>
       <button id="newChat" title="שליחת הודעה ללקוח חדש">✉️<span class="lbl"> שיחה חדשה</span></button>
       <button id="mySettings" title="ההגדרות שלי">⚙️</button>
       ${S.me.role === 'admin' ? '<button id="bcastBtn" title="הפצת וואטסאפ ללקוחות לפי מוצר או לרשימת מספרים">📣<span class="lbl"> הפצה</span></button>' : ''}
@@ -153,6 +154,7 @@ async function startMain() {
   $('#logout').onclick = async () => { await api('POST', '/api/logout').catch(() => {}); location.reload(); };
   $('#mySettings').onclick = mySettingsDialog;
   $('#newChat').onclick = newChatDialog;
+  $('#vendorBtn').onclick = vendorDialog;
   try { if (localStorage.getItem('hd-multi') !== '0') $('#multiBtn').style.display = ''; } catch {}
   $('#taskBtn').onclick = taskDialog;
   $('#teamBtn').onclick = svcOpen;
@@ -216,6 +218,9 @@ function onEvent(ev) {
       Sounds.newMessage();
       notify(ev.sound === 'new' ? 'קריאה חדשה' : 'הודעה חדשה', `${t.customerName}: ${t.lastText || ''}`);
     }
+  } else if (ev.type === 'vendorbot') {
+    toast(ev.text, !/^✅|^⏳/.test(ev.text), 15000);
+    notify('🏢 קריאה לספק', ev.text);
   } else if (ev.type === 'group-pop') {
     // גרסה 92: בוטל
   } else if (ev.type === 'staffmsg') {
@@ -760,6 +765,36 @@ async function doCloseTicket(t, resolution) {
     S.tickets.delete(t.id); S.sel = null; S.view = null;
     renderList(); renderChat(); toast(`קריאה #${t.id} נסגרה ✅`);
   } catch (e) { toast(e.message, true); }
+}
+
+// ---------- 🏢 קריאת שירות לספק (גרסה 98) ----------
+// בוחרים ספק + תקלה + פרטים → השרת מתכתב עם הבוט של הספק עד נציג אנושי, ואז מודיע (וואטסאפ + הודעה כאן)
+async function vendorDialog() {
+  let list;
+  try { list = await api('GET', '/api/vendor-bots'); } catch (e) { return toast(e.message, true); }
+  if (!list.length) return toast('לא הוגדרו ספקים (data/vendorbots.json בשרת)', true);
+  let v = list[0], fault = '';
+  const draw = () => {
+    openModal(`<h3>🏢 קריאת שירות לספק</h3>
+      <div class="hint">המוקד יתכתב עם הבוט של הספק עד שמגיע נציג אנושי, ואז יודיע לך. ההתכתבות תופיע כקריאה רגילה.</div>
+      <label>ספק</label><div class="seg" id="vb_v" style="flex-wrap:wrap">${list.map((x, i) => `<button data-i="${i}" class="${x.id === v.id ? 'on' : ''}">${esc(x.icon)} ${esc(x.name)}${x.active ? ' ⏳' : ''}</button>`).join('')}</div>
+      ${(v.fields || []).map((f) => `<label>${esc(f.label)}</label><input id="vb_f_${esc(f.key)}" ${f.digits ? 'dir="ltr" inputmode="tel"' : ''}>`).join('')}
+      ${v.faults.length ? `<label>מה התקלה?</label><div class="seg" id="vb_fault" style="flex-wrap:wrap">${v.faults.map((x) => `<button data-f="${esc(x)}" class="${x === fault ? 'on' : ''}">${esc(x)}</button>`).join('')}</div>` : ''}
+      ${v.active ? '<div class="hint" style="color:#b45309">⏳ כבר יש פנייה פעילה לספק הזה</div>' : ''}
+      <div class="row"><button class="primary" id="vb_go">🚀 שלח</button><button id="cancel">ביטול</button></div>`);
+    $('#cancel').onclick = closeModal;
+    box.querySelectorAll('#vb_v [data-i]').forEach((b) => (b.onclick = () => { v = list[+b.dataset.i]; fault = ''; draw(); }));
+    box.querySelectorAll('#vb_fault [data-f]').forEach((b) => (b.onclick = () => { fault = b.dataset.f; box.querySelectorAll('#vb_fault [data-f]').forEach((x) => x.classList.toggle('on', x === b)); }));
+    const first = box.querySelector('input'); if (first) first.focus();
+    $('#vb_go').onclick = async () => {
+      const values = {};
+      for (const f of v.fields || []) values[f.key] = $('#vb_f_' + f.key).value.trim();
+      const btn = $('#vb_go'); btn.disabled = true; btn.textContent = '⏳ שולח...';
+      try { await api('POST', '/api/vendor-bots/start', { vendorId: v.id, fault, values }); closeModal(); toast(`🚀 התחלנו להתכתב עם ${v.name} – אודיע כשמגיע נציג אנושי`, false, 8000); }
+      catch (e) { toast(e.message, true, 7000); btn.disabled = false; btn.textContent = '🚀 שלח'; }
+    };
+  };
+  draw();
 }
 
 // ---------- קריאת שירות לטכנאי ----------
