@@ -1,5 +1,5 @@
 {
-  "version": 100,
+  "version": 101,
   "files": {
     "server.js": "40d2f0efcb1726ecb277fd6a77febe9ec01fe11895933a7f9522a07db9316071",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
@@ -15,12 +15,12 @@
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "230b5a6411950c62fe982851cf21d2ed7326e1a5b533db47d7a6e10d8543380b",
     "lib/svccalls.js": "106626521b849d3f551b14a316fc39496a73fff36a98802b1f6851ddfc1fb2c7",
-    "lib/vendorbot.js": "95ee131606ce3d802bea2ab112e3772862b38787a6aed2435a0700d49668a377",
+    "lib/vendorbot.js": "bae0bbb18150fe47210fcbf4ba3c1e3b2445ff61833abfecc8b6366034cfb63b",
     "public/app.js": "e3e63fde2ceae86e1f4feeeef47b52735a3032af0ead9226c7e7dc996a6a1cf5",
-    "public/changelog.json": "a643f0cfa25c2cc04e3d4c586e086f50316d9c471386d7a028d829922c62de94",
+    "public/changelog.json": "9f8c9c4cf5276660d0e64caa3398e58de9295c555dd81eebe8868ba53ec5e1d5",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "682d2fbb4946501c4c87f28a8386b7aadd81744069ea58f3a4c02c59397affea",
     "public/style.css": "d2ff20e4f1674a30d7550fac07bd442ecb7a600c8794b303d0108751b3589f87"
   },
-  "notes": "🔍 במסך \"וואטסאפ\" החיפוש מוצא גם מלל בתוך ההודעות (לא רק שם/טלפון) – עם המשפט שנמצא והמילה מודגשת"
+  "notes": "🚚 ספקים בלי בוט (נציג עונה ישר, כמו YDM משלוחים): המוקד שולח את מספר המשלוח ומחכה – כשהנציג כותב קופץ החלון הירוק"
 }

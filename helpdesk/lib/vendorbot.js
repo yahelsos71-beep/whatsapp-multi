@@ -5,6 +5,7 @@
 // איך בוחרים בתפריט: שולחים את השם המדויק של האפשרות (Green API לא יודע "ללחוץ"; הבוטים מקבלים את הטקסט).
 // סדר עדיפויות בכל תפריט: 1) אפשרות עם "נציג" (לא "דיגיטלי")  2) prefer לפי הסדר ({fault} = התקלה שנבחרה)
 // 3) אין התאמה → עוצרים ומודיעים. שאלה בלי תפריט → answers (re → reply), אחרת מחכים.
+// "direct": true – ספק בלי בוט: שולחים פתיחה ומחכים; ההודעה הראשונה שלהם = נציג ענה (גרסה 101).
 const fs = require('fs');
 const path = require('path');
 
@@ -60,7 +61,8 @@ module.exports = function createVendorBot({ dataDir, log, note, sendText, ga, in
       state: 'running', steps: 0, askedHuman: false, choices: {}, ticketId: null, pending: null, timer: null, stall: null };
     sessions.set(key, s);
     await ga.sendMessage(inst, chatId, fill(v.opening || 'שלום, אני צריך תמיכה טכנית – {fault}. נציג אנושי בבקשה.', vars));
-    armStall(s);
+    // "direct": ספק בלי בוט (נציג עונה ישר, למשל YDM) – מחכים לנציג בלי הגבלת זמן; כל הודעה ממנו = נציג ענה
+    if (v.direct) { s.state = 'queued'; s.askedHuman = true; } else armStall(s);
     log(`vendorbot start ${v.name} by ${user.name} (${vars.fault})`);
     return { ok: true, vendor: v.name };
   }
@@ -98,7 +100,7 @@ module.exports = function createVendorBot({ dataDir, log, note, sendText, ga, in
     if (!hasOpts && ((HUMAN_RE.test(text) && !NOT_HUMAN_OPT.test(text) && !/הבוט|בוט /.test(text)) || (s.state === 'queued' && text && !QUEUE_RE.test(text)))) {
       return finish(t, s, 'done', `✅ ${s.vendorName}: הגענו לנציג אנושי – תמשיך את השיחה במוקד, קריאה #${t.id}${text ? `\n"${text.slice(0, 120)}"` : ''}`);
     }
-    if (!hasOpts && s.askedHuman && QUEUE_RE.test(text)) {
+    if (!hasOpts && s.askedHuman && QUEUE_RE.test(text) && !(vendors().find((x) => x.id === s.vendorId) || {}).direct) {
       if (s.state !== 'queued') { s.state = 'queued'; clearTimeout(s.stall); note(t, `⏳ ${s.vendorName}: בתור לנציג אנושי`); notifyBoss(s, `⏳ ${s.vendorName}: אנחנו בתור לנציג אנושי (קריאה #${t.id}). אודיע כשהוא כותב.`); }
       return;
     }
