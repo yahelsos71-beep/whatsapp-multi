@@ -2117,7 +2117,32 @@ route('GET', /^\/api\/wa\/chats$/, async (req, res, { user, query }) => {
   const match = (c) => !q || (c.name || '').toLowerCase().includes(q) || (qd.length >= 3 && c.chatId.includes(qd));
   let list = Object.values(db.waChats).filter((c) => c.instanceId === inst.id).map(waChatView).filter(match).sort((a, b) => b.ts - a.ts);
   if (q) for (const c of waContacts.values()) if (c.instanceId === inst.id && match(c) && !db.waChats[waKey(c.instanceId, c.chatId)]) list.push(waChatView(c));
-  send(res, 200, list.slice(0, q ? 200 : 400));
+  // גרסה 100: חיפוש גם בתוכן ההודעות (מה שנשמר בקריאות של המספר הזה) – צ'אטים שנמצאו לפי מלל נוספים אחרי ההתאמות לפי שם/טלפון
+  if (q.length >= 2 && !/^[\d\s+-]+$/.test(q)) {
+    const seen = new Set(list.map((c) => c.key));
+    const hits = new Map(); // key -> { ts, text }
+    for (const t of db.tickets) {
+      if (t.instanceId !== inst.id) continue;
+      const k = waKey(t.instanceId, t.chatId);
+      let msgs = [];
+      try { msgs = JSON.parse(fs.readFileSync(path.join(store.DATA_DIR, 'messages', t.id + '.json'), 'utf8')); } catch { continue; }
+      for (const m of msgs) {
+        if (m.dir === 'note' || !m.text || !String(m.text).toLowerCase().includes(q)) continue;
+        const h = hits.get(k);
+        if (!h || m.ts > h.ts) hits.set(k, { ts: m.ts, text: String(m.text), chatId: t.chatId });
+      }
+    }
+    const extra = [...hits.entries()].sort((a, b) => b[1].ts - a[1].ts).slice(0, 150).map(([k, h]) => {
+      const c = waChatView(db.waChats[k] || { instanceId: inst.id, chatId: h.chatId, isGroup: h.chatId.endsWith('@g.us') });
+      const i = h.text.toLowerCase().indexOf(q);
+      return { ...c, hit: (i > 40 ? '…' : '') + h.text.slice(Math.max(0, i - 40), i + q.length + 60), hitTs: h.ts };
+    });
+    for (const c of extra) {
+      if (seen.has(c.key)) { const x = list.find((y) => y.key === c.key); if (x) { x.hit = c.hit; x.hitTs = c.hitTs; } }
+      else list.push(c);
+    }
+  }
+  send(res, 200, list.slice(0, q ? 250 : 400));
 });
 route('GET', /^\/api\/wa\/history$/, async (req, res, { user, query }) => {
   if (!waGuard(user, res)) return;

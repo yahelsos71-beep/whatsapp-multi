@@ -1703,7 +1703,7 @@ function leaveWa(keepChat) {
 function renderWaSide() {
   const el = $('#waSide');
   el.innerHTML = `<div class="tabs">${S.instances.map((i) => `<button class="${i.id === S.wa.inst ? 'on' : ''}" data-inst="${i.id}">📱 ${esc(i.name)}</button>`).join('')}</div>
-    <div class="search"><input id="waQ" placeholder="🔍 חיפוש שם או טלפון (גם צ׳אטים ישנים)" value="${esc(S.wa.q)}"></div>
+    <div class="search"><input id="waQ" placeholder="🔍 חיפוש שם, טלפון או מלל בהודעות" value="${esc(S.wa.q)}"></div>
     <div class="list" id="waList"><div class="empty">טוען צ׳אטים...</div></div>`;
   el.querySelectorAll('[data-inst]').forEach((b) => (b.onclick = () => {
     S.wa.inst = b.dataset.inst; S.wa.sel = null; S.wa.view = null;
@@ -1719,6 +1719,13 @@ async function loadWaChats() {
   catch (e) { $('#waList').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
   renderWaList();
 }
+// גרסה 100: הדגשת המילה שנמצאה בחיפוש מלל
+function waHit(text) {
+  const q = S.wa.q; const s = esc(text);
+  if (!q) return s;
+  const i = text.toLowerCase().indexOf(q.toLowerCase());
+  return i < 0 ? s : esc(text.slice(0, i)) + '<mark>' + esc(text.slice(i, i + q.length)) + '</mark>' + esc(text.slice(i + q.length));
+}
 function renderWaList() {
   const el = $('#waList'); if (!el) return;
   if (!S.wa.chats.length) { el.innerHTML = `<div class="empty">${S.wa.q ? 'לא נמצא' : 'אין עדיין צ׳אטים – הם יופיעו כאן עם כל הודעה'}</div>`; return; }
@@ -1727,7 +1734,7 @@ function renderWaList() {
     return `<div class="item ${c.key === S.wa.sel ? 'sel' : ''}" data-key="${esc(c.key)}">
       <div class="av" style="background:${avColor(c.phone || c.chatId)}">${c.isGroup ? '👥' : esc(initials(title))}</div>
       <div class="body"><div class="row1"><span class="name">${esc(title)}${c.name && c.phone ? ` <span class="ph" dir="ltr">${localPhone(c.phone)}</span>` : ''}</span><span class="time">${c.ts ? waWhen(c.ts) : ''}</span></div>
-        <div class="row2"><span class="last">${c.dir === 'out' ? '↩ ' : ''}${c.sender ? esc(c.sender) + ': ' : ''}${esc((c.text || '').slice(0, 100))}</span>${c.dir === 'in' ? '<span class="dot" title="ההודעה האחרונה מהלקוח"></span>' : ''}</div>
+        <div class="row2"><span class="last">${c.hit ? `🔎 ${waHit(c.hit)}` : `${c.dir === 'out' ? '↩ ' : ''}${c.sender ? esc(c.sender) + ': ' : ''}${esc((c.text || '').slice(0, 100))}`}</span>${c.dir === 'in' ? '<span class="dot" title="ההודעה האחרונה מהלקוח"></span>' : ''}</div>
         ${c.ticketId || c.isGroup ? `<div class="row3">${c.isGroup ? '<span class="chip grp">👥 קבוצה</span>' : ''}${c.ticketId ? `<span class="chip who">🎫 #${c.ticketId}${c.ticketAssignee ? ' · ' + esc(c.ticketAssignee) : ''}</span>` : ''}</div>` : ''}</div></div>`;
   }).join('');
   el.querySelectorAll('[data-key]').forEach((d) => (d.onclick = () => openWaChat(d.dataset.key)));
