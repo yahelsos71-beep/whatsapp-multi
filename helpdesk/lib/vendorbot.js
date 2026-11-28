@@ -11,7 +11,7 @@ const path = require('path');
 const HUMAN_OPT = /נציג/;
 const NOT_HUMAN_OPT = /דיגיטלי|וירטואלי/;
 const QUEUE_RE = /יתפנה|בתור|ממתינ|נחזור אליך|יחזור אליך|בהקדם|קיבלנו את הפנייה/;
-const HUMAN_RE = /שמי\s+\S+|אני\s+\S+\s+ואטפל|אטפל בפנייתך/;
+const HUMAN_RE = /שמי\s+\S+|אני\s+\S+\s+ואטפל|אטפל בפנייתך|(^|\s)(היי|הי|שלום|בוקר טוב|ערב טוב)[^א-ת]*אני\s+[א-ת]+/;
 const MAX_STEPS = 30;
 const STALL_MS = 120000;
 
@@ -36,7 +36,7 @@ module.exports = function createVendorBot({ dataDir, log, note, sendText, ga, in
       if (!to && c.toInstanceId) { const ti = instById(c.toInstanceId); to = ti && await instPhone(ti); }
       if (from && to) await ga.sendMessage(from, String(to).replace(/\D/g, '') + '@c.us', text);
     } catch (e) { log('vendorbot notify', e.message); }
-    if (s.userId) sendTo(s.userId, { type: 'vendorbot', text, ticketId: s.ticketId || null });
+    if (s.userId) sendTo(s.userId, { type: 'vendorbot', text, ticketId: s.ticketId || null, human: s.state === 'done', vendor: s.vendorName });
   }
 
   async function start({ vendorId, fault, values, user }) {
@@ -95,7 +95,7 @@ module.exports = function createVendorBot({ dataDir, log, note, sendText, ga, in
     const text = norm(m.text);
     const hasOpts = (m.options || []).some((o) => o.kind === 'reply');
     // הגענו לנציג?
-    if (!hasOpts && (HUMAN_RE.test(text) || (s.state === 'queued' && text && !QUEUE_RE.test(text)))) {
+    if (!hasOpts && ((HUMAN_RE.test(text) && !NOT_HUMAN_OPT.test(text) && !/הבוט|בוט /.test(text)) || (s.state === 'queued' && text && !QUEUE_RE.test(text)))) {
       return finish(t, s, 'done', `✅ ${s.vendorName}: הגענו לנציג אנושי – תמשיך את השיחה במוקד, קריאה #${t.id}${text ? `\n"${text.slice(0, 120)}"` : ''}`);
     }
     if (!hasOpts && s.askedHuman && QUEUE_RE.test(text)) {

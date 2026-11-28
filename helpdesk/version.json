@@ -1,7 +1,7 @@
 {
-  "version": 98,
+  "version": 99,
   "files": {
-    "server.js": "0d8917b7b8069d69bbe6c34fc3825d6d48b228cd3d20614be3e14c3e9f101959",
+    "server.js": "6b0eca46e65d2281bc3c01759eddd35e2702901152e3010bb9be8c044e1ec2a9",
     "reset-password.js": "f91157c027c9a9d6025e83f09be93cd6e6463c5b824b47a96053a45c9bab8d07",
     "reset-password.bat": "662bfbec8b94b264fd7b585a365f389415b8ec66bea540e876418e7a3f805187",
     "README-HE.txt": "df99092cc82f3de6e6d685ca604d95e154879a4a75ba6a0854e4134dd27e5cf3",
@@ -15,12 +15,12 @@
     "lib/sheet.js": "ee6db786c0dc60c3961f13c68c43d888e1677b475b5dc747a655369baaf3c318",
     "lib/store.js": "230b5a6411950c62fe982851cf21d2ed7326e1a5b533db47d7a6e10d8543380b",
     "lib/svccalls.js": "106626521b849d3f551b14a316fc39496a73fff36a98802b1f6851ddfc1fb2c7",
-    "lib/vendorbot.js": "7275c2ebba94a5d312d2b87d18f30b0c564cfa0abca472597398b9fabfad8e50",
-    "public/app.js": "0ec53f4e7aceb8731fc0427ea3e0041fe4a881f212afa1c232e50d26b5ca4003",
-    "public/changelog.json": "53d7b88ff0fb1ba698fe1acaebab0c4a91b9f7795fcaa4396f8091a2839ec7e0",
+    "lib/vendorbot.js": "95ee131606ce3d802bea2ab112e3772862b38787a6aed2435a0700d49668a377",
+    "public/app.js": "1d0a29062aa2e488bae6a9952ca98bfeb00d337c2cdb8fccb2f82515034b3d7b",
+    "public/changelog.json": "e8aa6216c2caac680db515a259b8dd58244130b959f25c9a302a9a59f0b4d9a1",
     "public/index.html": "aa2b1c4a3fa4ecfcea74c0506ca9133d5d6363a0c75e553b19db955cf5ded8e0",
     "public/sounds.js": "682d2fbb4946501c4c87f28a8386b7aadd81744069ea58f3a4c02c59397affea",
-    "public/style.css": "1eac4e95ceb07ebd98ba2f73232064bb2dc1c45bb67ccc8b8715844f294b8a2c"
+    "public/style.css": "d2ff20e4f1674a30d7550fac07bd442ecb7a600c8794b303d0108751b3589f87"
   },
-  "notes": "🏢 קריאת שירות לספק – כפתור \"ספקים\": בוחרים ספק (בזק / הוט), תקלה ומספר קו → המוקד מתכתב לבד עם הבוט של הספק עד שמגיע נציג אנושי, ואז מודיע בוואטסאפ ובמוקד"
+  "notes": "✅ נציג של ספק (בזק/הוט) ענה → חלון ירוק גדול למי שפתח את הפנייה, עם כפתור כניסה לשיחה | 🤖 לקוח שלא ברור לאיזו מחלקה הוא שייך → עובר למי שהתכתב איתו לאחרונה (לא למנהל)"
 }

@@ -219,8 +219,8 @@ function onEvent(ev) {
       notify(ev.sound === 'new' ? 'קריאה חדשה' : 'הודעה חדשה', `${t.customerName}: ${t.lastText || ''}`);
     }
   } else if (ev.type === 'vendorbot') {
-    toast(ev.text, !/^✅|^⏳/.test(ev.text), 15000);
-    notify('🏢 קריאה לספק', ev.text);
+    if (ev.human) vendorHumanPop(ev); else toast(ev.text, !/^✅|^⏳/.test(ev.text), 15000);
+    notify(ev.human ? `✅ נציג של ${ev.vendor || 'הספק'} ענה` : '🏢 קריאה לספק', ev.text);
   } else if (ev.type === 'group-pop') {
     // גרסה 92: בוטל
   } else if (ev.type === 'staffmsg') {
@@ -765,6 +765,18 @@ async function doCloseTicket(t, resolution) {
     S.tickets.delete(t.id); S.sel = null; S.view = null;
     renderList(); renderChat(); toast(`קריאה #${t.id} נסגרה ✅`);
   } catch (e) { toast(e.message, true); }
+}
+
+// גרסה 99: נציג אנושי של הספק ענה → חלון גדול למי שפתח את הפנייה (לא modal – לא מוחק חלון/טקסט פתוח)
+function vendorHumanPop(ev) {
+  const old = document.getElementById('vendorPop'); if (old) old.remove();
+  const el = document.createElement('div'); el.id = 'vendorPop'; el.className = 'vendorpop';
+  el.innerHTML = `<div class="op-box"><div class="op-title">✅ נציג של ${esc(ev.vendor || 'הספק')} ענה!</div>
+    <div class="op-sub">${esc(ev.text || '').replace(/\n/g, '<br>')}</div>
+    ${ev.ticketId ? '<button class="primary op-go">💬 כנס לשיחה</button>' : ''}<button class="op-skip">סגור</button></div>`;
+  el.querySelector('.op-skip').onclick = () => el.remove();
+  if (ev.ticketId) el.querySelector('.op-go').onclick = () => { el.remove(); if (S.mode === 'wa') leaveWa(true); openTicket(ev.ticketId); };
+  document.body.appendChild(el);
 }
 
 // ---------- 🏢 קריאת שירות לספק (גרסה 98) ----------

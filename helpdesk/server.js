@@ -287,6 +287,8 @@ async function eveningOwner(t) {
   const dep = r.departmentId ? depById(r.departmentId) : null;
   const u = dep && userById(dep.userId);
   if (u && u.active !== false) return { u, dep, why: 'לפי מחלקה: ' + dep.name };
+  { const r2 = recentHumanReply(t.instanceId, t.chatId); const lu = r2 && r2.userId && userById(r2.userId);
+    if (lu && lu.active !== false && lu.id !== t.eveningBy) return { u: lu, why: 'התכתב/ה עם הלקוח לאחרונה' }; }
   return { u: admins().find((x) => x.id !== t.eveningBy) || admins()[0] || null, why: 'לא זוהתה מחלקה' };
 }
 let eveningBusy = false;
@@ -415,13 +417,20 @@ async function finishRouting(t, departmentId, reason, summary, aiReply, { silent
   clearRouting(t);
   const dep = departmentId ? depById(departmentId) : null;
   let assignee = (t.isGroup && groupsUser()) || (assigneeId && userById(assigneeId)) || (dep && userById(dep.userId));
+  let lastWhy = '';
+  if ((!assignee || assignee.active === false) && !dep) {
+    // גרסה 99: לא ברור למי – למי שהתכתב עם הלקוח לאחרונה
+    const r = recentHumanReply(t.instanceId, t.chatId);
+    const u = r && r.userId && userById(r.userId);
+    if (u && u.active !== false) { assignee = u; lastWhy = ' (התכתב/ה עם הלקוח לאחרונה)'; }
+  }
   if (!assignee || assignee.active === false) assignee = admins()[0] || null;
   t.departmentId = dep ? dep.id : null;
   t.assigneeId = assignee ? assignee.id : null;
   t.aiReason = reason;
   t.aiSummary = summary || '';
   t.status = 'open';
-  note(t, (dep ? `🤖 נותב ל${assignee ? assignee.name : '?'} (${dep.name})` : `🤖 לא זוהתה מחלקה – הועבר ל${assignee ? assignee.name : 'מנהל'}`) + (reason ? ` – ${reason}` : ''));
+  note(t, (dep ? `🤖 נותב ל${assignee ? assignee.name : '?'} (${dep.name})` : `🤖 לא זוהתה מחלקה – הועבר ל${assignee ? assignee.name : 'מנהל'}${lastWhy}`) + (reason ? ` – ${reason}` : ''));
   if (summary) note(t, '📝 סיכום הפנייה: ' + summary);
   emitTicket(t, { sound: 'new' });
   log(`ticket #${t.id} routed -> ${assignee && assignee.name} (${dep ? dep.name : 'unknown'})`);
